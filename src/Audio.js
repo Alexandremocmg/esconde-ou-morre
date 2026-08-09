@@ -42,6 +42,42 @@ export class Audio {
     osc.stop(t + dur + 0.02);
   }
 
+  // Bip com varredura de frequência (para pops/bolhas). de→para em `dur`.
+  _sweep(from, to, dur, gain = 0.3, type = 'sine') {
+    if (!this.enabled) return;
+    this._ensure();
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const env = this.ctx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(from, t);
+    osc.frequency.exponentialRampToValueAtTime(Math.max(1, to), t + dur);
+    env.gain.setValueAtTime(0.0001, t);
+    env.gain.exponentialRampToValueAtTime(gain, t + 0.008);
+    env.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    osc.connect(env).connect(this.master);
+    osc.start(t);
+    osc.stop(t + dur + 0.02);
+  }
+
+  // Clique suave ao GRUDAR na parede: toque curtíssimo e seco.
+  latch() {
+    this._beep(320, 0.05, 0.22, 'triangle');
+    setTimeout(() => this._beep(540, 0.04, 0.16, 'triangle'), 22);
+  }
+
+  // Pop/bolha ao PINTAR (mudar de cor): varredura ascendente rápida.
+  paint() {
+    this._sweep(260, 900, 0.14, 0.26, 'sine');
+  }
+
+  // Alerta de DETECÇÃO: dois tons agudos rápidos (distinto da contagem/batida).
+  alert() {
+    this._beep(1180, 0.08, 0.24, 'square');
+    setTimeout(() => this._beep(1480, 0.09, 0.24, 'square'), 90);
+  }
+
   // Batida de tensão (perigo de ser pego). intensity 0..1 controla volume/altura.
   heartbeat(intensity = 0.5) {
     const g = 0.18 + 0.32 * intensity;

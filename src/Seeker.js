@@ -70,13 +70,19 @@ export class Seeker {
     this.group = new THREE.Group();
     this.group.position.set(this.waypoints[0].x, EYE_Y, this.waypoints[0].z);
 
+    // Grupo visual interno: recebe o bobbing (flutuação) SEM mover a origem da
+    // visão (this.group.position), que a IA mantém em EYE_Y de forma determinística.
+    this.bodyGroup = new THREE.Group();
+    this.group.add(this.bodyGroup);
+    this._bobPhase = Math.random() * Math.PI * 2; // dessincroniza 2 Caçadores
+
     // Corpo: cilindro (vermelho por padrão; cor distinta p/ o 2º Caçador)
     const body = new THREE.Mesh(
       new THREE.CylinderGeometry(BODY_R, BODY_R * 0.85, BODY_H, 20),
       new THREE.MeshStandardMaterial({ color: bodyColor, roughness: 0.5, metalness: 0.1 })
     );
     body.castShadow = true;
-    this.group.add(body);
+    this.bodyGroup.add(body);
 
     // "Visor" indicando a frente (+Z)
     const visor = new THREE.Mesh(
@@ -84,7 +90,7 @@ export class Seeker {
       new THREE.MeshStandardMaterial({ color: 0x140505, emissive: 0x330000 })
     );
     visor.position.set(0, 0.55, BODY_R + 0.02);
-    this.group.add(visor);
+    this.bodyGroup.add(visor);
 
     // Cone de visão (visual/debug), apontando +Z a partir dos olhos
     const coneR = Math.tan(VISION_HALF_ANGLE) * VISION_RANGE;
@@ -98,7 +104,7 @@ export class Seeker {
     );
     cone.rotation.x = -Math.PI / 2; // ápice p/ -Z (olhos), base à frente (+Z)
     cone.position.set(0, 0, VISION_RANGE / 2);
-    this.group.add(cone);
+    this.bodyGroup.add(cone);
 
     scene.add(this.group);
 
@@ -149,6 +155,11 @@ export class Seeker {
 
     this._updateVisionVisual();
     this.group.rotation.y = this.yaw;
+
+    // Flutuação de drone: bobbing leve no eixo Y do grupo visual. Mais discreto
+    // em perseguição (leitura de urgência) do que em patrulha.
+    const bobAmp = this.state === 'chase' ? 0.05 : 0.1;
+    this.bodyGroup.position.y = Math.sin(this.time * 2.4 + this._bobPhase) * bobAmp;
   }
 
   // ------------------------------------------------------------------- VISION

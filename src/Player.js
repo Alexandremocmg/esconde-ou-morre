@@ -15,6 +15,8 @@ const PIN_PROBE = 0.6;              // origem da sonda de re-pin, à frente da s
 const PIN_RANGE = PIN_PROBE + RADIUS + 0.4; // alcance máx. antes de soltar
 const TURN_LERP = 12;               // suavização de rotação
 const COLOR_LERP = 10;              // suavização da troca de cor (camuflagem)
+const PUPIL_MAX = 0.075;            // deslocamento máx. da pupila (olhar)
+const EYE_LERP = 12;                // suavização do olhar
 
 // Histerese: entra em camuflagem com folga apertada e só sai quando a cor se
 // afasta bem mais. Evita o badge/detecção "piscarem" no limiar durante o lerp.
@@ -33,9 +35,10 @@ export class Player {
     this.wallNormal = new THREE.Vector3(0, 0, 1);
     this.latchedObject = null; // superfície atual (para checagem de camuflagem)
 
-    // Grupo raiz: movemos/rotacionamos isto.
+    // Grupo raiz: movemos/rotacionamos isto. Início vem do layout (level.spawn).
     this.object = new THREE.Group();
-    this.object.position.set(0, GROUND_Y, 6);
+    const s = level.spawn;
+    this.object.position.set(s ? s.x : 0, GROUND_Y, s ? s.z : 6);
 
     const bodyMat = new THREE.MeshStandardMaterial({
       color: 0x8a8f98, roughness: 0.55, metalness: 0.1,
@@ -47,13 +50,40 @@ export class Player {
     body.castShadow = true;
     this.object.add(body);
 
-    // "Olho" indicando a frente/topo (local +Y = eixo da cápsula)
-    const eye = new THREE.Mesh(
-      new THREE.SphereGeometry(0.16, 16, 12),
-      new THREE.MeshStandardMaterial({ color: 0x101418, roughness: 0.3 })
-    );
-    eye.position.set(0, HALF_EXTENT - 0.1, RADIUS * 0.7);
-    this.object.add(eye);
+    // Dois olhos grandes na face frontal (local +Z), perto do topo (local +Y).
+    // Cada olho = esclera clara fixa + pupila que desliza para "olhar" na direção
+    // do joystick, dando vida mesmo parado ou grudado.
+    const EYE_Y = HALF_EXTENT - 0.16;
+    const EYE_X = 0.19;
+    const EYE_Z = RADIUS * 0.66;
+    const scleraMat = new THREE.MeshStandardMaterial({ color: 0xf3f5f8, roughness: 0.35 });
+    const pupilMat = new THREE.MeshStandardMaterial({ color: 0x0d1014, roughness: 0.25 });
+    this._pupils = [];
+    this._pupilOffset = { x: 0, y: 0 }; // deslocamento suavizado (local X/Y)
+    for (const sx of [-1, 1]) {
+      const sclera = new THREE.Mesh(new THREE.SphereGeometry(0.17, 20, 16), scleraMat);
+      sclera.position.set(sx * EYE_X, EYE_Y, EYE_Z);
+      sclera.scale.z = 0.7; // achata contra o corpo
+      sclera.castShadow = true;
+      this.object.add(sclera);
+
+      const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.085, 16, 12), pupilMat);
+      pupil.userData.base = new THREE.Vector3(sx * EYE_X, EYE_Y, EYE_Z + 0.12);
+      pupil.position.copy(pupil.userData.base);
+      this.object.add(pupil);
+      this._pupils.push(pupil);
+    }
+
+    // Cauda estilizada afilada, na base traseira (local -Y/-Z), com balanço sutil.
+    this._tail = new THREE.Group();
+    this._tail.position.set(0, -HALF_EXTENT + 0.15, -RADIUS * 0.5);
+    const tailMesh = new THREE.Mesh(new THREE.ConeGeometry(0.14, 0.7, 12), bodyMat);
+    tailMesh.position.set(0, -0.32, -0.12);
+    tailMesh.rotation.x = Math.PI * 0.72; // aponta para trás/baixo
+    tailMesh.castShadow = true;
+    this._tail.add(tailMesh);
+    this.object.add(this._tail);
+    this._t = 0; // relógio p/ balanço da cauda e articulação dos olhos
 
     scene.add(this.object);
 
@@ -100,6 +130,8 @@ export class Player {
     if (this.state === 'grounded') this._updateGrounded(dt, joy, camera);
     else this._updateLatched(dt, joy);
 
+    this._animateFace(dt, joy);
+
     // Lerp de cor da camuflagem
     this.material.color.lerp(this.targetColor, Math.min(1, COLOR_LERP * dt));
 
@@ -113,6 +145,26 @@ export class Player {
       this.material.emissiveIntensity = 0;
       this._glow = 0;
     }
+  }
+
+  // Articulação da face: pupilas deslizam para a direção do joystick e a cauda
+  // balança suavemente (com uma leve inclinação conforme o movimento à frente).
+  _animateFace(dt, joy) {
+    this._t += dt;
+
+    const tx = THREE.MathUtils.clamp(joy.x, -1, 1) * PUPIL_MAX;
+    const ty = THREE.MathUtils.clamp(joy.y, -1, 1) * PUPIL_MAX;
+    const k = Math.min(1, EYE_LERP * dt);
+    this._pupilOffset.x += (tx - this._pupilOffset.x) * k;
+    this._pupilOffset.y += (ty - this._pupilOffset.y) * k;
+    for (const p of this._pupils) {
+      p.position.x = p.userData.base.x + this._pupilOffset.x;
+      p.position.y = p.userData.base.y + this._pupilOffset.y;
+    }
+
+    // Cauda: leque lateral constante + inclina para trás quando avança.
+    this._tail.rotation.z = Math.sin(this._t * 5) * 0.14;
+    this._tail.rotation.x = -THREE.MathUtils.clamp(joy.y, -1, 1) * 0.22;
   }
 
   // ---------------------------------------------------------------- GROUNDED

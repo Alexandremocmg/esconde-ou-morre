@@ -2,13 +2,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
 <meta name="theme-color" content="#0b0e13" />
 <title>Esconde ou Morre — Vertical Slice</title>
+<link rel="icon" href="data:," />
 <link rel="stylesheet" href="css/style.css" />
 
 <!-- Three.js via CDN (ES Modules). Requer servidor local: `python -m http.server` ou `npx serve`. -->
 <script type="importmap">
 {
   "imports": {
-    "three": "https://unpkg.com/three@0.161.0/build/three.module.js"
+    "three": "https://unpkg.com/three@0.161.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.161.0/examples/jsm/"
   }
 }
 </script>
@@ -18,6 +20,9 @@
 
   <!-- Vinheta de feedback (perigo vermelho / prestes a vencer verde) -->
   <div id="vignette"></div>
+
+  <!-- Alerta de detecção: aparece quando um Caçador te vê sem camuflagem -->
+  <div id="alert"><span>!</span></div>
 
   <!-- HUD -->
   <div id="hud">
@@ -34,7 +39,7 @@
       <div class="t-bottom">
         <span id="timer-elapsed">0:00</span>
         <span class="t-sep">/</span>
-        <span id="timer-goal">0:45</span>
+        <span id="timer-goal">1:00</span>
         <span class="t-cap">sobreviva</span>
       </div>
     </div>
@@ -71,7 +76,7 @@
     <div class="go-panel">
       <h2>GAME OVER</h2>
       <p>O Caçador te pegou.</p>
-      <button onclick="location.reload()">Tentar de novo</button>
+      <button onclick="location.reload()">Reiniciar Fase</button>
     </div>
   </div>
 

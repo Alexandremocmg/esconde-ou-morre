@@ -11,7 +11,7 @@ const TAP_MAX_MS = 300;   // duração máx. de um toque para contar como "tap"
 const TAP_MAX_MOVE = 12;  // px de deslocamento máx. para ainda ser um tap
 
 // Partida (Fase 4): objetivo = sobreviver ao Caçador até o tempo acabar.
-const BASE_SURVIVE = 45;      // s de sobrevivência no estágio 1
+const BASE_SURVIVE = 60;      // s de sobrevivência no estágio 1
 const SURVIVE_PER_STAGE = 15; // s adicionais por estágio
 const DIFF_PER_STAGE = 0.12;  // incremento de dificuldade por estágio (velocidade do Caçador)
 const SECOND_SEEKER_STAGE = 3; // a partir deste estágio, entra um 2º Caçador
@@ -56,19 +56,24 @@ export class Game {
     this.elapsed = 0;    // tempo decorrido na fase
     this.camoTime = 0;   // tempo total camuflado
 
-    this.level = new Level(this.scene);
+    // Layout da arena por estágio (cicla a cada 3): 1=aberta, 2=labirinto, 3=ilhas.
+    const layout = ((this.stage - 1) % 3) + 1;
+    this.level = new Level(this.scene, layout);
     this.player = new Player(this.scene, this.level);
     this.effects = new Effects(this.scene);
     this.audio = new Audio();
 
-    // Caçadores. O primeiro sempre existe; um segundo (rota alternada, cor
-    // distinta) entra a partir do estágio SECOND_SEEKER_STAGE.
+    // Caçadores. O primeiro sempre existe; um segundo (rota cruzada, cor distinta)
+    // entra a partir do estágio SECOND_SEEKER_STAGE. As rotas vêm do layout.
+    const routes = this.level.routes;
     this.seekers = [
-      new Seeker(this.scene, this.level, this.player, () => this._gameOver(), { difficulty }),
+      new Seeker(this.scene, this.level, this.player, () => this._gameOver(), {
+        difficulty, waypoints: routes[0],
+      }),
     ];
     if (this.stage >= SECOND_SEEKER_STAGE) {
       this.seekers.push(new Seeker(this.scene, this.level, this.player, () => this._gameOver(), {
-        difficulty, waypoints: WAYPOINTS_ALT, color: 0xb01ecb,
+        difficulty, waypoints: routes[1] || WAYPOINTS_ALT, color: 0xb01ecb,
       }));
     }
 
@@ -79,6 +84,7 @@ export class Game {
     this._prevState = this.player.state;
     this._heartTimer = 0;
     this._lastWinTick = -1;
+    this._spotted = false; // borda de subida da detecção (para som + UI de alerta)
 
     // Raycaster de camuflagem (toque)
     this._ray = new THREE.Raycaster();
@@ -91,6 +97,7 @@ export class Game {
     this._gameoverEl = document.getElementById('gameover');
     this._victoryEl = document.getElementById('victory');
     this._vignette = document.getElementById('vignette');
+    this._alertEl = document.getElementById('alert');
 
     // Placar da partida
     this._elStage = document.getElementById('stage-num');
@@ -178,8 +185,9 @@ export class Game {
     const hit = this._ray.intersectObjects(this.level.colorables, false)[0];
     if (hit && hit.object.material && hit.object.material.color) {
       this.player.setCamouflage(hit.object.material.color);
-      // Juice: pulso na cor copiada.
+      // Juice: pulso + pop na cor copiada.
       this.effects.pulse(this.player.position, hit.object.material.color);
+      this.audio.paint();
     }
   }
 
@@ -194,9 +202,10 @@ export class Game {
       this.player.update(dt, this.joystick.value, this.camera);
       for (const s of this.seekers) s.update(dt);
 
-      // Juice: pulso ao GRUDAR na parede (transição chão → parede).
+      // Juice: pulso + clique ao GRUDAR na parede (transição chão → parede).
       if (this._prevState === 'grounded' && this.player.state === 'latched') {
         this.effects.pulse(this.player.position, 0x9fe8ff);
+        this.audio.latch();
       }
       this._prevState = this.player.state;
 
@@ -215,24 +224,36 @@ export class Game {
   };
 
   // Feedback de tensão: vinheta + som quando falta pouco para vencer OU quando
-  // um Caçador está prestes a capturar (< WARN_WINDOW s).
+  // um Caçador está prestes a capturar (< WARN_WINDOW s). Alerta de DETECÇÃO
+  // (spotted) dispara assim que um Caçador te vê sem camuflagem — antes do perigo.
   _updateFeedback(dt) {
     const remaining = this.surviveTime - this.elapsed;
     const camo = this.player.isCamouflaged();
 
-    // Menor tempo estimado até captura entre todos os Caçadores.
+    // Detecção: algum Caçador te enxerga AGORA (na vista e sem camuflagem)?
+    let spotted = false;
     let catchIn = Infinity;
     if (!camo) {
-      for (const s of this.seekers) catchIn = Math.min(catchIn, s.timeToCatch(this.player.position));
+      for (const s of this.seekers) {
+        if (s.validTarget) spotted = true;
+        catchIn = Math.min(catchIn, s.timeToCatch(this.player.position));
+      }
     }
     const danger = catchIn < WARN_WINDOW;
     const almost = !danger && remaining <= WARN_WINDOW && remaining > 0;
 
-    // Vinheta (perigo tem prioridade sobre "quase vencendo").
+    // Som de alerta só na BORDA de subida (evita repetir a cada frame).
+    if (spotted && !this._spotted) this.audio.alert();
+    this._spotted = spotted;
+
+    // Vinheta: perigo (iminente) > detecção (visto) > quase vencendo.
     if (this._vignette) {
       this._vignette.classList.toggle('danger', danger);
-      this._vignette.classList.toggle('almost', almost);
+      this._vignette.classList.toggle('spotted', spotted && !danger);
+      this._vignette.classList.toggle('almost', almost && !spotted);
     }
+    // Ícone de exclamação enquanto detectado (mesmo antes do perigo iminente).
+    if (this._alertEl) this._alertEl.classList.toggle('show', spotted);
 
     // Áudio de perigo: batida cuja cadência acelera conforme a ameaça aumenta.
     if (danger) {
@@ -259,7 +280,9 @@ export class Game {
   }
 
   _clearVignette() {
-    if (this._vignette) this._vignette.classList.remove('danger', 'almost');
+    if (this._vignette) this._vignette.classList.remove('danger', 'almost', 'spotted');
+    if (this._alertEl) this._alertEl.classList.remove('show');
+    this._spotted = false;
   }
 
   _updateHud() {
