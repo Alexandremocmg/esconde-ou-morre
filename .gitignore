@@ -1,0 +1,10 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
+
+# Dependências / build (projeto é estático puro; nada disto é versionado)
+node_modules/
+dist/

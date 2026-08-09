@@ -1,0 +1,102 @@
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<meta name="theme-color" content="#0b0e13" />
+<title>Esconde ou Morre — Vertical Slice</title>
+<link rel="stylesheet" href="css/style.css" />
+
+<!-- Three.js via CDN (ES Modules). Requer servidor local: `python -m http.server` ou `npx serve`. -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.161.0/build/three.module.js"
+  }
+}
+</script>
+
+<div id="app">
+  <canvas id="scene"></canvas>
+
+  <!-- Vinheta de feedback (perigo vermelho / prestes a vencer verde) -->
+  <div id="vignette"></div>
+
+  <!-- HUD -->
+  <div id="hud">
+    <div id="state-badge">CHÃO</div>
+    <div id="color-chip"><span></span>camuflagem</div>
+
+    <!-- Placar da partida: sobrevivência + tempo camuflado -->
+    <div id="timer">
+      <div class="t-top">
+        <span class="t-stage">FASE <b id="stage-num">1</b></span>
+        <span id="timer-camo" title="Tempo total camuflado">🫥 0:00</span>
+      </div>
+      <div class="t-bar"><i id="timer-fill"></i></div>
+      <div class="t-bottom">
+        <span id="timer-elapsed">0:00</span>
+        <span class="t-sep">/</span>
+        <span id="timer-goal">0:45</span>
+        <span class="t-cap">sobreviva</span>
+      </div>
+    </div>
+  </div>
+  <div id="hint">Grude na parede · copie a cor da superfície (tocando nela) para se camuflar. Sobreviva ao Caçador vermelho até o tempo acabar.</div>
+
+  <!-- Joystick virtual (metade esquerda da tela) -->
+  <div id="joystick-zone">
+    <div id="joystick-base">
+      <div id="joystick-knob"></div>
+    </div>
+  </div>
+
+  <!-- Menu inicial (necessário p/ fullscreen + lock de orientação + áudio) -->
+  <div id="start-overlay">
+    <div class="panel menu">
+      <h1>Esconde ou Morre</h1>
+      <p>Grude, camufle e sobreviva ao Caçador.</p>
+
+      <ul class="how">
+        <li><span class="how-ic">🕹️</span> <b>Mover:</b> arraste na metade esquerda da tela (joystick).</li>
+        <li><span class="how-ic">🧱</span> <b>Grudar:</b> vá de encontro a uma parede para escalar.</li>
+        <li><span class="how-ic">🎨</span> <b>Camuflar:</b> grudado, toque numa superfície para copiar a cor.</li>
+        <li><span class="how-ic">👁️</span> <b>Objetivo:</b> fuja do Caçador vermelho e sobreviva até o tempo acabar.</li>
+      </ul>
+
+      <button id="start-btn">JOGAR</button>
+      <small>Melhor em tela cheia, na horizontal. Ative o som do aparelho.</small>
+    </div>
+  </div>
+
+  <!-- Game Over -->
+  <div id="gameover">
+    <div class="go-panel">
+      <h2>GAME OVER</h2>
+      <p>O Caçador te pegou.</p>
+      <button onclick="location.reload()">Tentar de novo</button>
+    </div>
+  </div>
+
+  <!-- Vitória / Fase Concluída -->
+  <div id="victory">
+    <div class="win-panel">
+      <h2>FASE CONCLUÍDA</h2>
+      <p>Você despistou o Caçador e sobreviveu.</p>
+      <div class="win-stats">
+        <div class="stat"><span id="win-time">0:45</span><small>Tempo sobrevivido</small></div>
+        <div class="stat"><span id="win-camo">0:00</span><small>Tempo camuflado</small></div>
+        <div class="stat"><span id="win-camo-pct">0%</span><small>Camuflado</small></div>
+      </div>
+      <div class="win-actions">
+        <button id="win-next" class="btn-primary">Próximo estágio ›</button>
+        <button id="win-restart" class="btn-ghost">Recomeçar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Aviso para girar o aparelho -->
+  <div id="rotate-overlay">
+    <div class="rotate-icon">⟳</div>
+    <p>Gire o aparelho para o modo paisagem</p>
+  </div>
+</div>
+
+<script type="module" src="src/main.js"></script>
