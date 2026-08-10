@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { buildHumanoid, Gait } from './Character.js';
 
 // Parâmetros do Caçador
 const BODY_R = 0.6;
@@ -10,7 +11,19 @@ const CHASE_RAMP = 0.5;               // s para acelerar de patrulha até veloci
 const TURN_RATE = 3.5;                // rad/s de giro
 const VISION_RANGE = 12;
 const VISION_HALF_ANGLE = Math.PI / 7; // ~25.7° (cone total ~51°)
-const CATCH_DIST = 1.5;
+// Amostragem de volume: em vez de um único raio ao centro, checa 3 pontos ao
+// longo da cápsula do jogador (cabeça/centro/pés). Basta UM ponto visível para
+// detectar — cobrir-se atrás de um bloco precisa esconder o corpo todo, não só
+// o centro (antes, centro exposto = detecção instantânea, mesmo 90% oculto).
+// Deslocamentos Y de cabeça/centro/pés. Reduzidos para acompanhar o jogador
+// menor (Player SCALE=0.5 → cápsula ~0.9 de altura). Sem isto, a amostra da
+// "cabeça" (+0.7) espetava ~0.25 acima do corpo real e denunciava o jogador
+// escondido atrás de props baixos.
+const VIEW_SAMPLES = [0.35, 0.0, -0.35];
+// Raio de captura: encolhido também. O corpo do Caçador (BODY_R=0.6) não mudou,
+// então ~1.1 já cobre "encostou pegou" sem o antigo alcance folgado de 1.5 sobre
+// um jogador agora bem menor.
+const CATCH_DIST = 1.1;
 const WAYPOINT_REACH = 1.2;
 const LOSE_TIME = 0.8;                // s sem alvo válido (camuflado OU fora de vista) até desistir
 
@@ -76,21 +89,30 @@ export class Seeker {
     this.group.add(this.bodyGroup);
     this._bobPhase = Math.random() * Math.PI * 2; // dessincroniza 2 Caçadores
 
-    // Corpo: cilindro (vermelho por padrão; cor distinta p/ o 2º Caçador)
-    const body = new THREE.Mesh(
-      new THREE.CylinderGeometry(BODY_R, BODY_R * 0.85, BODY_H, 20),
-      new THREE.MeshStandardMaterial({ color: bodyColor, roughness: 0.5, metalness: 0.1 })
-    );
-    body.castShadow = true;
-    this.bodyGroup.add(body);
+    // Corpo: mesmo "art toy" de vinil do jogador, mas em cor distinta (vermelho
+    // por padrão; outra cor p/ o 2º Caçador) para ler nitidamente como AMEAÇA.
+    // Fosco, sem olhos — só um visor/scanner na cabeça marca a frente.
+    const bodyMat = new THREE.MeshStandardMaterial({
+      color: bodyColor, roughness: 0.5, metalness: 0.1,
+    });
+    const toy = buildHumanoid(bodyMat, BODY_H);
+    this.bodyGroup.add(toy.group);
 
-    // "Visor" indicando a frente (+Z)
+    // Caminhada procedural (mesmo Gait do jogador): pernas/braços balançam e o
+    // tronco bobeia — substitui o antigo "flutuar de drone". Fase inicial aleatória
+    // dessincroniza os dois Caçadores.
+    this.gait = new Gait(toy.rig, { phase: this._bobPhase });
+    this._prevPos = this.group.position.clone();
+
+    // Visor emissivo na frente da cabeça (+Z): indica a direção da visão e dá o
+    // ar sinistro de um scanner (contraponto aos olhinhos amigáveis do jogador).
+    // Vai no tronco (`upper`) para acompanhar o bob/inclinação da caminhada.
     const visor = new THREE.Mesh(
-      new THREE.BoxGeometry(0.5, 0.28, 0.2),
+      new THREE.BoxGeometry(toy.headR * 1.1, toy.headR * 0.5, 0.18),
       new THREE.MeshStandardMaterial({ color: 0x140505, emissive: 0x330000 })
     );
-    visor.position.set(0, 0.55, BODY_R + 0.02);
-    this.bodyGroup.add(visor);
+    visor.position.set(0, toy.headY, toy.headR + 0.05);
+    toy.rig.upper.add(visor);
 
     // Cone de visão (visual/debug), apontando +Z a partir dos olhos
     const coneR = Math.tan(VISION_HALF_ANGLE) * VISION_RANGE;
@@ -156,28 +178,34 @@ export class Seeker {
     this._updateVisionVisual();
     this.group.rotation.y = this.yaw;
 
-    // Flutuação de drone: bobbing leve no eixo Y do grupo visual. Mais discreto
-    // em perseguição (leitura de urgência) do que em patrulha.
-    const bobAmp = this.state === 'chase' ? 0.05 : 0.1;
-    this.bodyGroup.position.y = Math.sin(this.time * 2.4 + this._bobPhase) * bobAmp;
+    // Caminhada: fase avança pela distância horizontal percorrida neste frame.
+    const dx = this.group.position.x - this._prevPos.x;
+    const dz = this.group.position.z - this._prevPos.z;
+    this._prevPos.copy(this.group.position);
+    this.gait.update(dt, Math.hypot(dx, dz));
   }
 
   // ------------------------------------------------------------------- VISION
   _canSee(forward) {
-    const p = this.player.position;
-    this._toPlayer.subVectors(p, this.group.position);
-    const dist = this._toPlayer.length();
-    if (dist > VISION_RANGE || dist < 1e-3) return false;
+    const eye = this._eye.copy(this.group.position);
+    const pc = this.player.position;
+    const cosHalf = Math.cos(VISION_HALF_ANGLE);
 
-    this._toPlayer.multiplyScalar(1 / dist); // normaliza
-    if (forward.dot(this._toPlayer) < Math.cos(VISION_HALF_ANGLE)) return false;
+    // Testa cabeça, centro e pés; o primeiro ponto dentro do cone, no alcance e
+    // com linha de visão livre já conta como "visto".
+    for (let i = 0; i < VIEW_SAMPLES.length; i++) {
+      const to = this._toPlayer.set(pc.x, pc.y + VIEW_SAMPLES[i], pc.z).sub(eye);
+      const dist = to.length();
+      if (dist > VISION_RANGE || dist < 1e-3) continue;
 
-    // Linha de visão: algo sólido entre o Caçador e o jogador bloqueia?
-    this._eye.copy(this.group.position);
-    this._ray.set(this._eye, this._toPlayer);
-    this._ray.far = dist - 0.2;
-    const blocked = this._ray.intersectObjects(this.level.occluders, false)[0];
-    return !blocked;
+      to.multiplyScalar(1 / dist); // normaliza
+      if (forward.dot(to) < cosHalf) continue;
+
+      this._ray.set(eye, to);
+      this._ray.far = dist - 0.2;
+      if (!this._ray.intersectObjects(this.level.occluders, false)[0]) return true;
+    }
+    return false;
   }
 
   _updateVisionVisual() {

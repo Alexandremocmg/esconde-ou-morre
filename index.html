@@ -1,9 +1,14 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
-<meta name="theme-color" content="#0b0e13" />
+<meta name="theme-color" content="#191708" />
+<!-- Cache-busting p/ dev via túnel: evita o navegador servir JS/CSS antigos.
+     Os meta no-cache cobrem também os módulos ES importados por main.js. -->
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="0" />
 <title>Esconde ou Morre — Vertical Slice</title>
 <link rel="icon" href="data:," />
-<link rel="stylesheet" href="css/style.css" />
+<link rel="stylesheet" href="css/style.css?v=2" />
 
 <!-- Three.js via CDN (ES Modules). Requer servidor local: `python -m http.server` ou `npx serve`. -->
 <script type="importmap">
@@ -104,4 +109,4 @@
   </div>
 </div>
 
-<script type="module" src="src/main.js"></script>
+<script type="module" src="src/main.js?v=2"></script>

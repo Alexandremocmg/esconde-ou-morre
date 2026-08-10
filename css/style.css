@@ -1,9 +1,9 @@
 :root {
-  --bg: #0b0e13;
+  --bg: #191708;                       /* amarelo-sujo escuro (Backrooms) */
   --ui: rgba(255, 255, 255, 0.92);
   --ui-dim: rgba(255, 255, 255, 0.55);
-  --panel: rgba(14, 18, 26, 0.72);
-  --accent: #46e6b0;
+  --panel: rgba(26, 24, 10, 0.74);
+  --accent: #cde05a;                   /* verde-fluorescente doentio */
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -90,7 +90,9 @@ body {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 0 16px;
+  /* Respeita entalhes laterais (landscape com notch): o placar à direita não
+     encosta na câmera/quina da tela. */
+  padding: 0 max(16px, env(safe-area-inset-right)) 0 max(16px, env(safe-area-inset-left));
   pointer-events: none;
   z-index: 5;
 }
@@ -183,16 +185,21 @@ body {
 @media (max-width: 720px) { #hint { display: none; } }
 
 /* ---------- Joystick ---------- */
+/* A zona de toque recua da borda pela safe-area (mín. 8px) para não roubar o
+   gesto de "voltar" do sistema (Android/iOS) na quina inferior-esquerda. A base
+   é `position: fixed` para mapear clientX/clientY direto ao viewport,
+   independente desse recuo da zona. */
 #joystick-zone {
   position: absolute;
-  left: 0; bottom: 0;
+  left: max(8px, env(safe-area-inset-left));
+  bottom: max(8px, env(safe-area-inset-bottom));
   width: 45%;
   height: 60%;
   z-index: 6;
   touch-action: none;
 }
 #joystick-base {
-  position: absolute;
+  position: fixed;
   width: 128px; height: 128px;
   margin-left: -64px; margin-top: -64px;
   border-radius: 50%;

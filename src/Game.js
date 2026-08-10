@@ -29,16 +29,27 @@ export class Game {
   constructor(canvas) {
     this.canvas = canvas;
 
+    // Detecção de GPU mobile: ponteiro grosso (touch) OU tela curta. Usada para
+    // limitar pixel ratio e resolução de sombra — evita a queda de FPS relatada
+    // em aparelhos intermediários (sombra 2048² em tempo real é cara em mobile).
+    this.isMobile = (window.matchMedia && window.matchMedia('(pointer: coarse)').matches)
+      || Math.min(window.innerWidth, window.innerHeight) < 540;
+
     // Renderer
-    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: !this.isMobile });
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, this.isMobile ? 1.5 : 2));
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    // Grada o amarelo-doentio sem estourar os props brilhosos (vending/girofles).
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 0.95;
 
-    // Cena
+    // Cena — atmosfera "Backrooms" (escritório decadente, fluorescente).
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x0b0e13);
-    this.scene.fog = new THREE.Fog(0x0b0e13, 28, 60);
+    this.scene.background = new THREE.Color(0x191708);
+    // Fog amarelo-doentio e mais próximo: fecha o horizonte (claustrofobia) sem
+    // esconder a jogabilidade — o teto novo + o nevoeiro matam o "infinito".
+    this.scene.fog = new THREE.Fog(0xb9b183, 22, 74);
 
     // Câmera (proporção landscape de celular; ajustada no resize)
     this.camera = new THREE.PerspectiveCamera(60, 16 / 9, 0.1, 200);
@@ -91,6 +102,12 @@ export class Game {
     this._ndc = new THREE.Vector2();
     this._setupTapCamouflage();
 
+    // Oclusão da câmera: blocos entre a câmera e o jogador desvanecem para não
+    // esconder o personagem (ex.: grudado na face traseira de um bloco).
+    this._occRay = new THREE.Raycaster();
+    this._occDir = new THREE.Vector3();
+    this._occFaded = new Set(); // materiais atualmente esmaecidos
+
     // HUD
     this._badge = document.getElementById('state-badge');
     this._chip = document.querySelector('#color-chip span');
@@ -129,31 +146,42 @@ export class Game {
   }
 
   _addLights() {
-    // Céu/solo mais contido para o Sol dominar e revelar volume dos blocos.
-    this.scene.add(new THREE.HemisphereLight(0xbfd4ff, 0x241c14, 0.5));
-    this.scene.add(new THREE.AmbientLight(0xffffff, 0.1));
+    // Fluorescente deprimente: preenchimento difuso pálido esverdeado, achatado
+    // (sombra chapada de escritório). Céu verde-creme, solo verde-oliva.
+    this.scene.add(new THREE.HemisphereLight(0xf2f5df, 0x3a3826, 0.75));
+    this.scene.add(new THREE.AmbientLight(0xe8f0d8, 0.35));
 
-    // Sol principal: mais forte e com sombras suaves e nítidas.
-    const sun = new THREE.DirectionalLight(0xfff2e0, 1.5);
-    sun.position.set(16, 24, 12);
-    sun.castShadow = true;
-    sun.shadow.mapSize.set(2048, 2048);
-    sun.shadow.radius = 3;               // borda suave (PCFSoftShadowMap)
-    const s = 28;
-    sun.shadow.camera.left = -s;
-    sun.shadow.camera.right = s;
-    sun.shadow.camera.top = s;
-    sun.shadow.camera.bottom = -s;
-    sun.shadow.camera.near = 1;
-    sun.shadow.camera.far = 70;
-    sun.shadow.bias = -0.0004;
-    this.scene.add(sun);
+    // "Painel" cenital: luminária embutida quase vertical, branco-pálido frio.
+    // Único caster de sombra (perf) → quinas com sombra curta e dura, sem calor.
+    const fluor = new THREE.DirectionalLight(0xeaf3d6, 0.9);
+    fluor.position.set(6, 30, 4);
+    fluor.castShadow = true;
+    const shadowRes = this.isMobile ? 1024 : 2048; // metade da resolução em mobile
+    fluor.shadow.mapSize.set(shadowRes, shadowRes);
+    fluor.shadow.radius = 3;               // borda suave (PCFSoftShadowMap)
+    // Frustum de sombra alargado p/ cobrir a arena ampliada (HALF=40).
+    const s = 42;
+    fluor.shadow.camera.left = -s;
+    fluor.shadow.camera.right = s;
+    fluor.shadow.camera.top = s;
+    fluor.shadow.camera.bottom = -s;
+    fluor.shadow.camera.near = 1;
+    fluor.shadow.camera.far = 90;
+    fluor.shadow.bias = -0.0004;
+    this.scene.add(fluor);
 
-    // Luz de contorno (rim) fria do lado oposto: separa os blocos do fundo,
-    // dando profundidade 3D. Sem sombra para não pesar.
-    const rim = new THREE.DirectionalLight(0x5a7bd8, 0.35);
-    rim.position.set(-14, 10, -12);
-    this.scene.add(rim);
+    // Referência p/ o zumbido/flicker fluorescente no loop.
+    this._fluor = fluor;
+    this._fluorBase = fluor.intensity;
+  }
+
+  // Zumbido fluorescente: leve tremor de intensidade + "piscadas" ocasionais.
+  _fluorFlicker(t) {
+    if (!this._fluor) return;
+    let k = 1 + 0.04 * Math.sin(t * 90) + 0.02 * Math.sin(t * 37.3);
+    // Queda breve e rara (a lâmpada "falha" por um instante).
+    if (Math.sin(t * 11.0) > 0.995 || Math.random() < 0.006) k *= 0.55;
+    this._fluor.intensity = this._fluorBase * k;
   }
 
   _setupTapCamouflage() {
@@ -217,11 +245,49 @@ export class Game {
 
       if (this.elapsed >= this.surviveTime) this._win();
     }
+    const t = this._clock.elapsedTime;
+    this._fluorFlicker(t);
+    this.level.update?.(t);                 // girofles/painéis piscando
     this.effects.update(dt, this.camera);
-    this.follow.update(dt, this.player);
+    this.follow.update(dt, this.player, this.level.climbables);
+    this._updateOcclusion(dt);
     this._updateHud();
     this.renderer.render(this.scene, this.camera);
   };
+
+  // Desvanece blocos que ficam ENTRE a câmera e o jogador (e restaura os demais),
+  // para o personagem nunca sumir atrás da própria geometria. Interpola opacidade
+  // para não "piscar"; a colisão/latching ignoram material, então não são afetados.
+  _updateOcclusion(dt) {
+    const FADE = 0.3;                       // opacidade alvo do bloco oclusor
+    const k = Math.min(1, 12 * dt);
+    const dir = this._occDir.subVectors(this.player.position, this.camera.position);
+    const dist = dir.length();
+    dir.multiplyScalar(1 / Math.max(dist, 1e-3));
+    this._occRay.set(this.camera.position, dir);
+    this._occRay.far = Math.max(0, dist - 0.8); // não conta o bloco onde ele gruda
+    const hits = this._occRay.intersectObjects(this.level.climbables, false);
+
+    const nowFaded = new Set();
+    for (const h of hits) nowFaded.add(h.object.material);
+    for (const mat of nowFaded) {
+      mat.transparent = true;
+      mat.depthWrite = false;               // deixa o jogador aparecer através
+      mat.opacity += (FADE - mat.opacity) * k;
+      this._occFaded.add(mat);
+    }
+    // Restaura os que deixaram de ocluir (delete-durante-iteração é seguro em Set).
+    for (const mat of this._occFaded) {
+      if (nowFaded.has(mat)) continue;
+      mat.opacity += (1 - mat.opacity) * k;
+      if (mat.opacity > 0.985) {
+        mat.opacity = 1;
+        mat.transparent = false;
+        mat.depthWrite = true;
+        this._occFaded.delete(mat);
+      }
+    }
+  }
 
   // Feedback de tensão: vinheta + som quando falta pouco para vencer OU quando
   // um Caçador está prestes a capturar (< WARN_WINDOW s). Alerta de DETECÇÃO

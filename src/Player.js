@@ -1,21 +1,29 @@
 import * as THREE from 'three';
+import { buildHumanoid, Gait } from './Character.js';
 
 const WORLD_UP = new THREE.Vector3(0, 1, 0);
 
 // Parâmetros de tuning
-const RADIUS = 0.45;
-const LENGTH = 0.9;                 // parte cilíndrica da cápsula
+// SCALE reduz o personagem inteiro de forma coerente: as dimensões físicas e os
+// offsets visuais derivam dele, então colisão/latching/olhos/cauda encolhem juntos
+// (evita o descasamento que object.scale causaria com as constantes de colisão).
+const SCALE = 0.5;                  // metade do tamanho: mundo parece mais vasto
+const RADIUS = 0.45 * SCALE;
+const LENGTH = 0.9 * SCALE;         // parte cilíndrica da cápsula
 const HALF_EXTENT = RADIUS + LENGTH / 2;
 const GROUND_Y = HALF_EXTENT;       // altura do centro quando no chão
+// Velocidades NÃO escalam: MOVE_SPEED é o teto de justiça do Caçador
+// (PLAYER_GROUND_SPEED em Seeker.js). Menor + mesma velocidade = mais ágil.
 const MOVE_SPEED = 7.0;             // m/s no chão
 const CLIMB_SPEED = 5.5;            // m/s na parede
 const GRAVITY = 22.0;
-const LATCH_REACH = RADIUS + 0.35;  // distância p/ grudar ao ir de encontro à parede
-const PIN_PROBE = 0.6;              // origem da sonda de re-pin, à frente da superfície
-const PIN_RANGE = PIN_PROBE + RADIUS + 0.4; // alcance máx. antes de soltar
-const TURN_LERP = 12;               // suavização de rotação
+const LATCH_REACH = RADIUS + 0.35 * SCALE;  // distância p/ grudar ao ir de encontro à parede
+const PIN_PROBE = 0.6 * SCALE;      // origem da sonda de re-pin, à frente da superfície
+const PIN_RANGE = PIN_PROBE + RADIUS + 0.4 * SCALE; // alcance máx. antes de soltar
+const TURN_SPEED = 6;               // suavização de rotação (menor = giro mais suave/lento).
+                                    // Usado como taxa em 1 - exp(-TURN_SPEED*dt): independente de FPS.
 const COLOR_LERP = 10;              // suavização da troca de cor (camuflagem)
-const PUPIL_MAX = 0.075;            // deslocamento máx. da pupila (olhar)
+const PUPIL_MAX = 0.075 * SCALE;    // deslocamento máx. da pupila (olhar)
 const EYE_LERP = 12;                // suavização do olhar
 
 // Histerese: entra em camuflagem com folga apertada e só sai quando a cor se
@@ -34,56 +42,49 @@ export class Player {
     this.velocity = new THREE.Vector3();
     this.wallNormal = new THREE.Vector3(0, 0, 1);
     this.latchedObject = null; // superfície atual (para checagem de camuflagem)
+    this._relatchCd = 0;       // tempo (s) de bloqueio de re-latch após soltar
 
     // Grupo raiz: movemos/rotacionamos isto. Início vem do layout (level.spawn).
     this.object = new THREE.Group();
     const s = level.spawn;
     this.object.position.set(s ? s.x : 0, GROUND_Y, s ? s.z : 6);
 
+    // Branco fosco de "art toy" (Pop Mart): é a cor BASE do boneco; a camuflagem
+    // apenas tinge por cima. Uma só material para o corpo inteiro (ver Character.js).
     const bodyMat = new THREE.MeshStandardMaterial({
-      color: 0x8a8f98, roughness: 0.55, metalness: 0.1,
+      color: 0xeef0f2, roughness: 0.5, metalness: 0.05,
     });
     this.material = bodyMat;
-    this.targetColor = new THREE.Color(0x8a8f98);
+    this.targetColor = new THREE.Color(0xeef0f2);
 
-    const body = new THREE.Mesh(new THREE.CapsuleGeometry(RADIUS, LENGTH, 8, 20), bodyMat);
-    body.castShadow = true;
-    this.object.add(body);
+    // Boneco de vinil branco: cabeça redonda, corpo gelatinoso, membros atarracados.
+    const H = HALF_EXTENT * 2; // altura total = extensão vertical da cápsula de colisão
+    const toy = buildHumanoid(bodyMat, H);
+    this.object.add(toy.group);
 
-    // Dois olhos grandes na face frontal (local +Z), perto do topo (local +Y).
-    // Cada olho = esclera clara fixa + pupila que desliza para "olhar" na direção
-    // do joystick, dando vida mesmo parado ou grudado.
-    const EYE_Y = HALF_EXTENT - 0.16;
-    const EYE_X = 0.19;
-    const EYE_Z = RADIUS * 0.66;
-    const scleraMat = new THREE.MeshStandardMaterial({ color: 0xf3f5f8, roughness: 0.35 });
-    const pupilMat = new THREE.MeshStandardMaterial({ color: 0x0d1014, roughness: 0.25 });
+    // Caminhada procedural: pernas/braços balançam e o corpo bobeia/inclina,
+    // sincronizados com a distância percorrida (ver Gait em Character.js).
+    this.gait = new Gait(toy.rig, { strideLen: H * 0.85 });
+    this._prevPos = this.object.position.clone();
+
+    // Olhos sutis na face frontal da cabeça (local +Z): dois pontinhos escuros que
+    // deslizam na direção do joystick — dão vida e uma dica de direção, mantendo o
+    // ar minimalista do brinquedo. Vão no tronco (`upper`) p/ acompanharem o bob.
+    const EYE_X = toy.headR * 0.40;
+    const EYE_Y = toy.headY + toy.headR * 0.08;
+    const EYE_Z = toy.headR * 0.86;
+    const pupilMat = new THREE.MeshStandardMaterial({ color: 0x14181d, roughness: 0.3 });
     this._pupils = [];
     this._pupilOffset = { x: 0, y: 0 }; // deslocamento suavizado (local X/Y)
     for (const sx of [-1, 1]) {
-      const sclera = new THREE.Mesh(new THREE.SphereGeometry(0.17, 20, 16), scleraMat);
-      sclera.position.set(sx * EYE_X, EYE_Y, EYE_Z);
-      sclera.scale.z = 0.7; // achata contra o corpo
-      sclera.castShadow = true;
-      this.object.add(sclera);
-
-      const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.085, 16, 12), pupilMat);
-      pupil.userData.base = new THREE.Vector3(sx * EYE_X, EYE_Y, EYE_Z + 0.12);
+      const pupil = new THREE.Mesh(new THREE.SphereGeometry(toy.headR * 0.16, 14, 10), pupilMat);
+      pupil.userData.base = new THREE.Vector3(sx * EYE_X, EYE_Y, EYE_Z);
       pupil.position.copy(pupil.userData.base);
-      this.object.add(pupil);
+      pupil.scale.z = 0.6; // achata contra a cabeça
+      toy.rig.upper.add(pupil);
       this._pupils.push(pupil);
     }
-
-    // Cauda estilizada afilada, na base traseira (local -Y/-Z), com balanço sutil.
-    this._tail = new THREE.Group();
-    this._tail.position.set(0, -HALF_EXTENT + 0.15, -RADIUS * 0.5);
-    const tailMesh = new THREE.Mesh(new THREE.ConeGeometry(0.14, 0.7, 12), bodyMat);
-    tailMesh.position.set(0, -0.32, -0.12);
-    tailMesh.rotation.x = Math.PI * 0.72; // aponta para trás/baixo
-    tailMesh.castShadow = true;
-    this._tail.add(tailMesh);
-    this.object.add(this._tail);
-    this._t = 0; // relógio p/ balanço da cauda e articulação dos olhos
+    this._t = 0; // relógio p/ articulação dos olhos
 
     scene.add(this.object);
 
@@ -145,10 +146,17 @@ export class Player {
       this.material.emissiveIntensity = 0;
       this._glow = 0;
     }
+
+    // Caminhada: a fase avança pela distância REAL percorrida (chão ou parede),
+    // ignorando saltos de latch/teleporte para não disparar um passo fantasma.
+    let dist = this.object.position.distanceTo(this._prevPos);
+    dist = Math.min(dist, MOVE_SPEED * dt * 1.6);
+    this._prevPos.copy(this.object.position);
+    this.gait.update(dt, dist);
   }
 
-  // Articulação da face: pupilas deslizam para a direção do joystick e a cauda
-  // balança suavemente (com uma leve inclinação conforme o movimento à frente).
+  // Articulação da face: as pupilas deslizam na direção do joystick, dando vida
+  // ao boneco mesmo parado ou grudado.
   _animateFace(dt, joy) {
     this._t += dt;
 
@@ -161,10 +169,6 @@ export class Player {
       p.position.x = p.userData.base.x + this._pupilOffset.x;
       p.position.y = p.userData.base.y + this._pupilOffset.y;
     }
-
-    // Cauda: leque lateral constante + inclina para trás quando avança.
-    this._tail.rotation.z = Math.sin(this._t * 5) * 0.14;
-    this._tail.rotation.x = -THREE.MathUtils.clamp(joy.y, -1, 1) * 0.22;
   }
 
   // ---------------------------------------------------------------- GROUNDED
@@ -181,8 +185,12 @@ export class Player {
     const moving = move.lengthSq() > 1e-4;
     if (moving) move.normalize();
 
+    // Cooldown de re-latch: após soltar da parede, não gruda de novo por um
+    // instante — assim dá para dar o passo de saída sem ser recapturado.
+    if (this._relatchCd > 0) this._relatchCd -= dt;
+
     // Tenta grudar: raycast na direção do movimento contra as paredes.
-    if (moving) {
+    if (moving && this._relatchCd <= 0) {
       this._raycaster.set(this.position, move);
       this._raycaster.far = LATCH_REACH;
       const hit = this._raycaster.intersectObjects(this.climbables, false)[0];
@@ -242,6 +250,12 @@ export class Player {
     // apontando para fora da parede (visível para a câmera).
     const newUp = this._tangentUp(this.wallNormal, this._axY);
     this._orientTo(newUp, this.wallNormal, dt);
+
+    // Voltar ao chão: se está descendo e os "pés" da cápsula já alcançaram o
+    // piso, solta e fica em pé em vez de continuar grudado (o que deixava o
+    // jogador "preso na parede", pois só soltava com o centro abaixo do chão).
+    const feetY = this.position.y - HALF_EXTENT * newUp.y;
+    if (joy.y < -0.05 && feetY <= 0.02) this._detachToGround();
   }
 
   // Gravidade + apoio sobre o topo mais alto sob o jogador (chão/blocos).
@@ -285,6 +299,19 @@ export class Player {
     this.state = 'grounded';
     this.latchedObject = null;
     this.velocity.set(0, 0, 0); // começa a cair a partir do repouso
+    this._relatchCd = 0.3;
+  }
+
+  // Solta a parede colocando o jogador em pé no chão, logo à frente dela.
+  // Usado quando ele desce a parede e os pés chegam ao piso.
+  _detachToGround() {
+    this.state = 'grounded';
+    this.latchedObject = null;
+    // Afasta um pouco da parede para não ser recapturado imediatamente.
+    this.position.addScaledVector(this.wallNormal, 0.2);
+    this.position.y = GROUND_Y;
+    this.velocity.set(0, 0, 0);
+    this._relatchCd = 0.3;
   }
 
   // Normal do hit convertida para espaço do mundo.
@@ -314,6 +341,9 @@ export class Player {
     const x = this._axX.copy(y).cross(z).normalize();
     this._tmpMat.makeBasis(x, y, z);
     this._tmpQuat.setFromRotationMatrix(this._tmpMat);
-    this.object.quaternion.slerp(this._tmpQuat, Math.min(1, TURN_LERP * dt));
+    // Suavização exponencial independente de FPS (mesma matemática de MathUtils.damp),
+    // aplicada via slerp por ser rotação (quaternion), não escalar.
+    const t = 1 - Math.exp(-TURN_SPEED * dt);
+    this.object.quaternion.slerp(this._tmpQuat, t);
   }
 }
