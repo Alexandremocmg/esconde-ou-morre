@@ -42,14 +42,16 @@ export class Game {
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     // Grada o amarelo-doentio sem estourar os props brilhosos (vending/girofles).
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 0.95;
+    // Exposição um pouco maior: deixa as cores saturadas dos cômodos/props herói
+    // "estourarem" sem lavar o amarelo-doentio do perímetro.
+    this.renderer.toneMappingExposure = 1.05;
 
     // Cena — atmosfera "Backrooms" (escritório decadente, fluorescente).
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x191708);
-    // Fog amarelo-doentio e mais próximo: fecha o horizonte (claustrofobia) sem
-    // esconder a jogabilidade — o teto novo + o nevoeiro matam o "infinito".
-    this.scene.fog = new THREE.Fog(0xb9b183, 22, 74);
+    // Fog amarelo-doentio, afrouxado um pouco (início mais distante) para não
+    // dessaturar os cômodos coloridos de perto — ainda fecha o horizonte.
+    this.scene.fog = new THREE.Fog(0xb9b183, 30, 88);
 
     // Câmera (proporção landscape de celular; ajustada no resize)
     this.camera = new THREE.PerspectiveCamera(60, 16 / 9, 0.1, 200);

@@ -7,9 +7,12 @@ Caçador(es)** até o tempo acabar.
 
 O cenário é um **escritório corporativo decadente estilo Backrooms / Meccha
 Chameleon**: luz fluorescente esverdeada zumbindo, paredes amarelo-monótono com
-papel de parede oitentista, carpete úmido, falso teto de gesso com placas
-faltando, e **zonas temáticas** (máquinas de refrigerante, cluster de cadeiras,
-lavanderia improvisada, corredor de festa, rodovia quebrada com carros de
+papel de parede oitentista, carpete úmido e falso teto de gesso com placas
+faltando. Espalhados pela arena há **cômodos passáveis de cor de assinatura**
+(sala teal, copa laranja, oficina coral…) que funcionam como **cabines de
+camuflagem**, **mobília realista** com corpo grudável colorido (geladeiras,
+estantes, sofás, mesas, pilhas de caixotes) e **zonas temáticas** (máquinas de
+refrigerante, lavanderia, corredor de festa, rodovia quebrada com carros de
 polícia). Todo o visual é **procedural** — sem assets externos (ver
 [`docs/PLANO_AMBIENTE_BACKROOMS.md`](docs/PLANO_AMBIENTE_BACKROOMS.md)).
 
@@ -62,10 +65,12 @@ docs/             # planos: PLANO_FASE3..6, VERTICAL_SLICE, AMBIENTE_BACKROOMS
 
 - **Mover:** joystick na metade esquerda da tela.
 - **Grudar/escalar:** vá de encontro a uma parede.
-- **Camuflar:** grudado, toque numa superfície para copiar a cor. Camuflado, o
-  Caçador não te captura. Como as paredes são amarelo-monótono, os **props
-  temáticos** (cadeiras pretas, lavadoras brancas, malas, vending, bexigas) são os
-  principais alvos de cor.
+- **Camuflar:** grudado, toque na **mesma superfície** para copiar a cor dela.
+  Camuflado, o Caçador não te captura. A camuflagem casa com a cor da superfície em
+  que você está **grudado** — por isso os melhores alvos são as **paredes coloridas
+  dos cômodos** e os **corpos de mobília** (geladeiras, estantes, sofás, caixotes),
+  cada zona com sua cor de assinatura. As paredes de perímetro amarelas dão pouca
+  vantagem; escolha em qual cor se esconder conforme a rota do Caçador.
 - **Objetivo:** sobreviva até o cronômetro chegar à meta. A cada estágio a meta
   cresce e o Caçador acelera; no **Estágio 3** entra um **segundo Caçador**.
 

@@ -9,6 +9,22 @@ import { wallpaperTexture, carpetTexture, ceilingTileTexture } from './textures.
 const HALF = 40;      // meia-largura do piso (arena ampliada ×2 → piso 80×80)
 const WALL_H = 8;
 const ROUTE_Y = 1.1;  // altura dos waypoints (= EYE_Y do Caçador)
+const ROOM_H = 4.2;   // altura das paredes de cômodo (abaixo do teto WALL_H=8)
+const DOOR_MIN = 3.2; // vão mínimo de porta: o Caçador (BODY_R=0.6 + desvio) atravessa
+
+// Paleta "Meccha Chameleon": cores saturadas para cômodos e props-herói. São os
+// ALVOS FORTES de camuflagem — cada zona ganha uma cor de assinatura distinta, o
+// que dá variedade visual e transforma "que cor viro" numa decisão de verdade.
+const HERO_COLORS = [
+  0x17c3b2, // teal
+  0xe84393, // magenta
+  0xf39c12, // laranja
+  0x7d5fff, // roxo
+  0x7bed9f, // lima
+  0xff6b6b, // coral
+  0x48dbfb, // céu
+  0xfeca57, // âmbar
+];
 
 // Waypoint na altura de operação do Caçador.
 function wp(x, z) { return new THREE.Vector3(x, ROUTE_Y, z); }
@@ -28,6 +44,7 @@ export class Level {
     // Materiais animados no loop (zumbido/pisca-pisca) — preenchidos em _build.
     this._panels = [];    // painéis fluorescentes do teto (emissive pulsante)
     this._strobes = [];   // girofles dos carros de polícia: { mat, phase, color }
+    this._roomDoors = []; // {x,z} dos vãos de cômodo → mantidos livres no espalhamento
 
     this._build();
   }
@@ -161,6 +178,55 @@ export class Level {
     return mesh;
   }
 
+  // ── CÔMODOS ("cabines" de camuflagem) ───────────────────────────────────────
+  // Constrói um cômodo PASSÁVEL: 4 paredes coloridas grudáveis com vãos de porta
+  // largos (o Caçador não tem pathfinding — becos fechados deixariam o jogador se
+  // trancar). A cor de assinatura é um alvo forte de camuflagem. Retorna o centro
+  // e os pontos de porta (para o espalhador manter livre). `doors` usa 'n','s',
+  // 'e','w' (n=-z, s=+z, w=-x, e=+x); o padrão deixa dois lados opostos abertos.
+  _buildRoom(cx, cz, w, d, color, { doors = ['s', 'n'], door = DOOR_MIN, h = ROOM_H, boxOpts = {} } = {}) {
+    const hw = w / 2, hd = d / 2, t = 0.6;
+    const mat = { roughness: 0.75, metalness: 0.06, ...boxOpts };
+
+    // Parede ao longo de X (lados N/S), opcionalmente partida por um vão central.
+    const wallAlongX = (zPos, hasDoor) => {
+      if (!hasDoor) return void this._addBox(w, h, t, color, cx, h / 2, zPos, mat);
+      const seg = (w - door) / 2;
+      if (seg <= 0.2) return; // vão maior que a parede → lado totalmente aberto
+      this._addBox(seg, h, t, color, cx - (door / 2 + seg / 2), h / 2, zPos, mat);
+      this._addBox(seg, h, t, color, cx + (door / 2 + seg / 2), h / 2, zPos, mat);
+    };
+    // Parede ao longo de Z (lados W/E).
+    const wallAlongZ = (xPos, hasDoor) => {
+      if (!hasDoor) return void this._addBox(t, h, d, color, xPos, h / 2, cz, mat);
+      const seg = (d - door) / 2;
+      if (seg <= 0.2) return;
+      this._addBox(t, h, seg, color, xPos, h / 2, cz - (door / 2 + seg / 2), mat);
+      this._addBox(t, h, seg, color, xPos, h / 2, cz + (door / 2 + seg / 2), mat);
+    };
+
+    wallAlongX(cz - hd, doors.includes('n'));
+    wallAlongX(cz + hd, doors.includes('s'));
+    wallAlongZ(cx - hw, doors.includes('w'));
+    wallAlongZ(cx + hw, doors.includes('e'));
+
+    const doorPts = [];
+    if (doors.includes('n')) doorPts.push({ x: cx, z: cz - hd });
+    if (doors.includes('s')) doorPts.push({ x: cx, z: cz + hd });
+    if (doors.includes('w')) doorPts.push({ x: cx - hw, z: cz });
+    if (doors.includes('e')) doorPts.push({ x: cx + hw, z: cz });
+    return { center: { x: cx, z: cz }, doors: doorPts, w, d };
+  }
+
+  // Registra os vãos de porta dos cômodos (para o espalhador não bloqueá-los) e o
+  // centro (também mantido livre — evita entulhar a passagem interna).
+  _collectDoors(...rooms) {
+    for (const r of rooms) {
+      for (const d of r.doors) this._roomDoors.push({ x: d.x, z: d.z });
+      this._roomDoors.push({ x: r.center.x, z: r.center.z });
+    }
+  }
+
   // ── PROPS TEMÁTICOS ("Meccha Chameleon") ────────────────────────────────────
   // Cada zona compõe partes grudáveis/sólidas via _addBox e detalhes via _deco.
   // Cores temáticas distintas mantêm a variedade de alvos de camuflagem.
@@ -184,9 +250,10 @@ export class Level {
   // Canto entulhado: armários de arquivo (metal, grudáveis) + escada de alumínio
   // + cadeiras de escritório pretas empilhadas (decorativas, pretas = camuflagem).
   _buildChairCluster(x, z) {
-    const gray = 0x8a8f96, alum = 0xc9ccd0, black = 0x141414;
-    this._addBox(1.2, 2.4, 0.9, gray, x, 1.2, z, { roughness: 0.5, metalness: 0.3 });
-    this._addBox(1.2, 1.8, 0.9, gray, x + 1.3, 0.9, z + 0.2, { roughness: 0.5, metalness: 0.3 });
+    const alum = 0xc9ccd0, black = 0x141414;
+    // Armários de arquivo em cores de assinatura (alvos de camuflagem altos).
+    this._addBox(1.2, 2.4, 0.9, 0x17c3b2, x, 1.2, z, { roughness: 0.5, metalness: 0.3 });
+    this._addBox(1.2, 1.8, 0.9, 0xff6b6b, x + 1.3, 0.9, z + 0.2, { roughness: 0.5, metalness: 0.3 });
     this._addBox(0.5, 3.0, 0.5, alum, x - 1.1, 1.5, z - 0.6, { roughness: 0.4, metalness: 0.4 }); // escada
     // Pilha de 3 cadeiras pretas (assento + encosto + pé).
     for (let i = 0; i < 3; i++) {
@@ -224,9 +291,9 @@ export class Level {
   // Corredor de festa surreal: mesas compridas grudáveis, bexigas caídas
   // multicoloridas (vários alvos de camuflagem) e bolos pela metade em pratinhos.
   _buildBirthdayCorridor(x, z, len = 10) {
-    // Duas mesas compridas ao longo de x (grudáveis, apoio real).
-    this._addBox(len, 0.9, 1.3, 0xb98a5a, x, 0.45, z, { roughness: 0.7 });
-    this._addBox(len, 0.9, 1.3, 0xb98a5a, x, 0.45, z + 3, { roughness: 0.7 });
+    // Duas mesas compridas com toalha colorida (grudáveis, apoio real).
+    this._addBox(len, 0.9, 1.3, 0xe84393, x, 0.45, z, { roughness: 0.7 });
+    this._addBox(len, 0.9, 1.3, 0x48dbfb, x, 0.45, z + 3, { roughness: 0.7 });
     const balloon = [0xe84393, 0x3498db, 0xf1c40f, 0x27ae60, 0xe74c3c, 0x9b59b6];
     for (let i = 0; i < len; i += 1.6) {
       const bx = x - len / 2 + i + 0.6;
@@ -267,6 +334,96 @@ export class Level {
       this._strobes.push({ mat: red.material, phase: 0 });
       this._strobes.push({ mat: blue.material, phase: Math.PI });
     }
+  }
+
+  // ── MOBÍLIA REALISTA ────────────────────────────────────────────────────────
+  // Cada peça monta um objeto reconhecível a partir de primitivas. O CORPO
+  // dominante é grudável e colorido (via _addBox) → alvo real de camuflagem; os
+  // detalhes vão em _deco (não-grudáveis). Assim grudar no corpo casa com a cor
+  // que se vê, sem mudar a mecânica.
+
+  // Geladeira/armário alto: ótimo alvo (superfície vertical ampla e grudável).
+  _buildFridge(x, z, color) {
+    this._addBox(1.1, 2.6, 1.0, color, x, 1.3, z, { roughness: 0.4, metalness: 0.22 });
+    // Divisória das portas + puxadores (na frente +z).
+    this._deco(new THREE.BoxGeometry(1.02, 0.04, 0.02), shade(color, -0.25), x, 1.55, z + 0.51, {});
+    for (const sy of [0.9, 1.9]) {
+      this._deco(new THREE.CylinderGeometry(0.04, 0.04, 0.5, 8), 0x20242a, x + 0.36, sy, z + 0.53,
+        { colorable: false });
+    }
+  }
+
+  // Estante/prateleira: corpo grudável + prateleiras e alguns itens coloridos
+  // (itens são deco = cores extras de disfarce, não-grudáveis).
+  _buildShelf(x, z, color) {
+    this._addBox(1.8, 2.4, 0.6, color, x, 1.2, z, { roughness: 0.75 });
+    const dark = shade(color, -0.28);
+    for (let i = 0; i < 3; i++) {
+      const sy = 0.7 + i * 0.7;
+      this._deco(new THREE.BoxGeometry(1.7, 0.06, 0.62), dark, x, sy, z, {});
+      // Itens sobre a prateleira (livros/caixas).
+      for (let k = -1; k <= 1; k++) {
+        if (Math.random() < 0.35) continue;
+        const c = HERO_COLORS[(Math.abs(x + z + i + k) * 3 | 0) % HERO_COLORS.length];
+        this._deco(new THREE.BoxGeometry(0.34, 0.4, 0.4), c, x + k * 0.5, sy + 0.26, z, { cast: false });
+      }
+    }
+  }
+
+  // Pilha de caixotes coloridos: cada caixote é grudável numa cor de assinatura
+  // diferente — herói de camuflagem (várias cores próximas para escolher).
+  _buildCrates(x, z, seed = 0) {
+    const c = (i) => HERO_COLORS[(seed + i) % HERO_COLORS.length];
+    this._addBox(1.1, 1.1, 1.1, c(0), x, 0.55, z, { roughness: 0.7 });
+    this._addBox(1.0, 1.0, 1.0, c(2), x + 0.12, 1.6, z - 0.08, { roughness: 0.7 });
+    this._addBox(0.95, 0.95, 0.95, c(4), x - 0.35, 0.48, z + 0.95, { roughness: 0.7 });
+    // Sulcos das ripas (deco escuro) na caixa de baixo.
+    this._deco(new THREE.BoxGeometry(1.12, 0.05, 0.05), shade(c(0), -0.3), x, 0.75, z + 0.56, {});
+  }
+
+  // Sofá: encosto colorido grudável (alvo vertical) + assento/braços/almofadas deco.
+  _buildSofa(x, z, color) {
+    this._addBox(2.2, 0.95, 0.3, color, x, 0.62, z - 0.5, { roughness: 0.9 }); // encosto (grudável)
+    this._deco(new THREE.BoxGeometry(2.2, 0.4, 0.95), shade(color, -0.06), x, 0.32, z + 0.05, { roughness: 0.95 });
+    for (const sx of [-1, 1]) {
+      this._deco(new THREE.BoxGeometry(0.28, 0.62, 1.05), shade(color, -0.1), x + sx * 1.05, 0.44, z, { roughness: 0.95 });
+    }
+    for (const sx of [-1, 1]) {
+      this._deco(new THREE.BoxGeometry(0.9, 0.18, 0.8), shade(color, 0.12), x + sx * 0.55, 0.58, z + 0.05, {});
+    }
+  }
+
+  // Conjunto de mesa: tampo colorido grudável + monitor emissivo + cadeira deco.
+  _buildDeskSet(x, z, color) {
+    this._addBox(1.9, 0.85, 0.95, color, x, 0.42, z, { roughness: 0.6 }); // mesa (grudável)
+    // Monitor (base + tela emissiva azulada).
+    this._deco(new THREE.CylinderGeometry(0.12, 0.16, 0.18, 12), 0x1b1e24, x, 0.94, z - 0.15, { colorable: false });
+    this._deco(new THREE.BoxGeometry(0.9, 0.55, 0.06), 0x0c0f14, x, 1.28, z - 0.2,
+      { colorable: false, emissive: 0x2a4a6a, emissiveIntensity: 0.5 });
+    // Cadeira (assento + encosto + pé), à frente da mesa.
+    const cc = shade(color, -0.15);
+    this._deco(new THREE.BoxGeometry(0.6, 0.14, 0.6), cc, x, 0.5, z + 0.85, { cast: true });
+    this._deco(new THREE.BoxGeometry(0.6, 0.6, 0.12), cc, x, 0.82, z + 1.12, {});
+    this._deco(new THREE.CylinderGeometry(0.05, 0.05, 0.5, 8), 0x20242a, x, 0.25, z + 0.85, { colorable: false });
+  }
+
+  // Planta de vaso: vaso (terracota, colorável) + folhagem verde (deco).
+  _buildPlant(x, z) {
+    this._addCylinder(0.28, 0.5, 0xb5651d, x, z, false); // vaso (só colorável)
+    this._deco(new THREE.SphereGeometry(0.5, 12, 10), 0x2f8f4e, x, 0.95, z, { cast: false });
+    this._deco(new THREE.ConeGeometry(0.4, 0.7, 10), 0x35a05a, x, 1.35, z, { cast: false });
+  }
+
+  // Luminária de pé: haste + cúpula emissiva quente (spill de cor, sem custo de luz real).
+  _buildLamp(x, z) {
+    this._deco(new THREE.CylinderGeometry(0.05, 0.08, 2.0, 10), 0x2a2d33, x, 1.0, z, { colorable: false });
+    this._deco(new THREE.ConeGeometry(0.42, 0.5, 14, 1, true), 0x3a2e18, x, 2.15, z,
+      { colorable: false, emissive: 0xffcf8a, emissiveIntensity: 1.4 });
+  }
+
+  // Tapete: placa fina colorida no chão (colorável, não bloqueia) — cor no piso.
+  _buildRug(x, z, color, w = 3, d = 2) {
+    this._deco(new THREE.BoxGeometry(w, 0.04, d), color, x, 0.03, z, { roughness: 1.0 });
   }
 
   _build() {
@@ -343,7 +500,7 @@ export class Level {
     }
   }
 
-  // Estágio 1 — Arena Aberta. Zonas: máquinas de refrigerante + cluster de cadeiras.
+  // Estágio 1 — Arena Aberta. Zonas: cômodos coloridos + vending + cluster de cadeiras.
   _buildOpen() {
     // Partições/pilares de escritório (cobertura) — papel de parede amarelo.
     this._addWall(4, 5, 1, -8, 2.5, -6);
@@ -351,13 +508,30 @@ export class Level {
     this._addWall(3, 7, 3, 0, 3.5, 10);   // pilar central
     this._addWall(5, 4, 1.2, -9, 2, 8);
 
-    // Zona: máquinas de refrigerante encostadas nas paredes (esconderijo apelativo).
-    this._buildVendingMachine(-12, -HALF + 1.5, 0x2e5fd0, { x: 0, z: 1 });
-    this._buildVendingMachine(-7, -HALF + 1.5, 0xd0322e, { x: 0, z: 1 });
-    this._buildVendingMachine(-HALF + 1.5, 6, 0x1eaf5a, { x: 1, z: 0 });
+    // Cômodos passáveis coloridos (cabines de camuflagem). Vãos em lados opostos
+    // para o Caçador atravessar; cada um com sua cor de assinatura + mobília. Ficam
+    // no interior, longe do anel de patrulha (|coord|~24) e dos waypoints centrais.
+    const sala = this._buildRoom(-15, -14, 12, 11, 0x17c3b2, { doors: ['s', 'e'] }); // sala teal
+    this._buildSofa(-15, -16, 0x17c3b2);
+    this._buildDeskSet(-18, -12, 0x48dbfb);
+    this._buildRug(-15, -14, 0x0f8f82, 5, 3.5);
+    this._buildLamp(-18, -16, 0);
 
-    // Zona: canto entulhado de cadeiras pretas e armários de arquivo.
+    const copa = this._buildRoom(16, -15, 11, 10, 0xf39c12, { doors: ['w', 'n'] }); // copa laranja
+    this._buildFridge(18, -17, 0xf39c12);
+    this._buildShelf(14, -17, 0xfeca57);
+    this._buildPlant(18, -12);
+
+    this._collectDoors(sala, copa);
+
+    // Zona: máquinas de refrigerante encostadas nas paredes (esconderijo apelativo).
+    this._buildVendingMachine(-12, -HALF + 1.5, 0x7d5fff, { x: 0, z: 1 });
+    this._buildVendingMachine(-7, -HALF + 1.5, 0xff6b6b, { x: 0, z: 1 });
+    this._buildVendingMachine(-HALF + 1.5, 6, 0x7bed9f, { x: 1, z: 0 });
+
+    // Zona: canto entulhado de cadeiras e armários de arquivo coloridos.
     this._buildChairCluster(14, 14);
+    this._buildCrates(20, 16, 1);
 
     this.spawn.set(0, 0, 0.15 * HALF);
     // Rotas relativas a HALF para acompanharem a arena ampliada (perímetro interno).
@@ -381,6 +555,21 @@ export class Level {
     this._addWall(2, 6, 2, 0, 3, 0);          // pilar central
     this._addWall(3, 4, 3, -10, 2, 10);       // bloco de canto
     this._addWall(3, 4, 3, 10, 2, -10);       // bloco de canto oposto
+
+    // Cômodos coloridos na faixa intermediária (entre o miolo do labirinto e o
+    // anel de patrulha), com vãos passáveis. Cores de assinatura distintas.
+    const quarto = this._buildRoom(-20, 18, 10, 9, 0x7d5fff, { doors: ['s', 'e'] }); // quarto roxo
+    this._buildSofa(-20, 16, 0x7d5fff);
+    this._buildShelf(-23, 20, 0xe84393);
+    this._buildLamp(-17, 20, 0);
+    this._buildRug(-20, 18, 0x4b3b9e, 4.5, 3);
+
+    const oficina = this._buildRoom(20, -18, 10, 9, 0xff6b6b, { doors: ['w', 'n'] }); // oficina coral
+    this._buildCrates(21, -20, 3);
+    this._buildFridge(17, -20, 0xff6b6b);
+    this._buildDeskSet(22, -15, 0xfeca57);
+
+    this._collectDoors(quarto, oficina);
 
     // Zona: lavanderia improvisada num braço do labirinto.
     this._buildLaundryZone(9, 14);
@@ -408,11 +597,25 @@ export class Level {
     this._addWall(4, 4, 4, -4, 2, 4);
     this._addWall(3, 7, 3, 0, 3.5, 0);   // torre central
 
+    // Cômodos coloridos nos cantos internos (entre as ilhas e o anel de patrulha),
+    // vãos passáveis — reforçam a necessidade de camuflar entre 2 Caçadores.
+    const estudio = this._buildRoom(-16, 17, 10, 9, 0x48dbfb, { doors: ['s', 'e'] }); // estúdio céu
+    this._buildSofa(-16, 15, 0x48dbfb);
+    this._buildShelf(-19, 19, 0x17c3b2);
+    this._buildRug(-16, 17, 0x2a8fb0, 4.5, 3);
+
+    const almox = this._buildRoom(16, 17, 10, 9, 0x7bed9f, { doors: ['w', 'n'] }); // almoxarifado lima
+    this._buildCrates(17, 15, 5);
+    this._buildFridge(13, 19, 0x7bed9f);
+    this._buildLamp(19, 15, 0);
+
+    this._collectDoors(estudio, almox);
+
     // Zona: rodovia quebrada com carros de polícia e girofles (set piece lateral).
     this._buildBrokenHighway(-15, 0);
     // Zona: máquinas de refrigerante encostadas no perímetro.
-    this._buildVendingMachine(8, -HALF + 1.5, 0xd0322e, { x: 0, z: 1 });
-    this._buildVendingMachine(HALF - 1.5, -6, 0x2e5fd0, { x: -1, z: 0 });
+    this._buildVendingMachine(8, -HALF + 1.5, 0xf39c12, { x: 0, z: 1 });
+    this._buildVendingMachine(HALF - 1.5, -6, 0x7d5fff, { x: -1, z: 0 });
 
     this.spawn.set(0, 0, 0.8 * HALF); // área aberta na frente
     // Rotas cruzadas: uma em sentido horário no perímetro, outra em diagonal
@@ -424,25 +627,25 @@ export class Level {
     ];
   }
 
-  // Espalha ~40 props coloridos preenchendo a arena ampliada:
-  //  • ~16 CAIXAS grudáveis (via _addBox) → esconderijos reais, oclusores de
-  //    visão do Caçador e colisão (AABB).
-  //  • ~24 DECORATIVOS (cilindros/cones/esferas) → densidade + cores de
-  //    camuflagem, sem grudar e sem bloquear (curvos, fora do modelo de latch).
+  // Espalha props preenchendo a arena ampliada:
+  //  • MOBÍLIA realista (geladeira/estante/sofá/mesa/caixotes) com corpo grudável
+  //    colorido → esconderijos reais e alvos fortes de camuflagem.
+  //  • ~16 CAIXAS grudáveis (via _addBox) → mais esconderijos + oclusores de visão.
+  //  • DECORATIVOS (cilindros/cones/esferas) e detalhes de realismo (plantas,
+  //    luminárias, tapetes) → densidade e cores de camuflagem, sem bloquear.
   // PRNG seedado por layout → disposição reproduzível por estágio.
   _scatterProps() {
     const rand = mulberry32((this.layout * 0x9e3779b1) >>> 0);
     const range = (a, b) => a + rand() * (b - a);
     const pick = (arr) => arr[(rand() * arr.length) | 0];
 
-    // Paleta temática (Backrooms/Meccha Chameleon): pretos (lixo/cadeira), brancos
-    // e cinza-máquina, marrom-mala/caixa + alguns vivos de vending/bexiga. Mantém
-    // variedade de alvos de camuflagem coerente com os props das zonas.
+    // Paleta: neutros realistas (preto-lixo, branco/cinza-máquina, marrom-madeira)
+    // + toda a paleta viva Meccha Chameleon (HERO_COLORS) para muitos alvos de cor.
     const PALETTE = [
       0x141414, 0x1c1c1e, 0x2b2b2e,             // pretos/asfalto
       0xeae7e0, 0xd8d6c8, 0x8a8f96, 0xc9ccd0,   // brancos/cinzas de máquina/metal
       0x6b4e2e, 0xb98a5a, 0x8c6d3f,             // marrons de mala/caixa/madeira
-      0x2e5fd0, 0xd0322e, 0x1eaf5a, 0xf1c40f, 0xe84393, // vivos (vending/bexiga)
+      ...HERO_COLORS,                           // vivos saturados (zonas/props herói)
     ];
 
     const margin = 3;                 // afastamento das paredes de perímetro
@@ -455,6 +658,9 @@ export class Level {
     for (const route of this.routes) {
       for (const w of route) placed.push({ x: w.x, z: w.z, r: 3 });
     }
+    // Vãos de porta e centros de cômodo: mantidos livres para não entulhar a
+    // passagem (senão o Caçador ficaria preso e o jogador se trancaria).
+    for (const d of this._roomDoors) placed.push({ x: d.x, z: d.z, r: 2.2 });
 
     // Livre se não sobrepõe sólidos existentes (paredes de perímetro, blocos
     // estruturais e caixas já espalhadas) nem as zonas/decorativos já colocados.
@@ -490,6 +696,23 @@ export class Level {
       return null;
     };
 
+    // Mobília realista espalhada: corpo grudável colorido + detalhes. Cada tipo
+    // reserva um raio nominal; alterna para variedade. Alguns encostam nas paredes.
+    const furniture = [
+      { r: 1.9, make: (x, z) => this._buildCrates(x, z, (rand() * 8) | 0) },
+      { r: 1.2, make: (x, z) => this._buildFridge(x, z, pick(HERO_COLORS)) },
+      { r: 1.3, make: (x, z) => this._buildShelf(x, z, pick(HERO_COLORS)) },
+      { r: 1.7, make: (x, z) => this._buildSofa(x, z, pick(HERO_COLORS)) },
+      { r: 1.7, make: (x, z) => this._buildDeskSet(x, z, pick(HERO_COLORS)) },
+    ];
+    for (let i = 0; i < 8; i++) {
+      const f = furniture[i % furniture.length];
+      const p = findSpot(f.r, i < 3);
+      if (!p) continue;
+      f.make(p.x, p.z);
+      placed.push({ x: p.x, z: p.z, r: f.r + 0.4 });
+    }
+
     // ~16 caixas grudáveis; parte forçada para junto das paredes.
     for (let i = 0; i < 16; i++) {
       const w = range(1.0, 2.5), d = range(1.0, 2.5), h = range(1.5, 4.0);
@@ -500,8 +723,8 @@ export class Level {
       placed.push({ x: p.x, z: p.z, r: rad });
     }
 
-    // ~24 decorativos alternando cilindro / cone / esfera.
-    for (let i = 0; i < 24; i++) {
+    // ~20 decorativos alternando cilindro / cone / esfera.
+    for (let i = 0; i < 20; i++) {
       const kind = i % 3;
       const nearWall = i < 8;
       let rad, h;
@@ -517,7 +740,29 @@ export class Level {
       else this._addSphere(rad, color, p.x, rad, p.z);
       placed.push({ x: p.x, z: p.z, r: rad });
     }
+
+    // Detalhes de realismo só-coloráveis (não bloqueiam): plantas, luminárias que
+    // lançam brilho quente, e tapetes coloridos no chão. Densidade + cor ambiente.
+    for (let i = 0; i < 6; i++) {
+      const p = findSpot(0.7, i < 2);
+      if (!p) continue;
+      const roll = rand();
+      if (roll < 0.5) this._buildPlant(p.x, p.z);
+      else if (roll < 0.8) this._buildLamp(p.x, p.z);
+      else this._buildRug(p.x, p.z, pick(HERO_COLORS));
+      placed.push({ x: p.x, z: p.z, r: 1.0 });
+    }
   }
+}
+
+// Clareia (k>0) ou escurece (k<0) uma cor mantendo o matiz — usado para derivar
+// detalhes (almofadas, sulcos, cadeiras) a partir da cor de assinatura do prop.
+function shade(hex, k) {
+  const c = new THREE.Color(hex);
+  const hsl = { h: 0, s: 0, l: 0 };
+  c.getHSL(hsl);
+  c.setHSL(hsl.h, hsl.s, THREE.MathUtils.clamp(hsl.l + k, 0, 1));
+  return c;
 }
 
 // PRNG determinístico (mulberry32): mesmo layout → mesma disposição de props.
