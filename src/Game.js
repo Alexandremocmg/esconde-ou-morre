@@ -7,14 +7,14 @@ import { Joystick } from './Joystick.js';
 import { Effects } from './Effects.js';
 import { Audio } from './Audio.js';
 
-const TAP_MAX_MS = 300;   // duração máx. de um toque para contar como "tap"
-const TAP_MAX_MOVE = 12;  // px de deslocamento máx. para ainda ser um tap
-
 // Partida (Fase 4): objetivo = sobreviver ao Caçador até o tempo acabar.
 const BASE_SURVIVE = 60;      // s de sobrevivência no estágio 1
 const SURVIVE_PER_STAGE = 15; // s adicionais por estágio
 const DIFF_PER_STAGE = 0.12;  // incremento de dificuldade por estágio (velocidade do Caçador)
-const SECOND_SEEKER_STAGE = 3; // a partir deste estágio, entra um 2º Caçador
+// A mansão tem 3 níveis: um Caçador só não cobre nenhum deles direito (medido:
+// ~1% do 2º andar em 120 s). Desde o estágio 1 há um por DOMÍNIO — térreo e
+// andares altos — e um 3º (térreo, sentido oposto) a partir do estágio 3.
+const THIRD_SEEKER_STAGE = 3;
 const WARN_WINDOW = 5;        // s de antecedência para o feedback de perigo / quase-vitória
 
 // Formata segundos como m:ss.
@@ -46,12 +46,12 @@ export class Game {
     // "estourarem" sem lavar o amarelo-doentio do perímetro.
     this.renderer.toneMappingExposure = 1.05;
 
-    // Cena — atmosfera "Backrooms" (escritório decadente, fluorescente).
+    // Cena — atmosfera MANSÃO DE LUXO em penumbra (quente, âmbar de velas).
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x191708);
-    // Fog amarelo-doentio, afrouxado um pouco (início mais distante) para não
-    // dessaturar os cômodos coloridos de perto — ainda fecha o horizonte.
-    this.scene.fog = new THREE.Fog(0xb9b183, 30, 88);
+    this.scene.background = new THREE.Color(0x120f0b);
+    // Fog quente/escuro reescalado para a pegada de 25×25 m (antes 80×80): fecha
+    // o horizonte a ~40 m, escondendo os cantos em penumbra sem apagar o perto.
+    this.scene.fog = new THREE.Fog(0x120f0b, 9, 40);
 
     // Câmera (proporção landscape de celular; ajustada no resize)
     this.camera = new THREE.PerspectiveCamera(60, 16 / 9, 0.1, 200);
@@ -71,24 +71,22 @@ export class Game {
 
     // Layout da arena por estágio (cicla a cada 3): 1=aberta, 2=labirinto, 3=ilhas.
     const layout = ((this.stage - 1) % 3) + 1;
-    this.level = new Level(this.scene, layout);
+    this.level = new Level(this.scene, layout, { mobile: this.isMobile });
     this.player = new Player(this.scene, this.level);
     this.effects = new Effects(this.scene);
     this.audio = new Audio();
 
     // Caçadores. O primeiro sempre existe; um segundo (rota cruzada, cor distinta)
-    // entra a partir do estágio SECOND_SEEKER_STAGE. As rotas vêm do layout.
+    // entra a partir do estágio THIRD_SEEKER_STAGE. As rotas vêm do layout.
     const routes = this.level.routes;
-    this.seekers = [
-      new Seeker(this.scene, this.level, this.player, () => this._gameOver(), {
-        difficulty, waypoints: routes[0],
-      }),
-    ];
-    if (this.stage >= SECOND_SEEKER_STAGE) {
-      this.seekers.push(new Seeker(this.scene, this.level, this.player, () => this._gameOver(), {
-        difficulty, waypoints: routes[1] || WAYPOINTS_ALT, color: 0xb01ecb,
-      }));
-    }
+    const routeY = this.level.routeY || [];
+    const mkSeeker = (i, color) => new Seeker(
+      this.scene, this.level, this.player, () => this._gameOver(),
+      { difficulty, waypoints: routes[i] || WAYPOINTS_ALT, startY: routeY[i], color }
+    );
+    // 0 = térreo; 1 = andares altos (nasce no 2º andar); 2 = térreo em sentido oposto.
+    this.seekers = [mkSeeker(0), mkSeeker(1, 0xb01ecb)];
+    if (this.stage >= THIRD_SEEKER_STAGE) this.seekers.push(mkSeeker(2, 0xd88a1a));
 
     this.follow = new FollowCamera(this.camera);
     this.joystick = new Joystick();
@@ -99,10 +97,11 @@ export class Game {
     this._lastWinTick = -1;
     this._spotted = false; // borda de subida da detecção (para som + UI de alerta)
 
-    // Raycaster de camuflagem (toque)
-    this._ray = new THREE.Raycaster();
-    this._ndc = new THREE.Vector2();
-    this._setupTapCamouflage();
+    // Controles de ação (botões) + olhar (arrasto na metade direita da tela).
+    this._btnLatch = document.getElementById('btn-latch');
+    this._btnPaint = document.getElementById('btn-paint');
+    this._btnCrouch = document.getElementById('btn-crouch');
+    this._setupControls();
 
     // Oclusão da câmera: blocos entre a câmera e o jogador desvanecem para não
     // esconder o personagem (ex.: grudado na face traseira de um bloco).
@@ -112,6 +111,7 @@ export class Game {
 
     // HUD
     this._badge = document.getElementById('state-badge');
+    this._penumbraEl = document.getElementById('penumbra-badge');
     this._chip = document.querySelector('#color-chip span');
     this._gameoverEl = document.getElementById('gameover');
     this._victoryEl = document.getElementById('victory');
@@ -148,27 +148,29 @@ export class Game {
   }
 
   _addLights() {
-    // Fluorescente deprimente: preenchimento difuso pálido esverdeado, achatado
-    // (sombra chapada de escritório). Céu verde-creme, solo verde-oliva.
-    this.scene.add(new THREE.HemisphereLight(0xf2f5df, 0x3a3826, 0.75));
-    this.scene.add(new THREE.AmbientLight(0xe8f0d8, 0.35));
+    // Penumbra quente de mansão: preenchimento difuso âmbar baixo, mas ainda
+    // legível (a camuflagem depende de LER a cor; a penumbra que afeta detecção é
+    // estimativa de gameplay em Level.lightAt, não escuridão real). Céu âmbar,
+    // solo nogueira escuro.
+    this.scene.add(new THREE.HemisphereLight(0x6b5a44, 0x1a140d, 0.6));
+    this.scene.add(new THREE.AmbientLight(0x3a2f22, 0.30));
 
-    // "Painel" cenital: luminária embutida quase vertical, branco-pálido frio.
-    // Único caster de sombra (perf) → quinas com sombra curta e dura, sem calor.
-    const fluor = new THREE.DirectionalLight(0xeaf3d6, 0.9);
-    fluor.position.set(6, 30, 4);
+    // Luz-chave suave (claraboia/luar quente): único caster de sombra (perf) →
+    // sombras longas e douradas de mansão.
+    const fluor = new THREE.DirectionalLight(0xf3e6c4, 0.85);
+    fluor.position.set(5, 18, 3);
     fluor.castShadow = true;
     const shadowRes = this.isMobile ? 1024 : 2048; // metade da resolução em mobile
     fluor.shadow.mapSize.set(shadowRes, shadowRes);
     fluor.shadow.radius = 3;               // borda suave (PCFSoftShadowMap)
-    // Frustum de sombra alargado p/ cobrir a arena ampliada (HALF=40).
-    const s = 42;
+    // Frustum de sombra reescalado para a pegada da mansão (HALF=12.5).
+    const s = 15;
     fluor.shadow.camera.left = -s;
     fluor.shadow.camera.right = s;
     fluor.shadow.camera.top = s;
     fluor.shadow.camera.bottom = -s;
     fluor.shadow.camera.near = 1;
-    fluor.shadow.camera.far = 90;
+    fluor.shadow.camera.far = 42;
     fluor.shadow.bias = -0.0004;
     this.scene.add(fluor);
 
@@ -186,38 +188,48 @@ export class Game {
     this._fluor.intensity = this._fluorBase * k;
   }
 
-  _setupTapCamouflage() {
-    let downX = 0, downY = 0, downT = 0, downId = null;
-
-    this.canvas.addEventListener('pointerdown', (e) => {
-      downId = e.pointerId;
-      downX = e.clientX;
-      downY = e.clientY;
-      downT = performance.now();
+  // Fiação dos controles: botões de ação e a área de olhar (arrasto → câmera).
+  _setupControls() {
+    // Botões: um toque (pointerdown) dispara a ação. stopPropagation evita que o
+    // toque também conte como arrasto de olhar no look-zone que fica atrás.
+    const press = (el, fn) => {
+      if (!el) return;
+      el.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (this.over || this.won) return;
+        fn();
+      }, { passive: false });
+    };
+    press(this._btnLatch, () => this.player.toggleLatch(this.camera));
+    press(this._btnCrouch, () => this.player.toggleCrouch());
+    press(this._btnPaint, () => {
+      const color = this.player.paintFromWall();
+      if (color) { // só camufla grudado (retorna null no chão)
+        this.effects.pulse(this.player.position, color);
+        this.audio.paint();
+      }
     });
 
-    this.canvas.addEventListener('pointerup', (e) => {
-      if (e.pointerId !== downId) return;
-      downId = null;
-      const dt = performance.now() - downT;
-      const moved = Math.hypot(e.clientX - downX, e.clientY - downY);
-      if (dt > TAP_MAX_MS || moved > TAP_MAX_MOVE) return; // foi arrasto, não tap
-      if (this.player.state !== 'latched') return;          // só camufla grudado
-      this._tryCamouflage(e.clientX, e.clientY);
-    });
-  }
-
-  _tryCamouflage(clientX, clientY) {
-    const rect = this.canvas.getBoundingClientRect();
-    this._ndc.x = ((clientX - rect.left) / rect.width) * 2 - 1;
-    this._ndc.y = -((clientY - rect.top) / rect.height) * 2 + 1;
-    this._ray.setFromCamera(this._ndc, this.camera);
-    const hit = this._ray.intersectObjects(this.level.colorables, false)[0];
-    if (hit && hit.object.material && hit.object.material.color) {
-      this.player.setCamouflage(hit.object.material.color);
-      // Juice: pulso + pop na cor copiada.
-      this.effects.pulse(this.player.position, hit.object.material.color);
-      this.audio.paint();
+    // Olhar: arrasto na metade direita. Segue o padrão do Joystick (pointerId
+    // próprio; move/up no window) para não conflitar com o joystick esquerdo.
+    const zone = document.getElementById('look-zone');
+    if (zone) {
+      let id = null, lx = 0, ly = 0;
+      zone.addEventListener('pointerdown', (e) => {
+        if (id !== null) return;
+        e.preventDefault();
+        id = e.pointerId; lx = e.clientX; ly = e.clientY;
+      }, { passive: false });
+      window.addEventListener('pointermove', (e) => {
+        if (e.pointerId !== id) return;
+        e.preventDefault();
+        this.follow.addLook(e.clientX - lx, e.clientY - ly);
+        lx = e.clientX; ly = e.clientY;
+      }, { passive: false });
+      const end = (e) => { if (e.pointerId === id) id = null; };
+      window.addEventListener('pointerup', end);
+      window.addEventListener('pointercancel', end);
     }
   }
 
@@ -251,7 +263,7 @@ export class Game {
     this._fluorFlicker(t);
     this.level.update?.(t);                 // girofles/painéis piscando
     this.effects.update(dt, this.camera);
-    this.follow.update(dt, this.player, this.level.climbables);
+    this.follow.update(dt, this.player, this.level.cameraColliders || this.level.climbables);
     this._updateOcclusion(dt);
     this._updateHud();
     this.renderer.render(this.scene, this.camera);
@@ -356,10 +368,25 @@ export class Game {
   _updateHud() {
     const camo = this.player.isCamouflaged();
     const latched = this.player.state === 'latched';
-    this._badge.textContent = camo ? 'CAMUFLADO' : (latched ? 'PAREDE' : 'CHÃO');
+    this._badge.textContent = camo ? 'CAMUFLADO' : (latched ? 'PAREDE' : (this.player.crouched ? 'AGACHADO' : 'CHÃO'));
     this._badge.classList.toggle('latched', latched && !camo);
     this._badge.classList.toggle('camo', camo);
     this._chip.style.background = `#${this.player.material.color.getHexString()}`;
+
+    // Botões: rótulo/realce de Grudar↔Soltar e destaque do Agachar ativo.
+    if (this._btnLatch) {
+      this._btnLatch.classList.toggle('on', latched);
+      const lbl = this._btnLatch.querySelector('.lbl');
+      if (lbl) lbl.textContent = latched ? 'Soltar' : 'Grudar';
+    }
+    if (this._btnCrouch) this._btnCrouch.classList.toggle('on', this.player.crouched);
+
+    // Penumbra: badge quando a luz na posição do jogador está baixa (o Caçador
+    // enxerga de mais perto ali). Limiar 0.5 → "meia-luz ou menos".
+    if (this._penumbraEl) {
+      const light = this.level.lightAt ? this.level.lightAt(this.player.position) : 1;
+      this._penumbraEl.classList.toggle('show', light < 0.5 && !camo);
+    }
 
     // Placar: tempo decorrido (limitado à meta) e tempo camuflado
     const shown = Math.min(this.elapsed, this.surviveTime);

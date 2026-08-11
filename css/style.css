@@ -109,6 +109,22 @@ body {
 #state-badge.latched { color: #0b0e13; background: #e0a94a; border-color: #e0a94a; }
 #state-badge.camo { color: #0b0e13; background: var(--accent); border-color: var(--accent); }
 
+/* Penumbra: aparece quando o jogador está numa zona escura (o Caçador te enxerga
+   de mais perto). Feedback essencial — senão a mecânica lê como bug. */
+#penumbra-badge {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  padding: 6px 12px;
+  border-radius: 999px;
+  color: #d9c9ff;
+  background: rgba(43, 34, 64, 0.55);
+  border: 1px solid rgba(150, 130, 200, 0.4);
+  backdrop-filter: blur(6px);
+  display: none;
+}
+#penumbra-badge.show { display: block; }
+
 #color-chip {
   display: flex;
   align-items: center;
@@ -218,6 +234,58 @@ body {
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.85);
   box-shadow: 0 4px 18px rgba(0, 0, 0, 0.4);
+}
+
+/* ---------- Área de olhar (câmera) — espelha o joystick, do outro lado ---------- */
+#look-zone {
+  position: absolute;
+  right: max(8px, env(safe-area-inset-right));
+  bottom: max(8px, env(safe-area-inset-bottom));
+  width: 45%;
+  height: 60%;
+  z-index: 6;
+  touch-action: none;
+}
+
+/* ---------- Botões de ação (coluna à direita, acima da área de olhar) ---------- */
+#actions {
+  position: absolute;
+  right: max(10px, env(safe-area-inset-right));
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 7;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  pointer-events: none; /* só os botões capturam toque; o resto vaza p/ o look-zone */
+}
+#actions button {
+  pointer-events: auto;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: none;
+  user-select: none;
+  width: 68px; height: 68px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.9);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  font: inherit;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease, transform 0.08s ease;
+}
+#actions button .ic { font-size: 22px; line-height: 1; }
+#actions button .lbl { font-size: 10px; letter-spacing: 0.02em; opacity: 0.85; }
+#actions button:active { transform: scale(0.94); }
+/* Estado ativo: grudado (btn-latch) e agachado (btn-crouch) ficam realçados. */
+#actions button.on {
+  background: rgba(159, 232, 255, 0.22);
+  border-color: rgba(159, 232, 255, 0.7);
+  color: #eaffff;
 }
 
 /* ---------- Overlays ---------- */

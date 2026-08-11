@@ -84,6 +84,7 @@ export class Gait {
     this.rig = rig;
     this.phase = opts.phase || 0;
     this.amp = 0; // 0..1: intensidade da caminhada (suavizada)
+    this.crouch = 0; // 0..1: quanto está agachado (pose aplicada no fim de update)
     this.t = 0;
     this.strideLen = opts.strideLen != null ? opts.strideLen : rig.height * 0.85;
     this.swing = opts.swing != null ? opts.swing : 0.7;     // balanço das pernas (rad)
@@ -120,5 +121,24 @@ export class Gait {
     const breath = Math.sin(this.t * 2.2) * 0.01 * this.rig.height * (1 - a);
     upper.position.y = bob * 0.06 * this.rig.height * a + breath;
     upper.rotation.x = -0.14 * a;
+
+    // Pose de AGACHAR (aditiva sobre a caminhada): dobra os joelhos para a frente
+    // e abre a base, afunda e inclina o tronco, recolhe os braços. Sem esmagar a
+    // malha — lê como um humanoide se abaixando, não como um boneco achatado.
+    const c = this.crouch;
+    if (c > 1e-3) {
+      const H = this.rig.height;
+      upper.position.y -= 0.14 * H * c;   // tronco afunda em direção ao quadril
+      upper.rotation.x -= 0.55 * c;       // inclina para a frente (hunch)
+      legs[0].rotation.x -= 0.32 * c;     // coxas para a frente (joelhos dobrando)
+      legs[1].rotation.x -= 0.32 * c;
+      legs[0].rotation.z = 0.22 * c;      // base mais aberta (agachamento) — SET (gait não mexe em z)
+      legs[1].rotation.z = -0.22 * c;
+      arms[0].rotation.x -= 0.28 * c;     // braços recolhem à frente (equilíbrio)
+      arms[1].rotation.x -= 0.28 * c;
+    } else {
+      legs[0].rotation.z = 0;
+      legs[1].rotation.z = 0;
+    }
   }
 }

@@ -9,7 +9,8 @@ const PATROL_SPEED = 3.2;
 const CHASE_SPEED = 6.2;
 const CHASE_RAMP = 0.5;               // s para acelerar de patrulha até velocidade de caça
 const TURN_RATE = 3.5;                // rad/s de giro
-const VISION_RANGE = 12;
+const VISION_RANGE = 7.5;             // reescalado p/ a mansão (HALF=12.5); antes 12 (arena 80×80)
+const CROUCH_VISION_MULT = 0.6;       // agachado: o Caçador só te enxerga de mais perto (furtividade)
 const VISION_HALF_ANGLE = Math.PI / 7; // ~25.7° (cone total ~51°)
 // Amostragem de volume: em vez de um único raio ao centro, checa 3 pontos ao
 // longo da cápsula do jogador (cabeça/centro/pés). Basta UM ponto visível para
@@ -24,31 +25,42 @@ const VIEW_SAMPLES = [0.35, 0.0, -0.35];
 // então ~1.1 já cobre "encostou pegou" sem o antigo alcance folgado de 1.5 sobre
 // um jogador agora bem menor.
 const CATCH_DIST = 1.1;
+const CATCH_V_TOL = 1.2;              // banda vertical de captura (|Δy|) — separada da horizontal
 const WAYPOINT_REACH = 1.2;
 const LOSE_TIME = 0.8;                // s sem alvo válido (camuflado OU fora de vista) até desistir
+// Campo de visão VERTICAL próprio (o horizontal é VISION_HALF_ANGLE). Enxerga mais
+// para baixo (escada/andar abaixo) do que para cima (impede onisciência do mezanino).
+const VERT_UP = 0.50;                 // rad (~29°) para cima
+const VERT_DOWN = 0.70;               // rad (~40°) para baixo
+// Origem da sonda de chão, acima dos PÉS (não dos olhos): limita o quanto o
+// Caçador "sobe" num frame ao degrau de uma escada. Se partisse acima dos olhos,
+// ele saltaria para qualquer laje até ~2 m acima — e num ponto com dois níveis
+// sobrepostos (2º andar sob a sacada) seria teleportado para o de cima.
+const FLOOR_PROBE_UP = 0.5;
+const FLOOR_PROBE_DOWN = 2.5;         // alcance da sonda para baixo (descidas/quedas)
+const DOWN = new THREE.Vector3(0, -1, 0);
 
 // Desvio simples de obstáculos (whiskers)
 const AVOID_PROBE = 2.4;              // alcance de antecipação à frente (m)
 const AVOID_MARGIN = 0.6;            // não desvia do próprio alvo (recuo do alcance)
 const AVOID_ANGLES = [0.45, 0.9, 1.35]; // rad testados p/ cada lado
 
-// Rota padrão: perímetro em sentido horário.
+// Rotas de fallback (só usadas se o layout não fornecer routes — hoje sempre
+// fornece). Reescaladas para a pegada da mansão (HALF=12.5); antes ±12 (arena 80×80).
 const WAYPOINTS = [
-  new THREE.Vector3(-12, EYE_Y, -12),
-  new THREE.Vector3(12, EYE_Y, -12),
-  new THREE.Vector3(12, EYE_Y, 12),
-  new THREE.Vector3(-12, EYE_Y, 12),
+  new THREE.Vector3(-8, EYE_Y, -8),
+  new THREE.Vector3(8, EYE_Y, -8),
+  new THREE.Vector3(8, EYE_Y, 8),
+  new THREE.Vector3(-8, EYE_Y, 8),
   new THREE.Vector3(0, EYE_Y, 0),
 ];
 
-// Rota alternada (2º Caçador): cruza o mapa em diagonal e sentido oposto,
-// para cobrir corredores diferentes e forçar o uso constante da camuflagem.
 export const WAYPOINTS_ALT = [
-  new THREE.Vector3(12, EYE_Y, 12),
-  new THREE.Vector3(-12, EYE_Y, 12),
+  new THREE.Vector3(8, EYE_Y, 8),
+  new THREE.Vector3(-8, EYE_Y, 8),
   new THREE.Vector3(0, EYE_Y, -2),
-  new THREE.Vector3(12, EYE_Y, -12),
-  new THREE.Vector3(-12, EYE_Y, -12),
+  new THREE.Vector3(8, EYE_Y, -8),
+  new THREE.Vector3(-8, EYE_Y, -8),
 ];
 
 const PLAYER_GROUND_SPEED = 7.0;     // teto de justiça: caça nunca alcança no plano
@@ -81,7 +93,11 @@ export class Seeker {
     this._avoidBias = 1;        // lado preferido ao desviar (evita jitter esquerda/direita)
 
     this.group = new THREE.Group();
-    this.group.position.set(this.waypoints[0].x, EYE_Y, this.waypoints[0].z);
+    // startY = altura inicial dos olhos (andar em que este Caçador nasce). O 2º
+    // Caçador do estágio 3 nasce no mezanino (startY ~ laje+EYE_Y); depois a sonda
+    // de chão mantém o Y a cada frame.
+    const startY = opts.startY != null ? opts.startY : EYE_Y;
+    this.group.position.set(this.waypoints[0].x, startY, this.waypoints[0].z);
 
     // Grupo visual interno: recebe o bobbing (flutuação) SEM mover a origem da
     // visão (this.group.position), que a IA mantém em EYE_Y de forma determinística.
@@ -137,6 +153,8 @@ export class Seeker {
     this._steerDir = new THREE.Vector3();
     this._avoidL = new THREE.Vector3();
     this._avoidR = new THREE.Vector3();
+    this._probe = new THREE.Raycaster();     // sonda de chão (vertical) p/ o Y por andar
+    this._probeOrig = new THREE.Vector3();
   }
 
   update(dt) {
@@ -166,10 +184,13 @@ export class Seeker {
     if (this.state === 'chase') this._doChase(dt);
     else this._doPatrol(dt);
 
-    // Captura: só pega o jogador visível/não camuflado (camuflagem sempre protege).
+    // Captura: distância HORIZONTAL <= CATCH_DIST E banda vertical |Δy| <= CATCH_V_TOL.
+    // Preserva "grudado no alto = seguro" e corrige "mesmo andar, Y ligeiramente
+    // diferente = incapturável". Camuflagem sempre protege.
     if (this.state === 'chase' && !camo) {
-      const d = this.group.position.distanceTo(this.player.position);
-      if (d <= CATCH_DIST) {
+      const p = this.group.position, pc = this.player.position;
+      const horiz = Math.hypot(p.x - pc.x, p.z - pc.z);
+      if (horiz <= CATCH_DIST && Math.abs(p.y - pc.y) <= CATCH_V_TOL) {
         this.state = 'caught';
         this.onCaught && this.onCaught();
       }
@@ -191,15 +212,31 @@ export class Seeker {
     const pc = this.player.position;
     const cosHalf = Math.cos(VISION_HALF_ANGLE);
 
+    // PENUMBRA (Fase 5): o alcance efetivo cai na sombra. Alcance, não chance
+    // aleatória (aleatório seria ilegível). Piso 0.55 impede "invisível no escuro":
+    // no breu vê a ~55% do alcance; na luz cheia, 100%. Camuflagem segue absoluta
+    // (o portão acquired = sees && !camo não muda; penumbra afeta só `sees`).
+    const light = this.level.lightAt ? this.level.lightAt(pc) : 1;
+    // Agachar reduz o alcance efetivo (furtividade); combina com a penumbra. A
+    // camuflagem segue absoluta (o portão acquired = sees && !camo não muda).
+    const crouch = this.player.crouched ? CROUCH_VISION_MULT : 1;
+    const range = VISION_RANGE * (0.55 + 0.45 * light) * crouch;
+
     // Testa cabeça, centro e pés; o primeiro ponto dentro do cone, no alcance e
     // com linha de visão livre já conta como "visto".
     for (let i = 0; i < VIEW_SAMPLES.length; i++) {
       const to = this._toPlayer.set(pc.x, pc.y + VIEW_SAMPLES[i], pc.z).sub(eye);
       const dist = to.length();
-      if (dist > VISION_RANGE || dist < 1e-3) continue;
+      if (dist > range || dist < 1e-3) continue;
 
       to.multiplyScalar(1 / dist); // normaliza
-      if (forward.dot(to) < cosHalf) continue;
+      // Cone HORIZONTAL (yaw): compara só as componentes no plano XZ.
+      const horiz = Math.hypot(to.x, to.z) || 1e-6;
+      const cosH = (forward.x * to.x + forward.z * to.z) / horiz;
+      if (cosH < cosHalf) continue;
+      // Campo VERTICAL próprio (assimétrico): mais amplo para baixo que para cima.
+      const vang = Math.atan2(to.y, horiz);
+      if (vang > VERT_UP || vang < -VERT_DOWN) continue;
 
       this._ray.set(eye, to);
       this._ray.far = dist - 0.2;
@@ -228,7 +265,10 @@ export class Seeker {
   // -------------------------------------------------------------- MOVE STATES
   _doPatrol(dt) {
     const target = this.waypoints[this.wpIndex];
-    if (this.group.position.distanceTo(target) < WAYPOINT_REACH) {
+    // Alcance HORIZONTAL (não 3D): um waypoint em outro andar tem Y diferente do
+    // Caçador; medir em 3D nunca o alcançaria e travaria a patrulha nesse índice.
+    const p = this.group.position;
+    if (Math.hypot(p.x - target.x, p.z - target.z) < WAYPOINT_REACH) {
       this.wpIndex = (this.wpIndex + 1) % this.waypoints.length;
     }
     this._moveToward(target, this.patrolSpeed, dt);
@@ -261,7 +301,21 @@ export class Seeker {
 
     this.group.position.x += dir.x * speed * dt;
     this.group.position.z += dir.z * speed * dt;
-    this.group.position.y = EYE_Y;
+    // Y pela SONDA DE CHÃO (rampa/laje/degrau), não constante. A rampa dá
+    // interpolação de graça e cobre o mezanino sem caso especial; falha em
+    // segurança (sem hit → mantém o Y anterior, não cai no vazio).
+    this.group.position.y = this._groundY(this.group.position.x, this.group.position.z, this.group.position.y);
+  }
+
+  // Sonda vertical contra level.walkables (chão, lajes, degraus): retorna a altura
+  // dos olhos sobre a superfície mais alta abaixo da origem. 1 raycast/frame/Caçador.
+  _groundY(x, z, prevY) {
+    const feet = prevY - EYE_Y;
+    const origin = this._probeOrig.set(x, feet + FLOOR_PROBE_UP, z);
+    this._probe.set(origin, DOWN);
+    this._probe.far = FLOOR_PROBE_UP + FLOOR_PROBE_DOWN;
+    const hit = this._probe.intersectObjects(this.level.walkables, false)[0];
+    return hit ? hit.point.y + EYE_Y : prevY;
   }
 
   // ------------------------------------------------------ OBSTACLE AVOIDANCE
@@ -293,10 +347,15 @@ export class Seeker {
     return this._rotateY(desired, (this._avoidBias >= 0 ? 1 : -1) * (Math.PI / 2), this._avoidL);
   }
 
+  // Desvio usa só obstáculos VERTICAIS (climbables), não os oclusores de visão.
+  // As lajes entram em occluders para bloquear a visão entre andares, mas não
+  // podem ser obstáculo de navegação: subindo uma escada em direção a uma laje,
+  // os whiskers leriam a borda dela como parede e o Caçador desviaria para
+  // sempre, sem completar a subida. O piso é resolvido pela sonda de chão.
   _feelerDist(origin, dir, far) {
     this._ray.set(origin, dir);
     this._ray.far = far;
-    const hit = this._ray.intersectObjects(this.level.occluders, false)[0];
+    const hit = this._ray.intersectObjects(this.level.climbables, false)[0];
     return hit ? hit.distance : Infinity;
   }
 
@@ -318,8 +377,10 @@ export class Seeker {
     this.chaseRamp = 0;
     // Vai para o waypoint mais próximo para retomar a ronda
     let best = 0, bestD = Infinity;
+    const p = this.group.position;
     for (let i = 0; i < this.waypoints.length; i++) {
-      const d = this.group.position.distanceTo(this.waypoints[i]);
+      const w = this.waypoints[i];
+      const d = Math.hypot(p.x - w.x, p.z - w.z); // horizontal (waypoints em andares distintos)
       if (d < bestD) { bestD = d; best = i; }
     }
     this.wpIndex = best;
@@ -332,7 +393,8 @@ export class Seeker {
   // Infinity quando não é uma ameaça imediata (patrulha, camuflado, fora de vista).
   timeToCatch(playerPos) {
     if (this.state !== 'chase' || !this.validTarget) return Infinity;
-    const d = this.group.position.distanceTo(playerPos);
+    const p = this.group.position;
+    const d = Math.hypot(p.x - playerPos.x, p.z - playerPos.z); // horizontal
     return Math.max(0, (d - CATCH_DIST) / this.chaseSpeed);
   }
 }

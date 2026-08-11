@@ -32,6 +32,7 @@
   <!-- HUD -->
   <div id="hud">
     <div id="state-badge">CHÃO</div>
+    <div id="penumbra-badge">🕯 NA PENUMBRA</div>
     <div id="color-chip"><span></span>camuflagem</div>
 
     <!-- Placar da partida: sobrevivência + tempo camuflado -->
@@ -56,6 +57,22 @@
     <div id="joystick-base">
       <div id="joystick-knob"></div>
     </div>
+  </div>
+
+  <!-- Área de olhar: arraste na metade direita para girar/inclinar a câmera -->
+  <div id="look-zone"></div>
+
+  <!-- Botões de ação (empilhados à direita) -->
+  <div id="actions">
+    <button id="btn-latch" type="button" aria-label="Grudar / Soltar">
+      <span class="ic">🧱</span><span class="lbl">Grudar</span>
+    </button>
+    <button id="btn-paint" type="button" aria-label="Pintar">
+      <span class="ic">🎨</span><span class="lbl">Pintar</span>
+    </button>
+    <button id="btn-crouch" type="button" aria-label="Agachar">
+      <span class="ic">⬇</span><span class="lbl">Agachar</span>
+    </button>
   </div>
 
   <!-- Menu inicial (necessário p/ fullscreen + lock de orientação + áudio) -->
