@@ -96,6 +96,7 @@ export class Game {
     this._heartTimer = 0;
     this._lastWinTick = -1;
     this._spotted = false; // borda de subida da detecção (para som + UI de alerta)
+    this._wasCamo = false;  // borda de subida da camuflagem (stinger de sucesso)
 
     // Controles de ação (botões) + olhar (arrasto na metade direita da tela).
     this._btnLatch = document.getElementById('btn-latch');
@@ -298,6 +299,10 @@ export class Game {
   _updateFeedback(dt) {
     const remaining = this.surviveTime - this.elapsed;
     const camo = this.player.isCamouflaged();
+
+    // Stinger na BORDA de subida da camuflagem (acabou de "sumir" com sucesso).
+    if (camo && !this._wasCamo) this.audio.camo();
+    this._wasCamo = camo;
 
     // Detecção: algum Caçador te enxerga AGORA (na vista e sem camuflagem)?
     let spotted = false;

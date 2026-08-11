@@ -61,43 +61,54 @@ export class Audio {
     osc.stop(t + dur + 0.02);
   }
 
-  // Clique suave ao GRUDAR na parede: toque curtíssimo e seco.
+  // Clique alegre ao GRUDAR: pop curto + harmônico.
   latch() {
-    this._beep(320, 0.05, 0.22, 'triangle');
-    setTimeout(() => this._beep(540, 0.04, 0.16, 'triangle'), 22);
+    this._beep(420, 0.05, 0.20, 'triangle');
+    setTimeout(() => this._beep(660, 0.04, 0.14, 'triangle'), 20);
   }
 
-  // Pop/bolha ao PINTAR (mudar de cor): varredura ascendente rápida.
+  // Pop/bolha ao amostrar cor (conta-gotas): varredura ascendente + sparkle.
   paint() {
-    this._sweep(260, 900, 0.14, 0.26, 'sine');
+    this._sweep(300, 1000, 0.13, 0.24, 'sine');
+    setTimeout(() => this._beep(1320, 0.05, 0.12, 'triangle'), 90);
   }
 
-  // Alerta de DETECÇÃO: dois tons agudos rápidos (distinto da contagem/batida).
+  // Sucesso de CAMUFLAGEM: chime curto e satisfatório (dois tons em terça maior).
+  camo() {
+    this._beep(880, 0.10, 0.20, 'sine');
+    setTimeout(() => this._beep(1175, 0.14, 0.18, 'sine'), 70);
+  }
+
+  // "Uh-oh" ao ser DETECTADO: duas notas descendentes (cartoon, sem terror).
   alert() {
-    this._beep(1180, 0.08, 0.24, 'square');
-    setTimeout(() => this._beep(1480, 0.09, 0.24, 'square'), 90);
+    this._beep(760, 0.10, 0.22, 'triangle');
+    setTimeout(() => this._beep(610, 0.12, 0.22, 'triangle'), 110);
   }
 
-  // Batida de tensão (perigo de ser pego). intensity 0..1 controla volume/altura.
+  // Tensão da PERSEGUIÇÃO (cadência controlada pelo Game): "tick" leve de
+  // woodblock que sobe de tom com a intensidade — animado, não sinistro.
   heartbeat(intensity = 0.5) {
-    const g = 0.18 + 0.32 * intensity;
-    this._beep(70 + 30 * intensity, 0.16, g, 'sine');
+    const g = 0.12 + 0.20 * intensity;
+    this._beep(300 + 320 * intensity, 0.06, g, 'triangle');
   }
 
   // Contagem regressiva para a vitória (sobe de tom a cada segundo).
   countdown(secondsLeft) {
-    const freq = 620 + (5 - secondsLeft) * 70; // 5→620Hz ... 1→900Hz
-    this._beep(freq, 0.12, 0.28, 'triangle');
+    const freq = 660 + (5 - secondsLeft) * 80; // 5→660Hz ... 1→980Hz
+    this._beep(freq, 0.11, 0.26, 'triangle');
   }
 
+  // VITÓRIA: arpejo maior ascendente + oitava de brilho no fim.
   win() {
-    // Pequeno arpejo ascendente.
     [523, 659, 784, 1047].forEach((f, i) =>
-      setTimeout(() => this._beep(f, 0.22, 0.3, 'triangle'), i * 110));
+      setTimeout(() => this._beep(f, 0.20, 0.28, 'triangle'), i * 100));
+    setTimeout(() => this._beep(1568, 0.28, 0.22, 'sine'), 460);
   }
 
+  // DERROTA (pego): "sad trombone" cômico — notas descendentes com leve bend.
   caught() {
-    this._beep(180, 0.5, 0.35, 'sawtooth');
-    setTimeout(() => this._beep(90, 0.6, 0.3, 'sawtooth'), 90);
+    const notes = [392, 349, 311, 262]; // Sol Fá Mib Dó
+    notes.forEach((f, i) =>
+      setTimeout(() => this._sweep(f, f * 0.94, 0.28, 0.3, 'sawtooth'), i * 180));
   }
 }

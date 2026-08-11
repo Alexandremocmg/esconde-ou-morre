@@ -27,8 +27,8 @@ pose (crouch já existente). A "pintura livre por textura" fica para depois (Fas
 | 5a — Conta-gotas mirado | ✅ feito | `a8ad30a` | `Player.sampleColor(camera)` substitui `paintFromWall`; retícula `#reticle` |
 | 5b — Roda de cor HSV | ✅ feito | `1b2560a` | `src/ColorPicker.js`; botão 🎛️ Cor; cor entregue em sRGB |
 | 6 — Paleta pop/viva | ✅ feito | `8e2875c` | MANSION revisado; deltas verificados (par 0.169, boneco 0.290) |
-| 7 — UI party + remover penumbra da detecção | ⬜ pendente | — | tirar `#penumbra-badge`; fator de luz vestigial em `Seeker._canSee`/`Level.lightAt` |
-| 8 — Áudio (stingers de party) | ⬜ pendente | — | trocar clima de terror |
+| 7 — UI party + remover penumbra da detecção | ✅ feito | `9c53cf4` | badge removido; `_canSee` sem fator de luz; botões candy coloridos |
+| 8 — Áudio (stingers de party) | ✅ feito | (este) | sons retrabalhados; +stinger `camo()` na borda de subida |
 | 4 — Formas blob/cubo selecionáveis | ⬜ pendente | — | `buildHumanoid` → `buildBody(kind)`; deixado p/ o fim |
 | 9 — Pintura livre por textura (fidelidade total) | ⬜ futuro | — | fora do MVP; pesado no mobile |
 
