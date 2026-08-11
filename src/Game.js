@@ -114,7 +114,6 @@ export class Game {
 
     // HUD
     this._badge = document.getElementById('state-badge');
-    this._penumbraEl = document.getElementById('penumbra-badge');
     this._chip = document.querySelector('#color-chip span');
     this._gameoverEl = document.getElementById('gameover');
     this._victoryEl = document.getElementById('victory');
@@ -370,13 +369,6 @@ export class Game {
       if (lbl) lbl.textContent = latched ? 'Soltar' : 'Grudar';
     }
     if (this._btnCrouch) this._btnCrouch.classList.toggle('on', this.player.crouched);
-
-    // Penumbra: badge quando a luz na posição do jogador está baixa (o Caçador
-    // enxerga de mais perto ali). Limiar 0.5 → "meia-luz ou menos".
-    if (this._penumbraEl) {
-      const light = this.level.lightAt ? this.level.lightAt(this.player.position) : 1;
-      this._penumbraEl.classList.toggle('show', light < 0.5 && !camo);
-    }
 
     // Placar: tempo decorrido (limitado à meta) e tempo camuflado
     const shown = Math.min(this.elapsed, this.surviveTime);

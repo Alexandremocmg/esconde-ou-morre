@@ -111,19 +111,6 @@ body {
 
 /* Penumbra: aparece quando o jogador está numa zona escura (o Caçador te enxerga
    de mais perto). Feedback essencial — senão a mecânica lê como bug. */
-#penumbra-badge {
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  padding: 6px 12px;
-  border-radius: 999px;
-  color: #d9c9ff;
-  background: rgba(43, 34, 64, 0.55);
-  border: 1px solid rgba(150, 130, 200, 0.4);
-  backdrop-filter: blur(6px);
-  display: none;
-}
-#penumbra-badge.show { display: block; }
 
 #color-chip {
   display: flex;
@@ -259,33 +246,44 @@ body {
   gap: 12px;
   pointer-events: none; /* só os botões capturam toque; o resto vaza p/ o look-zone */
 }
+/* Botões "candy" de party game: redondos, coloridos por ação, com anel branco. */
 #actions button {
+  --accent: 255, 255, 255;
   pointer-events: auto;
   -webkit-tap-highlight-color: transparent;
   touch-action: none;
   user-select: none;
-  width: 68px; height: 68px;
+  width: 72px; height: 72px;
   border-radius: 50%;
-  border: 1.5px solid rgba(255, 255, 255, 0.18);
-  background: rgba(255, 255, 255, 0.06);
-  color: rgba(255, 255, 255, 0.9);
+  border: 3px solid rgba(255, 255, 255, 0.9);
+  background: rgba(var(--accent), 0.9);
+  color: #fff;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 1px;
+  gap: 2px;
   font: inherit;
   cursor: pointer;
-  transition: background 0.12s ease, border-color 0.12s ease, transform 0.08s ease;
+  box-shadow: 0 4px 0 rgba(0, 0, 0, 0.18), 0 6px 14px rgba(0, 0, 0, 0.22);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+  transition: filter 0.12s ease, transform 0.08s ease, box-shadow 0.08s ease;
 }
-#actions button .ic { font-size: 22px; line-height: 1; }
-#actions button .lbl { font-size: 10px; letter-spacing: 0.02em; opacity: 0.85; }
-#actions button:active { transform: scale(0.94); }
-/* Estado ativo: grudado (btn-latch) e agachado (btn-crouch) ficam realçados. */
+#actions button .ic { font-size: 26px; line-height: 1; }
+#actions button .lbl { font-size: 10px; font-weight: 700; letter-spacing: 0.02em; opacity: 0.95; }
+#actions button:active {
+  transform: translateY(3px);
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.18), 0 2px 6px rgba(0, 0, 0, 0.22);
+}
+/* Cor por ação (party). */
+#btn-latch   { --accent: 63, 111, 214; }   /* azul */
+#btn-paint   { --accent: 232, 93, 108; }   /* coral */
+#btn-palette { --accent: 160, 92, 224; }   /* roxo */
+#btn-crouch  { --accent: 99, 201, 139; }   /* verde */
+/* Estado ativo: grudado/agachado ficam realçados (mais claro + anel destacado). */
 #actions button.on {
-  background: rgba(159, 232, 255, 0.22);
-  border-color: rgba(159, 232, 255, 0.7);
-  color: #eaffff;
+  filter: brightness(1.25) saturate(1.15);
+  border-color: #fff;
 }
 
 /* ---------- Overlays ---------- */

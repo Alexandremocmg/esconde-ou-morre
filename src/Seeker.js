@@ -213,15 +213,11 @@ export class Seeker {
     const pc = this.player.position;
     const cosHalf = Math.cos(VISION_HALF_ANGLE);
 
-    // PENUMBRA (Fase 5): o alcance efetivo cai na sombra. Alcance, não chance
-    // aleatória (aleatório seria ilegível). Piso 0.55 impede "invisível no escuro":
-    // no breu vê a ~55% do alcance; na luz cheia, 100%. Camuflagem segue absoluta
-    // (o portão acquired = sees && !camo não muda; penumbra afeta só `sees`).
-    const light = this.level.lightAt ? this.level.lightAt(pc) : 1;
-    // Agachar reduz o alcance efetivo (furtividade); combina com a penumbra. A
-    // camuflagem segue absoluta (o portão acquired = sees && !camo não muda).
+    // Fase 7: a penumbra saiu (cena clara). O alcance efetivo depende só de
+    // agachar (furtividade). A camuflagem segue absoluta — o portão
+    // acquired = sees && !camo não muda; agachar afeta só `sees`.
     const crouch = this.player.crouched ? CROUCH_VISION_MULT : 1;
-    const range = VISION_RANGE * (0.55 + 0.45 * light) * crouch;
+    const range = VISION_RANGE * crouch;
 
     // Testa cabeça, centro e pés; o primeiro ponto dentro do cone, no alcance e
     // com linha de visão livre já conta como "visto".
