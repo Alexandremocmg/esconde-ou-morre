@@ -6,6 +6,7 @@ import { FollowCamera } from './FollowCamera.js';
 import { Joystick } from './Joystick.js';
 import { Effects } from './Effects.js';
 import { Audio } from './Audio.js';
+import { ColorPicker } from './ColorPicker.js';
 
 // Partida (Fase 4): objetivo = sobreviver ao Caçador até o tempo acabar.
 const BASE_SURVIVE = 60;      // s de sobrevivência no estágio 1
@@ -99,7 +100,10 @@ export class Game {
     // Controles de ação (botões) + olhar (arrasto na metade direita da tela).
     this._btnLatch = document.getElementById('btn-latch');
     this._btnPaint = document.getElementById('btn-paint');
+    this._btnPalette = document.getElementById('btn-palette');
     this._btnCrouch = document.getElementById('btn-crouch');
+    // Roda de cor (Fase 5b): ajuste fino do disfarce sobre o conta-gotas.
+    this.colorPicker = new ColorPicker({ onChange: (c) => this.player.setCamouflage(c) });
     this._setupControls();
 
     // Oclusão da câmera: blocos entre a câmera e o jogador desvanecem para não
@@ -192,8 +196,11 @@ export class Game {
       if (color) {
         this.effects.pulse(this.player.position, color);
         this.audio.paint();
+        if (this.colorPicker.open) this.colorPicker.show(color); // re-semeia a roda aberta
       }
     });
+    // Abre/fecha a roda de cor, semeando com a cor atual do disfarce (Fase 5b).
+    press(this._btnPalette, () => this.colorPicker.toggle(this.player.targetColor));
 
     // Olhar: arrasto na metade direita. Segue o padrão do Joystick (pointerId
     // próprio; move/up no window) para não conflitar com o joystick esquerdo.

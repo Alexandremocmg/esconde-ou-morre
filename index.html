@@ -73,9 +73,25 @@
     <button id="btn-paint" type="button" aria-label="Pintar">
       <span class="ic">🎨</span><span class="lbl">Pintar</span>
     </button>
+    <button id="btn-palette" type="button" aria-label="Roda de cor">
+      <span class="ic">🎛️</span><span class="lbl">Cor</span>
+    </button>
     <button id="btn-crouch" type="button" aria-label="Agachar">
       <span class="ic">⬇</span><span class="lbl">Agachar</span>
     </button>
+  </div>
+
+  <!-- Roda de cor HSV (Fase 5b): ajuste fino do disfarce sobre o conta-gotas -->
+  <div id="palette-panel" class="hidden">
+    <div class="pal-wheel-wrap">
+      <canvas id="pal-wheel" width="150" height="150"></canvas>
+      <div id="pal-marker"></div>
+    </div>
+    <input id="pal-value" type="range" min="0" max="100" value="100" aria-label="Brilho">
+    <div class="pal-foot">
+      <span id="pal-swatch"></span>
+      <button id="pal-close" type="button">OK</button>
+    </div>
   </div>
 
   <!-- Menu inicial (necessário p/ fullscreen + lock de orientação + áudio) -->
