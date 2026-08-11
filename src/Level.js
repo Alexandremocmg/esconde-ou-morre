@@ -29,16 +29,21 @@ const EYE_Y = 1.1;     // altura dos olhos do Caçador (= Seeker EYE_Y) — p/ r
 // = 0.161 (dourado~carvalho), >= 0.145 do amarelo de parede legado (0xcbbf82) e
 // >= 0.188 da base do boneco (0xeef0f2). Folga sobre o limiar de camo EXIT=0.13.
 // (script: scratchpad/palette_check.js)
+// Paleta POP/TOON (Fase 6): cores vivas e chapadas por cômodo (estilo Meccha),
+// no lugar dos tons de material discretos do realismo. As CHAVES são mantidas
+// (evita mexer nos ~40 usos) — os nomes agora são só rótulos de cor. Deltas de
+// camuflagem verificados: mín. par-a-par 0.169 (sRGB), mín. do boneco 0.290
+// (ver /tmp/palcheck; meta ≥0.16 e ≥0.188).
 const MANSION = {
-  marmore:  0xd9d2c2, // mármore creme — pilares, salão, paredes
-  ebano:    0x2b2622, // ébano — estantes, molduras, guarda-roupas
-  latao:    0xb08d42, // dourado latão — arandelas, detalhes
-  porcelana:0x7d99b5, // azul porcelana — quartos
-  bordo:    0x8a3a45, // veludo bordô — estofados
-  prussia:  0x35506e, // azul prússia — biblioteca
-  ametista: 0x6f5480, // roxo ametista — galeria
-  salvia:   0x8fa08a, // verde sálvia — escritórios
-  carvalho: 0xb99a6b, // carvalho claro — tacos, aparadores
+  marmore:  0xEBD9A8, // creme dourado — paredes/base (o "anel-âncora")
+  ebano:    0x2F3350, // ardósia escuro — estantes/molduras (contraste)
+  latao:    0xF2C63C, // amarelo ouro — arandelas, detalhes
+  porcelana:0x59C1E8, // azul céu — quartos
+  bordo:    0xE85D6C, // coral — estofados
+  prussia:  0x3F6FD6, // azul forte — biblioteca
+  ametista: 0xA05CE0, // roxo — galeria
+  salvia:   0x63C98B, // verde menta — escritórios
+  carvalho: 0xE59B4C, // laranja/tan — tacos, aparadores
 };
 // Array para o espalhador e para índices por-seed (ordem estável).
 const SIGNATURE = Object.values(MANSION);
