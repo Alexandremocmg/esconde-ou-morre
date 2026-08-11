@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { buildHumanoid, Gait } from './Character.js';
+import { buildBody, Gait } from './Character.js';
 import { toonGradient } from './textures.js';
 
 const WORLD_UP = new THREE.Vector3(0, 1, 0);
@@ -77,9 +77,11 @@ export class Player {
     this.material = bodyMat;
     this.targetColor = new THREE.Color(0xeef0f2);
 
-    // Boneco de vinil branco: cabeça redonda, corpo gelatinoso, membros atarracados.
+    // Boneco branco na forma escolhida no menu (Fase 4): 'toy' | 'blob' | 'cube'.
+    // A colisão/latch NÃO muda com a forma (usa a cápsula lógica); só o visual.
     const H = HALF_EXTENT * 2; // altura total = extensão vertical da cápsula de colisão
-    const toy = buildHumanoid(bodyMat, H);
+    const kind = sessionStorage.getItem('eom-body') || 'toy';
+    const toy = buildBody(bodyMat, H, { kind });
     this.object.add(toy.group);
 
     // Caminhada procedural: pernas/braços balançam e o corpo bobeia/inclina,

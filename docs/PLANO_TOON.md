@@ -29,7 +29,7 @@ pose (crouch já existente). A "pintura livre por textura" fica para depois (Fas
 | 6 — Paleta pop/viva | ✅ feito | `8e2875c` | MANSION revisado; deltas verificados (par 0.169, boneco 0.290) |
 | 7 — UI party + remover penumbra da detecção | ✅ feito | `9c53cf4` | badge removido; `_canSee` sem fator de luz; botões candy coloridos |
 | 8 — Áudio (stingers de party) | ✅ feito | (este) | sons retrabalhados; +stinger `camo()` na borda de subida |
-| 4 — Formas blob/cubo selecionáveis | ⬜ pendente | — | `buildHumanoid` → `buildBody(kind)`; deixado p/ o fim |
+| 4 — Formas blob/cubo selecionáveis | ✅ feito | (este) | `buildBody(kind)` + alias; seletor no menu; persiste `eom-body` |
 | 9 — Pintura livre por textura (fidelidade total) | ⬜ futuro | — | fora do MVP; pesado no mobile |
 
 **Validação:** three vem por CDN (importmap), então não há harness node local — a

@@ -13,16 +13,23 @@ import * as THREE from 'three';
 //
 // Retorna o grupo, medidas da cabeça (p/ posicionar olhos/visor) e o `rig` com as
 // juntas animáveis.
-export function buildHumanoid(material, height = 1, {
+// Fase 4: fábrica de CORPOS selecionáveis (estilo Meccha Chameleon). `kind`:
+//   'toy'  — art toy de vinil (cabeça redonda + torso gelatinoso + membros)
+//   'blob' — massa arredondada achatada, membros-nub minúsculos
+//   'cube' — geométrico (cubos; arestas vivas casam com o contorno cel)
+// Todas as formas mantêm o MESMO contrato de rig ({upper, legs[2], arms[2]}) para
+// o Gait animar e o Player posicionar olhos por (headR, headY) — sem mexer nos
+// chamadores. TODAS as partes compartilham UM material (camuflagem tinge tudo).
+export function buildBody(material, height = 1, {
   castShadow = true, outline = false, outlineColor = 0x14181d, outlineScale = 1.07,
+  kind = 'toy',
 } = {}) {
   const H = height;
   const g = new THREE.Group();
-  // Contorno CEL (Fase 3a): inverted-hull. Uma casca da MESMA geometria, inflada e
-  // renderizada só pelo BackSide numa cor escura chapada → borda de desenho barata,
-  // que acompanha a animação (a casca é filha da malha-base). Desligado por padrão:
-  // o jogador NÃO usa (uma borda escura fixa denunciaria a camuflagem); o Caçador
-  // usa, para "saltar" como ameaça.
+  // Contorno CEL (Fase 3a): inverted-hull. Casca da MESMA geometria, inflada e só
+  // BackSide numa cor escura → borda de desenho barata, que segue a animação (é
+  // filha da malha-base). Desligado por padrão: o jogador NÃO usa (borda fixa
+  // denunciaria a camuflagem); o Caçador usa, para "saltar" como ameaça.
   const outlineMat = outline
     ? new THREE.MeshBasicMaterial({ color: outlineColor, side: THREE.BackSide })
     : null;
@@ -38,59 +45,77 @@ export function buildHumanoid(material, height = 1, {
     return m;
   };
 
-  // Tronco superior (cabeça + torso + ombros): recebe bob/inclinação da passada.
+  // Tronco superior (recebe bob/inclinação/crouch da passada).
   const upper = new THREE.Group();
   g.add(upper);
 
-  // Cabeça redonda (grande, proporção chibi): topo em +0.5H.
-  const headR = 0.24 * H;
-  const headY = 0.5 * H - headR;
-  const head = mk(new THREE.SphereGeometry(headR, 24, 18));
-  head.position.y = headY;
-  upper.add(head);
+  // Cria um par esq/dir de membros num PIVÔ (o Gait balança por rotation.x).
+  // parent='upper' → braços (acompanham o bob); parent='g' → pernas. restZ abre
+  // lateralmente (pose de repouso dos braços). A geometria é compartilhada pelo par.
+  const limbPair = (geo, { y, x, hang, parent, restZ = 0 }) => {
+    const pair = [];
+    for (const sx of [-1, 1]) {
+      const pivot = new THREE.Group();
+      pivot.position.set(sx * x, y, 0);
+      if (restZ) pivot.rotation.z = sx * restZ;
+      const m = mk(geo);
+      m.position.y = hang;
+      pivot.add(m);
+      (parent === 'upper' ? upper : g).add(pivot);
+      pair.push(pivot);
+    }
+    return pair;
+  };
 
-  // Torso gelatinoso: cápsula rechonchuda que se funde à cabeça e às pernas.
-  const torsoR = 0.26 * H, torsoL = 0.20 * H;
-  const torso = mk(new THREE.CapsuleGeometry(torsoR, torsoL, 8, 20));
-  torso.position.y = -0.02 * H;
-  upper.add(torso);
+  let headR, headY, legs, arms;
 
-  // Pernas atarracadas (bípede): cada uma pendurada num PIVÔ no quadril, para
-  // balançar em torno do topo (passo). Pés apoiados em -0.5H quando em repouso.
-  const legR = 0.115 * H, legL = 0.12 * H;
-  const legHalf = legL / 2 + legR;
-  const hipY = -0.5 * H + 2 * legHalf;
-  const legX = 0.12 * H;
-  const legs = [];
-  for (const sx of [-1, 1]) {
-    const pivot = new THREE.Group();
-    pivot.position.set(sx * legX, hipY, 0);
-    const leg = mk(new THREE.CapsuleGeometry(legR, legL, 6, 12));
-    leg.position.y = -legHalf; // pendura a partir do quadril
-    pivot.add(leg);
-    g.add(pivot);
-    legs.push(pivot);
-  }
-
-  // Braços atarracados (sem mãos/dedos): pivô no ombro, dentro do `upper` para
-  // acompanhar bob/inclinação. Abertura lateral base + balanço em contrafase.
-  const armR = 0.10 * H, armL = 0.14 * H;
-  const armHalf = armL / 2 + armR;
-  const shoulderY = 0.08 * H + armHalf;
-  const armX = 0.28 * H;
-  const arms = [];
-  for (const sx of [-1, 1]) {
-    const pivot = new THREE.Group();
-    pivot.position.set(sx * armX, shoulderY, 0);
-    pivot.rotation.z = sx * -0.20; // leve abertura para os lados (pose de repouso)
-    const arm = mk(new THREE.CapsuleGeometry(armR, armL, 6, 12));
-    arm.position.y = -armHalf;
-    pivot.add(arm);
-    upper.add(pivot);
-    arms.push(pivot);
+  if (kind === 'blob') {
+    const R = 0.36 * H;
+    const blob = mk(new THREE.SphereGeometry(R, 24, 18));
+    blob.position.y = -0.08 * H;
+    blob.scale.set(1.06, 0.92, 1.0); // achatado, mais largo (gelatinoso)
+    upper.add(blob);
+    headR = 0.30 * H; headY = 0.14 * H; // olhos no alto-frente da massa
+    legs = limbPair(new THREE.SphereGeometry(0.10 * H, 12, 10),
+      { y: -0.40 * H, x: 0.14 * H, hang: -0.02 * H, parent: 'g' });
+    arms = limbPair(new THREE.SphereGeometry(0.09 * H, 12, 10),
+      { y: 0.02 * H, x: 0.34 * H, hang: -0.02 * H, parent: 'upper' });
+  } else if (kind === 'cube') {
+    const head = mk(new THREE.BoxGeometry(0.40 * H, 0.34 * H, 0.38 * H));
+    const hY = 0.5 * H - 0.17 * H;
+    head.position.y = hY;
+    upper.add(head);
+    const torso = mk(new THREE.BoxGeometry(0.5 * H, 0.5 * H, 0.45 * H));
+    torso.position.y = -0.08 * H;
+    upper.add(torso);
+    headR = 0.20 * H; headY = hY;
+    legs = limbPair(new THREE.BoxGeometry(0.15 * H, 0.18 * H, 0.15 * H),
+      { y: -0.33 * H, x: 0.13 * H, hang: -0.09 * H, parent: 'g' });
+    arms = limbPair(new THREE.BoxGeometry(0.13 * H, 0.18 * H, 0.13 * H),
+      { y: 0.05 * H, x: 0.30 * H, hang: -0.09 * H, parent: 'upper', restZ: -0.12 });
+  } else {
+    // 'toy' (padrão)
+    headR = 0.24 * H; headY = 0.5 * H - headR;
+    const head = mk(new THREE.SphereGeometry(headR, 24, 18));
+    head.position.y = headY;
+    upper.add(head);
+    const torso = mk(new THREE.CapsuleGeometry(0.26 * H, 0.20 * H, 8, 20));
+    torso.position.y = -0.02 * H;
+    upper.add(torso);
+    const legR = 0.115 * H, legL = 0.12 * H, legHalf = legL / 2 + legR;
+    legs = limbPair(new THREE.CapsuleGeometry(legR, legL, 6, 12),
+      { y: -0.5 * H + 2 * legHalf, x: 0.12 * H, hang: -legHalf, parent: 'g' });
+    const armR = 0.10 * H, armL = 0.14 * H, armHalf = armL / 2 + armR;
+    arms = limbPair(new THREE.CapsuleGeometry(armR, armL, 6, 12),
+      { y: 0.08 * H + armHalf, x: 0.28 * H, hang: -armHalf, parent: 'upper', restZ: -0.20 });
   }
 
   return { group: g, headR, headY, rig: { upper, legs, arms, height: H } };
+}
+
+// Alias legado: o Caçador (e o padrão) usam o art toy.
+export function buildHumanoid(material, height = 1, opts = {}) {
+  return buildBody(material, height, { ...opts, kind: opts.kind || 'toy' });
 }
 
 const MAX_STEP_RATE = 15; // rad/s: teto da cadência (evita "perna em câmera rápida")
