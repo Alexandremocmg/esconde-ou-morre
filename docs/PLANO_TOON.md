@@ -13,6 +13,36 @@ climbables/solids, distribuição de Caçadores) — só a **camada de aparênci
 
 ---
 
+## STATUS DE IMPLEMENTAÇÃO (atualizado 2026-08-11)
+
+Decisão de escopo da camuflagem manual: **MVP** = conta-gotas mirado + roda de cor +
+pose (crouch já existente). A "pintura livre por textura" fica para depois (Fase 9).
+
+| Fase | Estado | Commit | Notas |
+|------|--------|--------|-------|
+| 1 — Render & luz claros | ✅ feito | `78ed7f5` | NoToneMapping, fundo/fog claros, luz plana branca, flicker removido |
+| 2 — Cel-shading (MeshToonMaterial + gradientMap) | ✅ feito | `6fdd096` | `toonGradient()` em textures.js; troca nos choke points de Level/Player/Seeker |
+| 2c — Achatar (sem normal nas superfícies grandes) | ✅ feito | `1403cc1` | `_addWall`/`_buildRoom` sem normalMap (banda ruidosa + fill-rate) |
+| 3a — Contorno cel (inverted-hull) | ✅ feito | `1403cc1` | opção `outline` em buildHumanoid; **só Caçadores** (jogador não, p/ não denunciar camo) |
+| 5a — Conta-gotas mirado | ✅ feito | `a8ad30a` | `Player.sampleColor(camera)` substitui `paintFromWall`; retícula `#reticle` |
+| 5b — Roda de cor HSV | ✅ feito | `1b2560a` | `src/ColorPicker.js`; botão 🎛️ Cor; cor entregue em sRGB |
+| 6 — Paleta pop/viva | ✅ feito | `8e2875c` | MANSION revisado; deltas verificados (par 0.169, boneco 0.290) |
+| 7 — UI party + remover penumbra da detecção | ⬜ pendente | — | tirar `#penumbra-badge`; fator de luz vestigial em `Seeker._canSee`/`Level.lightAt` |
+| 8 — Áudio (stingers de party) | ⬜ pendente | — | trocar clima de terror |
+| 4 — Formas blob/cubo selecionáveis | ⬜ pendente | — | `buildHumanoid` → `buildBody(kind)`; deixado p/ o fim |
+| 9 — Pintura livre por textura (fidelidade total) | ⬜ futuro | — | fora do MVP; pesado no mobile |
+
+**Validação:** three vem por CDN (importmap), então não há harness node local — a
+verificação é boot headless no Chromium (`chromium --headless=new
+--enable-unsafe-swiftshader`) instanciando `new Game()` + `start()` + exercitando o
+método da fase, mais **playtest visual** pelo túnel cloudflared. Cada fase acima passou
+no boot headless sem erro e no playtest do usuário (Fases 1–5a confirmadas em runtime).
+
+**Operacional:** servir SEMPRE com `python3 dev_server.py` (headers `no-store`), nunca
+`http.server` — senão o túnel/navegador servem módulos ES antigos (importados sem `?v=`).
+
+---
+
 ## 0. O que NÃO muda (para não regredir)
 
 Preservar intocado — a virada é de *aparência* e de *como se aplica cor*, não de física:
