@@ -40,18 +40,17 @@ export class Game {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, this.isMobile ? 1.5 : 2));
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    // Grada o amarelo-doentio sem estourar os props brilhosos (vending/girofles).
-    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    // Exposição um pouco maior: deixa as cores saturadas dos cômodos/props herói
-    // "estourarem" sem lavar o amarelo-doentio do perímetro.
-    this.renderer.toneMappingExposure = 1.05;
+    // Look TOON (estilo Meccha Chameleon): sem tone mapping, para as cores chapadas
+    // saírem "cruas". ACES comprimia highlights e dessaturava — o oposto do hand-drawn.
+    this.renderer.toneMapping = THREE.NoToneMapping;
+    this.renderer.toneMappingExposure = 1.0;
 
-    // Cena — atmosfera MANSÃO DE LUXO em penumbra (quente, âmbar de velas).
+    // Cena — ambiente CLARO e legível (party game), não mais penumbra de terror.
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x120f0b);
-    // Fog quente/escuro reescalado para a pegada de 25×25 m (antes 80×80): fecha
-    // o horizonte a ~40 m, escondendo os cantos em penumbra sem apagar o perto.
-    this.scene.fog = new THREE.Fog(0x120f0b, 9, 40);
+    this.scene.background = new THREE.Color(0xeaf0f5);
+    // Fog claro e distante: só suaviza o horizonte, sem fechar a cena. A leitura
+    // clara é a assinatura do look toon (ao contrário da penumbra anterior).
+    this.scene.fog = new THREE.Fog(0xeaf0f5, 40, 120);
 
     // Câmera (proporção landscape de celular; ajustada no resize)
     this.camera = new THREE.PerspectiveCamera(60, 16 / 9, 0.1, 200);
@@ -148,44 +147,29 @@ export class Game {
   }
 
   _addLights() {
-    // Penumbra quente de mansão: preenchimento difuso âmbar baixo, mas ainda
-    // legível (a camuflagem depende de LER a cor; a penumbra que afeta detecção é
-    // estimativa de gameplay em Level.lightAt, não escuridão real). Céu âmbar,
-    // solo nogueira escuro.
-    this.scene.add(new THREE.HemisphereLight(0x6b5a44, 0x1a140d, 0.6));
-    this.scene.add(new THREE.AmbientLight(0x3a2f22, 0.30));
+    // Iluminação TOON: clara e plana. O cel-shading quer sombra própria mínima e
+    // leitura de cor honesta (a camuflagem depende de LER a cor da superfície).
+    // Céu branco, solo neutro claro — nada de âmbar de penumbra.
+    this.scene.add(new THREE.HemisphereLight(0xffffff, 0xdfe3ea, 0.95));
+    this.scene.add(new THREE.AmbientLight(0xffffff, 0.5));
 
-    // Luz-chave suave (claraboia/luar quente): único caster de sombra (perf) →
-    // sombras longas e douradas de mansão.
-    const fluor = new THREE.DirectionalLight(0xf3e6c4, 0.85);
-    fluor.position.set(5, 18, 3);
-    fluor.castShadow = true;
-    const shadowRes = this.isMobile ? 1024 : 2048; // metade da resolução em mobile
-    fluor.shadow.mapSize.set(shadowRes, shadowRes);
-    fluor.shadow.radius = 3;               // borda suave (PCFSoftShadowMap)
-    // Frustum de sombra reescalado para a pegada da mansão (HALF=12.5).
+    // Luz-chave branca e estável: único caster de sombra (perf). Contraste baixo,
+    // borda suave — a sombra é sutil, o look cel não depende dela.
+    const key = new THREE.DirectionalLight(0xffffff, 0.7);
+    key.position.set(5, 18, 3);
+    key.castShadow = !this.isMobile;       // mobile: sem sombra (o cel dispensa)
+    const shadowRes = 2048;
+    key.shadow.mapSize.set(shadowRes, shadowRes);
+    key.shadow.radius = 3;                 // borda suave (PCFSoftShadowMap)
     const s = 15;
-    fluor.shadow.camera.left = -s;
-    fluor.shadow.camera.right = s;
-    fluor.shadow.camera.top = s;
-    fluor.shadow.camera.bottom = -s;
-    fluor.shadow.camera.near = 1;
-    fluor.shadow.camera.far = 42;
-    fluor.shadow.bias = -0.0004;
-    this.scene.add(fluor);
-
-    // Referência p/ o zumbido/flicker fluorescente no loop.
-    this._fluor = fluor;
-    this._fluorBase = fluor.intensity;
-  }
-
-  // Zumbido fluorescente: leve tremor de intensidade + "piscadas" ocasionais.
-  _fluorFlicker(t) {
-    if (!this._fluor) return;
-    let k = 1 + 0.04 * Math.sin(t * 90) + 0.02 * Math.sin(t * 37.3);
-    // Queda breve e rara (a lâmpada "falha" por um instante).
-    if (Math.sin(t * 11.0) > 0.995 || Math.random() < 0.006) k *= 0.55;
-    this._fluor.intensity = this._fluorBase * k;
+    key.shadow.camera.left = -s;
+    key.shadow.camera.right = s;
+    key.shadow.camera.top = s;
+    key.shadow.camera.bottom = -s;
+    key.shadow.camera.near = 1;
+    key.shadow.camera.far = 42;
+    key.shadow.bias = -0.0004;
+    this.scene.add(key);
   }
 
   // Fiação dos controles: botões de ação e a área de olhar (arrasto → câmera).
@@ -260,7 +244,6 @@ export class Game {
       if (this.elapsed >= this.surviveTime) this._win();
     }
     const t = this._clock.elapsedTime;
-    this._fluorFlicker(t);
     this.level.update?.(t);                 // girofles/painéis piscando
     this.effects.update(dt, this.camera);
     this.follow.update(dt, this.player, this.level.cameraColliders || this.level.climbables);
