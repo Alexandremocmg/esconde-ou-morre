@@ -15,6 +15,25 @@ function cached(key, make) {
   return tex;
 }
 
+// Rampa de sombreamento CEL (look toon estilo Meccha Chameleon). MeshToonMaterial
+// amostra este LUT 1×N (canal R) pela luz difusa (N·L), quantizando o degradê em
+// poucas bandas chapadas. Cacheada por nº de degraus. O piso é claro (0.45) de
+// propósito: mesmo a banda mais escura mantém a cor legível — a camuflagem depende
+// de LER a cor da superfície, então nada de bandas quase pretas.
+export function toonGradient(steps = 3) {
+  return cached(`toon:${steps}`, () => {
+    const n = Math.max(2, steps | 0);
+    const data = new Uint8Array(n);
+    for (let i = 0; i < n; i++) {
+      data[i] = Math.round(255 * (0.45 + 0.55 * (i / (n - 1))));
+    }
+    const tex = new THREE.DataTexture(data, n, 1, THREE.RedFormat);
+    tex.magFilter = tex.minFilter = THREE.NearestFilter;
+    tex.needsUpdate = true;
+    return tex;
+  });
+}
+
 // Cria um <canvas> 2D quadrado já com um preenchimento de base.
 function makeCanvas(size, base) {
   const cv = document.createElement('canvas');

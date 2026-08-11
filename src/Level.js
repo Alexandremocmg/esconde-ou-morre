@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
-import { materialMaps } from './textures.js';
+import { materialMaps, toonGradient } from './textures.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MANSÃO DE LUXO — térreo (Fase 3). Pegada ~25×25 m por andar (10,7× menor que a
@@ -142,8 +142,10 @@ export class Level {
     return m;
   }
 
+  // roughness/metalness são inertes no MeshToonMaterial (mantidos na assinatura só
+  // para os chamadores não quebrarem); o sombreamento vem do gradientMap cel.
   _makeMat({ color, roughness = 0.7, metalness = 0.05, map = null, normalMap = null, normalScale = 1, emissive = null, emissiveIntensity = 0 }) {
-    const mat = new THREE.MeshStandardMaterial({ color, roughness, metalness });
+    const mat = new THREE.MeshToonMaterial({ color, gradientMap: toonGradient() });
     if (map) mat.map = map;
     if (normalMap) { mat.normalMap = normalMap; mat.normalScale = new THREE.Vector2(normalScale, normalScale); }
     if (emissive !== null) { mat.emissive = new THREE.Color(emissive); mat.emissiveIntensity = emissiveIntensity; }
@@ -160,7 +162,7 @@ export class Level {
     emissive = null, emissiveIntensity = 0,
   } = {}) {
     const radius = Math.min(0.22, 0.14 * Math.min(w, h, d));
-    const mat = new THREE.MeshStandardMaterial({ color, roughness, metalness });
+    const mat = new THREE.MeshToonMaterial({ color, gradientMap: toonGradient() });
     if (emissive !== null) { mat.emissive = new THREE.Color(emissive); mat.emissiveIntensity = emissiveIntensity; }
     if (map) {
       const tex = map.clone(); tex.needsUpdate = true;
@@ -796,7 +798,7 @@ export class Level {
     const y = WALL_H;
     const ceil = new THREE.Mesh(
       new THREE.PlaneGeometry(HALF * 2, HALF * 2),
-      new THREE.MeshStandardMaterial({ color: 0xece7db, roughness: 1.0, side: THREE.FrontSide })
+      new THREE.MeshToonMaterial({ color: 0xece7db, gradientMap: toonGradient(), side: THREE.FrontSide })
     );
     ceil.rotation.x = Math.PI / 2;
     ceil.position.y = y;

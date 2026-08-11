@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { buildHumanoid, Gait } from './Character.js';
+import { toonGradient } from './textures.js';
 
 const WORLD_UP = new THREE.Vector3(0, 1, 0);
 
@@ -70,8 +71,8 @@ export class Player {
 
     // Branco fosco de "art toy" (Pop Mart): é a cor BASE do boneco; a camuflagem
     // apenas tinge por cima. Uma só material para o corpo inteiro (ver Character.js).
-    const bodyMat = new THREE.MeshStandardMaterial({
-      color: 0xeef0f2, roughness: 0.5, metalness: 0.05,
+    const bodyMat = new THREE.MeshToonMaterial({
+      color: 0xeef0f2, gradientMap: toonGradient(),
     });
     this.material = bodyMat;
     this.targetColor = new THREE.Color(0xeef0f2);
@@ -92,7 +93,7 @@ export class Player {
     const EYE_X = toy.headR * 0.40;
     const EYE_Y = toy.headY + toy.headR * 0.08;
     const EYE_Z = toy.headR * 0.86;
-    const pupilMat = new THREE.MeshStandardMaterial({ color: 0x14181d, roughness: 0.3 });
+    const pupilMat = new THREE.MeshToonMaterial({ color: 0x14181d, gradientMap: toonGradient() });
     this._pupils = [];
     this._pupilOffset = { x: 0, y: 0 }; // deslocamento suavizado (local X/Y)
     for (const sx of [-1, 1]) {

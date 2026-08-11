@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { buildHumanoid, Gait } from './Character.js';
+import { toonGradient } from './textures.js';
 
 // Parâmetros do Caçador
 const BODY_R = 0.6;
@@ -108,8 +109,8 @@ export class Seeker {
     // Corpo: mesmo "art toy" de vinil do jogador, mas em cor distinta (vermelho
     // por padrão; outra cor p/ o 2º Caçador) para ler nitidamente como AMEAÇA.
     // Fosco, sem olhos — só um visor/scanner na cabeça marca a frente.
-    const bodyMat = new THREE.MeshStandardMaterial({
-      color: bodyColor, roughness: 0.5, metalness: 0.1,
+    const bodyMat = new THREE.MeshToonMaterial({
+      color: bodyColor, gradientMap: toonGradient(),
     });
     const toy = buildHumanoid(bodyMat, BODY_H);
     this.bodyGroup.add(toy.group);
@@ -125,7 +126,7 @@ export class Seeker {
     // Vai no tronco (`upper`) para acompanhar o bob/inclinação da caminhada.
     const visor = new THREE.Mesh(
       new THREE.BoxGeometry(toy.headR * 1.1, toy.headR * 0.5, 0.18),
-      new THREE.MeshStandardMaterial({ color: 0x140505, emissive: 0x330000 })
+      new THREE.MeshToonMaterial({ color: 0x140505, emissive: 0x330000, gradientMap: toonGradient() })
     );
     visor.position.set(0, toy.headY, toy.headR + 0.05);
     toy.rig.upper.add(visor);
