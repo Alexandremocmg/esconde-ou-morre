@@ -194,11 +194,14 @@ export class Level {
   // de camuflagem (o "anel-âncora" da mansão, análogo ao amarelo Backrooms).
   // Grudável + colorável + sólida.
   _addWall(w, h, d, x, y, z, color = MANSION.marmore) {
-    const bo = this._mat('boiserie');
+    const bo = this._mat('boiserie', { normals: false });
     const long = Math.max(w, d);
+    // Fase 2c: superfícies grandes SEM normalMap. Sob cel-shading o relevo vira
+    // banda ruidosa (o LUT reage a cada perturbação da normal), e é o maior custo
+    // de fill-rate no mobile. O albedo (bo.map) chapado basta para o toon.
     return this._addBox(w, h, d, color, x, y, z, {
       roughness: bo.roughness, metalness: 0.02,
-      map: bo.map, normalMap: bo.normalMap, normalScale: bo.normalScale,
+      map: bo.map,
       mapRepeat: { x: Math.max(1, long / 3), y: Math.max(1, h / 3) },
     });
   }
@@ -271,10 +274,10 @@ export class Level {
   // `doors` usa 'n','s','e','w' (n=-z, s=+z, w=-x, e=+x).
   _buildRoom(cx, cz, w, d, color, { doors = ['s', 'n'], door = DOOR_MIN, h = ROOM_H } = {}) {
     const hw = w / 2, hd = d / 2, t = 0.5;
-    const bo = this._mat('boiserie');
+    const bo = this._mat('boiserie', { normals: false }); // Fase 2c: paredes chapadas (sem normal)
     const opts = {
       roughness: bo.roughness, metalness: 0.02,
-      map: bo.map, normalMap: bo.normalMap, normalScale: bo.normalScale,
+      map: bo.map,
     };
     const rep = (len) => ({ x: Math.max(1, len / 3), y: Math.max(1, h / 3) });
 

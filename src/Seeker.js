@@ -112,7 +112,7 @@ export class Seeker {
     const bodyMat = new THREE.MeshToonMaterial({
       color: bodyColor, gradientMap: toonGradient(),
     });
-    const toy = buildHumanoid(bodyMat, BODY_H);
+    const toy = buildHumanoid(bodyMat, BODY_H, { outline: true }); // contorno cel (Fase 3a): ameaça "salta"
     this.bodyGroup.add(toy.group);
 
     // Caminhada procedural (mesmo Gait do jogador): pernas/braços balançam e o

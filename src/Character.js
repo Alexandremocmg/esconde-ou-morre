@@ -13,10 +13,30 @@ import * as THREE from 'three';
 //
 // Retorna o grupo, medidas da cabeça (p/ posicionar olhos/visor) e o `rig` com as
 // juntas animáveis.
-export function buildHumanoid(material, height = 1, { castShadow = true } = {}) {
+export function buildHumanoid(material, height = 1, {
+  castShadow = true, outline = false, outlineColor = 0x14181d, outlineScale = 1.07,
+} = {}) {
   const H = height;
   const g = new THREE.Group();
-  const mk = (geo) => { const m = new THREE.Mesh(geo, material); m.castShadow = castShadow; return m; };
+  // Contorno CEL (Fase 3a): inverted-hull. Uma casca da MESMA geometria, inflada e
+  // renderizada só pelo BackSide numa cor escura chapada → borda de desenho barata,
+  // que acompanha a animação (a casca é filha da malha-base). Desligado por padrão:
+  // o jogador NÃO usa (uma borda escura fixa denunciaria a camuflagem); o Caçador
+  // usa, para "saltar" como ameaça.
+  const outlineMat = outline
+    ? new THREE.MeshBasicMaterial({ color: outlineColor, side: THREE.BackSide })
+    : null;
+  const mk = (geo) => {
+    const m = new THREE.Mesh(geo, material);
+    m.castShadow = castShadow;
+    if (outlineMat) {
+      const o = new THREE.Mesh(geo, outlineMat);
+      o.scale.setScalar(outlineScale);
+      o.castShadow = false;
+      m.add(o); // filha: herda a pose/animação da parte
+    }
+    return m;
+  };
 
   // Tronco superior (cabeça + torso + ombros): recebe bob/inclinação da passada.
   const upper = new THREE.Group();
