@@ -188,8 +188,8 @@ export class Game {
     press(this._btnLatch, () => this.player.toggleLatch(this.camera));
     press(this._btnCrouch, () => this.player.toggleCrouch());
     press(this._btnPaint, () => {
-      const color = this.player.paintFromWall();
-      if (color) { // só camufla grudado (retorna null no chão)
+      const color = this.player.sampleColor(this.camera); // conta-gotas mirado (Fase 5a)
+      if (color) {
         this.effects.pulse(this.player.position, color);
         this.audio.paint();
       }

@@ -414,18 +414,21 @@ export class Player {
   // em update) e faz o Caçador enxergar de mais perto (ver Seeker._canSee).
   toggleCrouch() { this.crouched = !this.crouched; }
 
-  // Pintar (botão): copia a cor da superfície grudada para se camuflar. Sonda a
-  // partir do jogador de volta para a parede (−normal). Retorna a cor (ou null)
-  // para o Game disparar o pulso/som.
-  paintFromWall() {
-    if (this.state !== 'latched') return null;
-    const back = this._tmpDir.copy(this.wallNormal).multiplyScalar(-1);
-    this._raycaster.set(this.position, back);
-    this._raycaster.far = RADIUS + 0.6;
+  // Conta-gotas MIRADO (Fase 5a — camuflagem manual estilo Meccha): amostra a cor
+  // da 1ª superfície colorável na direção da MIRA (retícula central = direção da
+  // câmera) e a assume como disfarce. Funciona no chão E grudado — a perícia é
+  // escolher a cor certa e depois grudar numa superfície que combine (a camuflagem
+  // efetiva ainda exige estar grudado + cor batendo; ver isCamouflaged). Retorna a
+  // cor (ou null) para o Game disparar pulso/som.
+  sampleColor(camera) {
+    const dir = camera.getWorldDirection(this._tmpDir).normalize();
+    this._raycaster.set(this.position, dir);
+    this._raycaster.far = 8;
     const hit = this._raycaster.intersectObjects(this.level.colorables, false)[0];
     let color = hit && hit.object.material && hit.object.material.color;
-    if (!color && this.latchedObject && this.latchedObject.material) {
-      color = this.latchedObject.material.color; // fallback: a própria superfície grudada
+    // Fallback: se está grudado e a mira não pegou nada, usa a própria superfície.
+    if (!color && this.state === 'latched' && this.latchedObject && this.latchedObject.material) {
+      color = this.latchedObject.material.color;
     }
     if (!color) return null;
     this.setCamouflage(color);
