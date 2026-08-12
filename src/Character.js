@@ -13,10 +13,11 @@ import * as THREE from 'three';
 //
 // Retorna o grupo, medidas da cabeça (p/ posicionar olhos/visor) e o `rig` com as
 // juntas animáveis.
-// Fase 4: fábrica de CORPOS selecionáveis (estilo Meccha Chameleon). `kind`:
-//   'toy'  — art toy de vinil (cabeça redonda + torso gelatinoso + membros)
-//   'blob' — massa arredondada achatada, membros-nub minúsculos
-//   'cube' — geométrico (cubos; arestas vivas casam com o contorno cel)
+// Fase 4 (+ manequim): fábrica de CORPOS selecionáveis (estilo Meccha Chameleon). `kind`:
+//   'toy'      — art toy de vinil (cabeça redonda + torso gelatinoso + membros)
+//   'mannequin'— pictograma macio SEM juntas (cabeça-bola + torso ovoide + membros lisos)
+//   'blob'     — massa arredondada achatada, membros-nub minúsculos (slime)
+//   'cube'     — geométrico (cubos; arestas vivas casam com o contorno cel)
 // Todas as formas mantêm o MESMO contrato de rig ({upper, legs[2], arms[2]}) para
 // o Gait animar e o Player posicionar olhos por (headR, headY) — sem mexer nos
 // chamadores.
@@ -76,7 +77,20 @@ export function buildBody(materials, height = 1, {
 
   let headR, headY, legs, arms;
 
-  if (kind === 'blob') {
+  if (kind === 'mannequin') {
+    // Pictograma MACIO e sem juntas (como o modelo original do Meccha): cabeça-bola
+    // grande, torso ovoide único, braços/pernas lisos de UMA peça com pontas
+    // arredondadas. Sem articulação → o movimento é simples e não "quebra".
+    headR = 0.20 * H; headY = 0.5 * H - headR * 0.85;
+    const head = mk(new THREE.SphereGeometry(headR, 24, 18));
+    head.position.y = headY; upper.add(head);                       // cabeça-bola
+    const torso = mk(new THREE.CapsuleGeometry(0.19 * H, 0.24 * H, 8, 18));
+    torso.position.y = 0.02 * H; upper.add(torso);                  // torso ovoide único
+    legs = limbPair(new THREE.CapsuleGeometry(0.085 * H, 0.20 * H, 6, 12), matL,
+      { y: -0.10 * H, x: 0.10 * H, hang: -0.185 * H, parent: 'g' });
+    arms = limbPair(new THREE.CapsuleGeometry(0.07 * H, 0.24 * H, 6, 12), matU,
+      { y: 0.16 * H, x: 0.19 * H, hang: -0.19 * H, parent: 'upper', restZ: -0.12 });
+  } else if (kind === 'blob') {
     const R = 0.36 * H;
     const blob = mk(new THREE.SphereGeometry(R, 24, 18));
     blob.position.y = -0.08 * H;
