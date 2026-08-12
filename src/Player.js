@@ -9,7 +9,7 @@ const DOWN = new THREE.Vector3(0, -1, 0); // amostra/checagem do chão na pose d
 // SCALE reduz o personagem inteiro de forma coerente: as dimensões físicas e os
 // offsets visuais derivam dele, então colisão/latching/olhos/cauda encolhem juntos
 // (evita o descasamento que object.scale causaria com as constantes de colisão).
-const SCALE = 0.65;                 // tamanho do boneco (colisão/latch/olhos derivam daqui)
+const SCALE = 0.8;                  // tamanho do boneco (colisão/latch/olhos derivam daqui)
 const RADIUS = 0.45 * SCALE;
 const LENGTH = 0.9 * SCALE;         // parte cilíndrica da cápsula
 const HALF_EXTENT = RADIUS + LENGTH / 2;

@@ -8,9 +8,13 @@
 > **Status: ✅ implementado — REVISADO.** A 1ª versão (manequim de madeira articulado com
 > juntas esféricas + flexão de joelho/cotovelo) ficou **estranha ao movimentar** e não
 > batia com o modelo real. O modelo do Meccha é um **pictograma MACIO e sem juntas**.
-> Versão final: `kind:'mannequin'` = cabeça-bola grande + torso ovoide único + braços/
-> pernas lisos de UMA peça (pontas arredondadas), **sem articulação**. Removidos o helper
-> `seg2` e a flexão do Gait (código morto). 4º botão 🪆 no menu. Validado headless.
+> Versão 2: `kind:'mannequin'` = cabeça-bola + torso ovoide, sem juntas — mas o andar
+> ficou **robótico** (membros retos).
+> **Versão final:** membros voltam a ser **articulados (joelho/cotovelo)**, porém com
+> junta **SEM EMENDA** (helper `limb2`: calotas das cápsulas se sobrepõem, sem esferas
+> de junta) e o pé cai exatamente na linha do chão. Flexão no Gait aplicada aos
+> humanoides (toy + manequim; blob/cube ficam rígidos). Boneco também **aumentado**
+> (SCALE 0.8). Validado headless (pé em −0.500, joelho dobra no passo).
 
 ## Diferença vs. o "boneco" (toy) atual
 O toy é chibi/atarracado, 1 cápsula por membro. O manequim é **esguio e segmentado**,

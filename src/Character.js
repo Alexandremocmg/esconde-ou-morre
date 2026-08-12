@@ -15,7 +15,7 @@ import * as THREE from 'three';
 // juntas animáveis.
 // Fase 4 (+ manequim): fábrica de CORPOS selecionáveis (estilo Meccha Chameleon). `kind`:
 //   'toy'      — art toy de vinil (cabeça redonda + torso gelatinoso + membros)
-//   'mannequin'— pictograma macio SEM juntas (cabeça-bola + torso ovoide + membros lisos)
+//   'mannequin'— pictograma macio (cabeça-bola + torso ovoide) com membros ARTICULADOS s/ emenda
 //   'blob'     — massa arredondada achatada, membros-nub minúsculos (slime)
 //   'cube'     — geométrico (cubos; arestas vivas casam com o contorno cel)
 // Todas as formas mantêm o MESMO contrato de rig ({upper, legs[2], arms[2]}) para
@@ -75,21 +75,46 @@ export function buildBody(materials, height = 1, {
     return pair;
   };
 
-  let headR, headY, legs, arms;
+  // Membro HUMANOIDE de 2 segmentos com junta SEM EMENDA (sem esferas de junta): as
+  // calotas das cápsulas se sobrepõem (0.8·r), então ao dobrar o joelho/cotovelo lê
+  // como uma dobra orgânica, não como peças soltas. O pé/mão cai EXATAMENTE em `endY`
+  // (comprimento derivado), evitando afundar no chão. Retorna [tops[2], seconds[2]]:
+  // tops = quadril/ombro (o Gait balança); seconds = joelho/cotovelo (a flexão dobra).
+  const limb2 = (mat, { x, topY, endY, r, parent, restZ = 0 }) => {
+    const seg = Math.max(0.02, (topY - endY - 3.04 * r) / 2); // comprimento de cada cilindro
+    const tops = [], seconds = [];
+    for (const sx of [-1, 1]) {
+      const top = new THREE.Group();
+      top.position.set(sx * x, topY, 0);
+      if (restZ) top.rotation.z = sx * restZ;
+      const up = mk(new THREE.CapsuleGeometry(r, seg, 6, 12), mat);
+      up.position.y = -(seg / 2 + r);
+      top.add(up);
+      const second = new THREE.Group();
+      second.position.y = -(seg + 1.2 * r);                   // sobe 0.8·r → calotas se fundem
+      const lo = mk(new THREE.CapsuleGeometry(r * 0.92, seg, 6, 12), mat);
+      lo.position.y = -(seg / 2 + r * 0.92);
+      second.add(lo);
+      top.add(second);
+      (parent === 'upper' ? upper : g).add(top);
+      tops.push(top); seconds.push(second);
+    }
+    return [tops, seconds];
+  };
+
+  let headR, headY, legs, arms, shins = null, forearms = null;
 
   if (kind === 'mannequin') {
-    // Pictograma MACIO e sem juntas (como o modelo original do Meccha): cabeça-bola
-    // grande, torso ovoide único, braços/pernas lisos de UMA peça com pontas
-    // arredondadas. Sem articulação → o movimento é simples e não "quebra".
+    // Pictograma MACIO como o modelo original do Meccha: cabeça-bola grande + torso
+    // ovoide único. Braços/pernas agora ARTICULADOS (joelho/cotovelo) mas sem emenda
+    // visível → andar humanoide de verdade.
     headR = 0.20 * H; headY = 0.5 * H - headR * 0.85;
     const head = mk(new THREE.SphereGeometry(headR, 24, 18));
     head.position.y = headY; upper.add(head);                       // cabeça-bola
     const torso = mk(new THREE.CapsuleGeometry(0.19 * H, 0.24 * H, 8, 18));
     torso.position.y = 0.02 * H; upper.add(torso);                  // torso ovoide único
-    legs = limbPair(new THREE.CapsuleGeometry(0.085 * H, 0.20 * H, 6, 12), matL,
-      { y: -0.10 * H, x: 0.10 * H, hang: -0.185 * H, parent: 'g' });
-    arms = limbPair(new THREE.CapsuleGeometry(0.07 * H, 0.24 * H, 6, 12), matU,
-      { y: 0.16 * H, x: 0.19 * H, hang: -0.19 * H, parent: 'upper', restZ: -0.12 });
+    [legs, shins] = limb2(matL, { x: 0.10 * H, topY: -0.06 * H, endY: -0.5 * H, r: 0.075 * H, parent: 'g' });
+    [arms, forearms] = limb2(matU, { x: 0.19 * H, topY: 0.16 * H, endY: -0.12 * H, r: 0.06 * H, parent: 'upper', restZ: -0.12 });
   } else if (kind === 'blob') {
     const R = 0.36 * H;
     const blob = mk(new THREE.SphereGeometry(R, 24, 18));
@@ -115,23 +140,19 @@ export function buildBody(materials, height = 1, {
     arms = limbPair(new THREE.BoxGeometry(0.13 * H, 0.18 * H, 0.13 * H), matU,
       { y: 0.05 * H, x: 0.30 * H, hang: -0.09 * H, parent: 'upper', restZ: -0.12 });
   } else {
-    // 'toy' (padrão)
+    // 'toy' (padrão) — art toy chibi, agora com joelho/cotovelo articulados (sem emenda).
     headR = 0.24 * H; headY = 0.5 * H - headR;
     const head = mk(new THREE.SphereGeometry(headR, 24, 18));
     head.position.y = headY;
     upper.add(head);
-    const torso = mk(new THREE.CapsuleGeometry(0.26 * H, 0.20 * H, 8, 20));
+    const torso = mk(new THREE.CapsuleGeometry(0.26 * H, 0.18 * H, 8, 20));
     torso.position.y = -0.02 * H;
     upper.add(torso);
-    const legR = 0.115 * H, legL = 0.12 * H, legHalf = legL / 2 + legR;
-    legs = limbPair(new THREE.CapsuleGeometry(legR, legL, 6, 12), matL,
-      { y: -0.5 * H + 2 * legHalf, x: 0.12 * H, hang: -legHalf, parent: 'g' });
-    const armR = 0.10 * H, armL = 0.14 * H, armHalf = armL / 2 + armR;
-    arms = limbPair(new THREE.CapsuleGeometry(armR, armL, 6, 12), matU,
-      { y: 0.08 * H + armHalf, x: 0.28 * H, hang: -armHalf, parent: 'upper', restZ: -0.20 });
+    [legs, shins] = limb2(matL, { x: 0.12 * H, topY: -0.02 * H, endY: -0.5 * H, r: 0.09 * H, parent: 'g' });
+    [arms, forearms] = limb2(matU, { x: 0.26 * H, topY: 0.16 * H, endY: -0.18 * H, r: 0.075 * H, parent: 'upper', restZ: -0.18 });
   }
 
-  return { group: g, headR, headY, rig: { upper, legs, arms, height: H } };
+  return { group: g, headR, headY, rig: { upper, legs, arms, height: H, shins, forearms } };
 }
 
 // Alias legado: o Caçador (e o padrão) usam o art toy.
@@ -209,6 +230,23 @@ export class Gait {
     } else {
       legs[0].rotation.z = 0;
       legs[1].rotation.z = 0;
+    }
+
+    // Flexão de JOELHO/COTOVELO (humanoides articulados: toy/manequim). Guardada por
+    // presença → blob/cube (rígidos) ignoram. O joelho dobra na fase em que a perna
+    // vem à frente (cos(ph)>0, o pé sobe/tuca) — dá o andar humano em vez de "robótico".
+    const shins = this.rig.shins, fore = this.rig.forearms;
+    if (shins) {
+      for (let i = 0; i < 2; i++) {
+        const ph = this.phase + i * Math.PI;
+        shins[i].rotation.x = 0.05 + 0.7 * a * Math.max(0, Math.cos(ph)) + 0.9 * c; // +X = dobra p/ trás
+      }
+    }
+    if (fore) {
+      for (let i = 0; i < 2; i++) {
+        const ph = this.phase + i * Math.PI + Math.PI;
+        fore[i].rotation.x = -(0.12 + 0.22 * a * Math.max(0, Math.cos(ph)) + 0.35 * c); // −X = antebraço à frente
+      }
     }
   }
 }
