@@ -378,26 +378,26 @@ export class Level {
   }
 
   // Poltrona/sofá de veludo: encosto colorido grudável (alvo vertical) + assento/braços.
-  _buildArmchair(x, z, color = MANSION.bordo) {
+  _buildArmchair(x, z, color = MANSION.bordo, base = 0) {
     const ve = this._mat('velvet');
     const vopts = { roughness: ve.roughness, metalness: 0, map: ve.map, normalMap: ve.normalMap, normalScale: ve.normalScale };
-    this._addBox(1.5, 1.0, 0.3, color, x, 0.7, z - 0.45, vopts); // encosto (grudável)
-    this._deco(new THREE.BoxGeometry(1.5, 0.4, 0.9), shade(color, -0.05), x, 0.35, z, { roughness: 0.95 });
+    this._addBox(1.5, 1.0, 0.3, color, x, base + 0.7, z - 0.45, vopts); // encosto (grudável)
+    this._deco(new THREE.BoxGeometry(1.5, 0.4, 0.9), shade(color, -0.05), x, base + 0.35, z, { roughness: 0.95 });
     for (const sx of [-1, 1])
-      this._deco(new THREE.BoxGeometry(0.24, 0.6, 0.95), shade(color, -0.1), x + sx * 0.63, 0.5, z, { roughness: 0.95 });
-    this._deco(new THREE.BoxGeometry(1.05, 0.2, 0.75), shade(color, 0.12), x, 0.62, z, {}); // almofada
+      this._deco(new THREE.BoxGeometry(0.24, 0.6, 0.95), shade(color, -0.1), x + sx * 0.63, base + 0.5, z, { roughness: 0.95 });
+    this._deco(new THREE.BoxGeometry(1.05, 0.2, 0.75), shade(color, 0.12), x, base + 0.62, z, {}); // almofada
   }
 
   // Aparador de carvalho: corpo grudável + tampo de mármore + item de latão.
-  _buildSideboard(x, z, color = MANSION.carvalho) {
+  _buildSideboard(x, z, color = MANSION.carvalho, base = 0) {
     const wd = this._mat('wood');
-    this._addBox(1.9, 1.0, 0.7, color, x, 0.5, z, {
+    this._addBox(1.9, 1.0, 0.7, color, x, base + 0.5, z, {
       roughness: wd.roughness, metalness: 0,
       map: wd.map, normalMap: wd.normalMap, normalScale: wd.normalScale,
     });
-    this._deco(new THREE.BoxGeometry(2.0, 0.08, 0.8), MANSION.marmore, x, 1.04, z, { roughness: 0.25 });
+    this._deco(new THREE.BoxGeometry(2.0, 0.08, 0.8), MANSION.marmore, x, base + 1.04, z, { roughness: 0.25 });
     // Candelabro de latão (com chama emissiva bruxuleante) sobre o aparador.
-    this._buildCandelabra(x, 1.1, z);
+    this._buildCandelabra(x, base + 1.1, z);
   }
 
   // Guarda-roupa alto de ébano: excelente alvo grudável (parede vertical).
@@ -567,10 +567,41 @@ export class Level {
 
   // Vaso/busto ornamental: pedestal (carvalho) + peça (mármore/latão) — cores
   // de disfarce extras, não-grudáveis.
-  _buildPedestalPiece(x, z, kind = 0) {
-    this._deco(new THREE.CylinderGeometry(0.28, 0.32, 1.0, 16), MANSION.carvalho, x, 0.5, z, { cast: true });
-    if (kind === 0) this._deco(new THREE.SphereGeometry(0.32, 16, 12), MANSION.marmore, x, 1.2, z, { roughness: 0.25, cast: true }); // busto/urna
-    else this._deco(new THREE.ConeGeometry(0.3, 0.7, 14), MANSION.latao, x, 1.35, z, { metalness: 0.5, roughness: 0.35, cast: true }); // chama/obelisco
+  _buildPedestalPiece(x, z, kind = 0, base = 0) {
+    this._deco(new THREE.CylinderGeometry(0.28, 0.32, 1.0, 16), MANSION.carvalho, x, base + 0.5, z, { cast: true });
+    if (kind === 0) this._deco(new THREE.SphereGeometry(0.32, 16, 12), MANSION.marmore, x, base + 1.2, z, { roughness: 0.25, cast: true }); // busto/urna
+    else this._deco(new THREE.ConeGeometry(0.3, 0.7, 14), MANSION.latao, x, base + 1.35, z, { metalness: 0.5, roughness: 0.35, cast: true }); // chama/obelisco
+  }
+
+  // ── NOVOS TIPOS (variedade visual do 2º andar) ──────────────────────────────
+  // Planta em vaso: vaso de carvalho + folhagem verde sálvia (cores da paleta).
+  // Folhagem é _deco colorável (alvo de camo de brinde); vaso idem. `base` = piso.
+  _buildPlant(x, z, base = 0) {
+    this._deco(new THREE.CylinderGeometry(0.26, 0.34, 0.6, 14), MANSION.carvalho, x, base + 0.3, z, { cast: true, roughness: 0.6 });
+    this._addSphere(0.45, MANSION.salvia, x, base + 1.0, z, { roughness: 0.9 });
+    this._deco(new THREE.ConeGeometry(0.34, 0.6, 12), MANSION.salvia, x, base + 1.5, z, { roughness: 0.9, cast: true });
+  }
+
+  // Biombo/divisória decorativa: painel fino e alto (corpo grudável = mais um alvo
+  // de camuflagem vertical e uma leve cobertura de linha de visão). `dir` = face.
+  _buildScreen(x, z, color = MANSION.ametista, base = 0, dir = { x: 0, z: 1 }) {
+    const bo = this._mat('boiserie');
+    const alongX = Math.abs(dir.z) >= Math.abs(dir.x);
+    const w = 1.7, h = 1.8, t = 0.16;
+    this._addBox(alongX ? w : t, h, alongX ? t : w, color, x, base + h / 2, z, {
+      roughness: bo.roughness, metalness: 0.02, map: bo.map, normalMap: bo.normalMap, normalScale: bo.normalScale,
+      mapRepeat: { x: 1, y: 1 },
+    });
+    // Coroamento de latão (detalhe, não-colorável).
+    this._deco(new THREE.BoxGeometry(alongX ? w + 0.1 : t, 0.1, alongX ? t : w + 0.1), MANSION.latao,
+      x, base + h + 0.05, z, { colorable: false, metalness: 0.5, roughness: 0.35 });
+  }
+
+  // Mesa redonda: pé + tampo (cilindros baixos), com uma peça central opcional.
+  _buildRoundTable(x, z, base = 0) {
+    this._deco(new THREE.CylinderGeometry(0.12, 0.16, 0.8, 12), MANSION.ebano, x, base + 0.4, z, { cast: true });
+    this._deco(new THREE.CylinderGeometry(0.7, 0.7, 0.1, 24), MANSION.marmore, x, base + 0.85, z, { roughness: 0.25, cast: true });
+    this._deco(new THREE.SphereGeometry(0.16, 12, 10), MANSION.latao, x, base + 1.02, z, { colorable: false, metalness: 0.5, roughness: 0.35 });
   }
 
   // ── VERTICALIDADE: laje, degrau, mezanino ───────────────────────────────────
@@ -700,6 +731,15 @@ export class Level {
     this._buildSconce(HALF - 0.4, FLOOR2_Y + 2, 0);
     this._buildSconce(0, FLOOR2_Y + 2, HALF - 0.4);
 
+    // Enriquecimento visual do ANEL (variedade — Fase B). O anel é largo (DEPTH=4)
+    // e estava vazio entre as alcovas. A faixa de patrulha corre em |coord|=bc≈12.6
+    // (ver _balcony): peças COM colisão (aparador/poltrona/biombo, via _addBox) só
+    // vão contra a parede externa (|coord|≥13.4) ou junto ao guarda-corpo interno
+    // (|coord|≤11.5), nunca sobre a linha 12.6; peças SEM colisão (planta/mesa/
+    // quadro/espelho, via _deco/_addSphere) vão onde a leitura pede. Evita o eixo
+    // x=0 (pés das escadarias, |z|∈[5,10.5]) e a faixa W (passagem elevada da sacada).
+    this._decorateRing();
+
     // Waypoints do anel (Y é ignorado no alcance; serve de XZ-alvo). Laço de 8
     // pontos hugando o anel (cantos + meios de aresta) para não cortar o canto e
     // cair no vão. bc=HALF-1.9 (dentro de [9,12.5]), passando pela borda interna
@@ -713,6 +753,38 @@ export class Level {
     // elevada (sobe ao 3º nível, atravessa e desce), então o Caçador cobre os
     // três níveis sem waypoints especiais. O ponto (-bc, 0) cai sobre a sacada.
     this._upperLoop = this._balcony;
+  }
+
+  // Popular o anel do 2º andar com variedade visual (Fase B). base = FLOOR2_Y.
+  // Regra de colisão (ver comentário no chamador): sólidos contra as paredes
+  // externas ou no rail interno; decorativos livres. Nada no eixo x=0 nem na
+  // faixa W (sacada). Coordenadas escolhidas à mão para deixar a linha bc≈12.6 livre.
+  _decorateRing() {
+    const b = FLOOR2_Y, w = HALF;
+    // — Faixa N (parede externa em -z): peças de frente para +z (orientação nativa
+    //   de _buildSideboard/_buildArmchair). x afastado do eixo das escadas (x=0).
+    this._buildSideboard(-5.5, -(w - 0.6), MANSION.carvalho, b);
+    this._buildArmchair(5.5, -(w - 0.9), MANSION.prussia, b);
+    // — Faixa S (parede externa em +z): decorativos (a poltrona/aparador olham para
+    //   +z, então encarariam a parede aqui). Longe do topo das escadas em (0,~10.8).
+    this._buildRoundTable(6.0, w - 0.7, b);
+    this._buildPlant(-6.0, w - 0.7, b);
+    // — Faixa E (parede externa em +x): sólidos ficariam salientes (largura em x),
+    //   então só decorativos contra a parede + um BIOMBO fino no rail interno,
+    //   paralelo à parede (dir para o vão), dando cobertura de linha de visão.
+    this._buildPlant(w - 0.7, -4.5, b);
+    this._buildRoundTable(w - 0.7, 5.5, b);
+    this._buildScreen(RING_IN + 0.9, 3.2, MANSION.ametista, b, { x: -1, z: 0 });
+    // — Faixa W (sob a sacada): só plantas nas pontas, além dos lances (|z|>6.5) e
+    //   aquém das divisórias de canto — sem tocar a passagem elevada.
+    this._buildPlant(-(w - 0.7), 8.0, b);
+    this._buildPlant(-(w - 0.7), -8.0, b);
+    // — Quadros nas paredes externas do 2º andar (sem colisão), entre as janelas
+    //   (x=±5 em N/S) e as alcovas de canto. y ao lado dos caixilhos.
+    for (const sz of [-1, 1]) {
+      this._buildPainting(-9.3, b + 1.7, sz * (w - 0.32), { x: 0, z: -sz }, 1.3, 1.7);
+      this._buildPainting(9.3, b + 1.7, sz * (w - 0.32), { x: 0, z: -sz }, 1.3, 1.7);
+    }
   }
 
   // Define as rotas de patrulha: 0 = TÉRREO (por layout), 1 = andares altos (anel
@@ -757,6 +829,14 @@ export class Level {
     // Arandela à frente da parede (sz*1.2 mantém-na dentro do cômodo; 1.6 a
     // enterrava na espessura da parede de perímetro).
     this._buildSconce(sx * (HALF - 0.4), base + 2.0, cz + sz * 1.2);
+
+    // Enriquecimento visual (alcova maior com DEPTH=4). Todas peças SEM colisão
+    // (_deco/_addSphere não geram solids) → não estreitam a passagem do anel nem
+    // prendem o Caçador. Quadro na parede z externa, planta no canto extremo,
+    // mesinha ao pé da cama e vaso no pedestal do lado do vão.
+    this._buildPainting(sx * (HALF - 2.3), base + 1.7, sz * (HALF - 0.28), { x: 0, z: -sz }, 1.2, 1.5);
+    this._buildPlant(sx * (HALF - 0.6), sz * (HALF - 0.6), base);
+    this._buildRoundTable(sx * (HALF - 0.8), cz - sz * 1.7, base);
   }
 
   // ── SHELL (casca comum a todos os layouts) ──────────────────────────────────
