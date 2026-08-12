@@ -470,12 +470,16 @@ export class Level {
   _buildTrim() {
     const gi = this._mat('gilt', { normals: false });
     const corn = { colorable: false, map: gi.map, roughness: gi.roughness, metalness: gi.metalness };
-    const base = { colorable: false, roughness: 0.6, metalness: 0.05 };
+    // Rodapé (P1): agora é COLORÁVEL, de MADEIRA (carvalho) e mais alto (0.4) — é a
+    // faixa de cor baixa que a ZONA das pernas amostra, enquanto o tronco amostra a
+    // parede acima. Habilita a camuflagem bi-tom estilo Meccha no perímetro.
+    const wd = this._mat('wood');
+    const base = { colorable: true, map: wd.map, roughness: wd.roughness, metalness: wd.metalness };
     for (const s of [-1, 1]) {
       this._deco(new THREE.BoxGeometry(HALF * 2, 0.3, 0.22), 0xffffff, 0, WALL_H - 0.2, s * (HALF - 0.2), corn);
       this._deco(new THREE.BoxGeometry(0.22, 0.3, HALF * 2), 0xffffff, s * (HALF - 0.2), WALL_H - 0.2, 0, corn);
-      this._deco(new THREE.BoxGeometry(HALF * 2, 0.22, 0.16), MANSION.ebano, 0, 0.11, s * (HALF - 0.24), base);
-      this._deco(new THREE.BoxGeometry(0.16, 0.22, HALF * 2), MANSION.ebano, s * (HALF - 0.24), 0.11, 0, base);
+      this._deco(new THREE.BoxGeometry(HALF * 2, 0.4, 0.16), MANSION.carvalho, 0, 0.2, s * (HALF - 0.24), base);
+      this._deco(new THREE.BoxGeometry(0.16, 0.4, HALF * 2), MANSION.carvalho, s * (HALF - 0.24), 0.2, 0, base);
     }
   }
 

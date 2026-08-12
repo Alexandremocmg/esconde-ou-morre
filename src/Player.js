@@ -69,31 +69,30 @@ export class Player {
     const s = level.spawn;
     this.object.position.set(s ? s.x : 0, GROUND_Y, s ? s.z : 6);
 
-    // Branco fosco de "art toy" (Pop Mart): é a cor BASE do boneco; a camuflagem
-    // apenas tinge por cima. Uma só material para o corpo inteiro (ver Character.js).
-    const bodyMat = new THREE.MeshToonMaterial({
-      color: 0xeef0f2, gradientMap: toonGradient(),
-    });
-    this.material = bodyMat;
-    this.targetColor = new THREE.Color(0xeef0f2);
-
-    // P2 (carimbo de estampa): a "pele" do corpo é um CanvasTexture editável. Base
-    // BRANCA → mapa branco × material.color = cor sólida (idêntico ao pré-P2, então
-    // a métrica de camuflagem por cor segue honesta). O botão 🎨 carimba aqui a
-    // estampa da superfície mirada; a roda de cor (5b) limpa para cor sólida.
-    this._skin = document.createElement('canvas');
-    this._skin.width = this._skin.height = 128;
-    this._skinCtx = this._skin.getContext('2d');
-    this._clearPattern();
-    this._skinTex = new THREE.CanvasTexture(this._skin);
-    this._skinTex.colorSpace = THREE.SRGBColorSpace;
-    bodyMat.map = this._skinTex;
+    // P1 — ZONAS de cor: o corpo tem 2 zonas independentes — `upper` (cabeça/tronco/
+    // braços) e `lower` (pernas) — cada uma com material + pele (CanvasTexture, P2) +
+    // alvo de cor próprios. Assim o jogador casa RODAPÉ (lower) e PAREDE (upper) numa
+    // tacada só. Base BRANCA na pele → mapa branco × color = cor sólida (a métrica de
+    // camuflagem por color segue honesta). `y` = altura local da zona (âncora dos
+    // raycasts de amostra/checagem).
+    const H = HALF_EXTENT * 2; // altura total = extensão vertical da cápsula de colisão
+    const BASE = 0xeef0f2;     // branco art toy (a camuflagem tinge por cima)
+    const makeZone = (name, y) => {
+      const skin = document.createElement('canvas');
+      skin.width = skin.height = 128;
+      const skinCtx = skin.getContext('2d');
+      skinCtx.fillStyle = '#fff'; skinCtx.fillRect(0, 0, 128, 128);
+      const skinTex = new THREE.CanvasTexture(skin);
+      skinTex.colorSpace = THREE.SRGBColorSpace;
+      const mat = new THREE.MeshToonMaterial({ color: BASE, gradientMap: toonGradient(), map: skinTex });
+      return { name, y, mat, target: new THREE.Color(BASE), skin, skinCtx, skinTex };
+    };
+    this.zones = [makeZone('upper', 0.12 * H), makeZone('lower', -0.30 * H)];
 
     // Boneco branco na forma escolhida no menu (Fase 4): 'toy' | 'blob' | 'cube'.
     // A colisão/latch NÃO muda com a forma (usa a cápsula lógica); só o visual.
-    const H = HALF_EXTENT * 2; // altura total = extensão vertical da cápsula de colisão
     const kind = sessionStorage.getItem('eom-body') || 'toy';
-    const toy = buildBody(bodyMat, H, { kind });
+    const toy = buildBody({ upper: this.zones[0].mat, lower: this.zones[1].mat }, H, { kind });
     this.object.add(toy.group);
 
     // Caminhada procedural: pernas/braços balançam e o corpo bobeia/inclina,
@@ -131,61 +130,84 @@ export class Player {
     this._axX = new THREE.Vector3();
     this._axY = new THREE.Vector3();
     this._axZ = new THREE.Vector3();
+    this._tmpV = new THREE.Vector3(); // âncora de zona (P1)
   }
 
   get position() { return this.object.position; }
+
+  // Compat: alguns lugares (HUD, roda de cor) leem a zona primária (upper).
+  get material() { return this.zones[0].mat; }
+  get targetColor() { return this.zones[0].target; }
 
   // Direção de escalada (para cima na parede) — usada pela câmera.
   get climbUp() {
     return this._tangentUp(this.wallNormal, this._axY);
   }
 
-  // Aplica uma cor de camuflagem SÓLIDA (alvo do lerp) e limpa a estampa (P2):
-  // usado pela roda de cor (5b), onde o jogador escolhe um tom puro.
+  // Aplica uma cor SÓLIDA em TODAS as zonas e limpa as estampas (P2): usado pela
+  // roda de cor (5b), onde o jogador escolhe um tom puro único para o corpo inteiro.
   setCamouflage(color) {
-    this.targetColor.copy(color);
-    this._clearPattern();
+    for (const z of this.zones) { z.target.copy(color); this._clearZone(z); }
   }
 
-  // P2: pinta a pele de branco (mapa branco × material.color = cor sólida).
-  _clearPattern() {
-    const c = this._skinCtx, s = this._skin.width;
-    c.fillStyle = '#fff';
-    c.fillRect(0, 0, s, s);
-    if (this._skinTex) this._skinTex.needsUpdate = true;
+  // Pinta a pele de UMA zona de branco (mapa branco × color = cor sólida).
+  _clearZone(z) {
+    z.skinCtx.fillStyle = '#fff';
+    z.skinCtx.fillRect(0, 0, z.skin.width, z.skin.height);
+    z.skinTex.needsUpdate = true;
   }
 
-  // P2: carimba a estampa de uma superfície na pele. `map` é o Texture da
-  // superfície (seu `.image` é o canvas do padrão gerado em textures.js). Sem
-  // map (props de cor lisa), volta à pele branca → cor sólida.
-  _stampPattern(map) {
+  // Carimba a estampa de uma superfície na pele de UMA zona. `map` é o Texture da
+  // superfície (seu `.image` é o canvas do padrão). Sem map → pele branca (sólida).
+  _stampZone(z, map) {
     const img = map && map.image;
-    if (!img) { this._clearPattern(); return; }
-    const c = this._skinCtx, s = this._skin.width;
-    c.fillStyle = '#fff';
-    c.fillRect(0, 0, s, s);
-    try { c.drawImage(img, 0, 0, s, s); } catch (_) { this._clearPattern(); return; }
-    if (this._skinTex) this._skinTex.needsUpdate = true;
+    z.skinCtx.fillStyle = '#fff';
+    z.skinCtx.fillRect(0, 0, z.skin.width, z.skin.height);
+    if (img) { try { z.skinCtx.drawImage(img, 0, 0, z.skin.width, z.skin.height); } catch (_) { /* ok */ } }
+    z.skinTex.needsUpdate = true;
   }
 
-  // Verdadeiro se está grudado E a cor atual bate com a da superfície grudada.
-  // Usa histerese (_camo) para não oscilar exatamente sobre o limiar.
-  // A comparação é feita em sRGB (ver toSRGB): é o espaço em que o jogador julga
-  // "esta cor é igual àquela", e o único em que a paleta escura da mansão fica
-  // separável pelos limiares CAMO_ENTER/EXIT.
+  // Verdadeiro se está grudado E TODAS as zonas batem com a superfície atrás de si.
+  // P1: cada zona (upper/lower) compara sua cor com a superfície colorável logo
+  // atrás dela — casa rodapé (lower) e parede (upper). Camuflado = pior zona dentro
+  // do limiar. Comparação em sRGB (ver toSRGB) + histerese (_camo). Fallback 1-cor:
+  // com uma só zona, é idêntico ao comportamento anterior.
   isCamouflaged() {
     if (this.state !== 'latched' || !this.latchedObject) { this._camo = false; return false; }
-    const surf = this.latchedObject.material && this.latchedObject.material.color;
-    if (!surf) { this._camo = false; return false; }
-    const c = this.material.color;
-    const diff = Math.max(
-      Math.abs(toSRGB(c.r) - toSRGB(surf.r)),
-      Math.abs(toSRGB(c.g) - toSRGB(surf.g)),
-      Math.abs(toSRGB(c.b) - toSRGB(surf.b))
-    );
-    if (this._camo) { if (diff > CAMO_EXIT) this._camo = false; }
-    else if (diff < CAMO_ENTER) this._camo = true;
+    let maxDiff = 0;
+    for (const z of this.zones) {
+      const surf = this._surfaceBehindZone(z);
+      if (!surf) { this._camo = false; return false; }
+      const c = z.mat.color;
+      const d = Math.max(
+        Math.abs(toSRGB(c.r) - toSRGB(surf.r)),
+        Math.abs(toSRGB(c.g) - toSRGB(surf.g)),
+        Math.abs(toSRGB(c.b) - toSRGB(surf.b))
+      );
+      if (d > maxDiff) maxDiff = d;
+    }
+    if (this._camo) { if (maxDiff > CAMO_EXIT) this._camo = false; }
+    else if (maxDiff < CAMO_ENTER) this._camo = true;
     return this._camo;
+  }
+
+  // Cor da superfície colorável logo ATRÁS de uma zona (raycast −normal a partir da
+  // âncora). Fallback: a própria superfície grudada. Habilita o bi-tom.
+  _surfaceBehindZone(z) {
+    const origin = this._zoneAnchor(z, this._tmpV);
+    const back = this._axZ.copy(this.wallNormal).multiplyScalar(-1);
+    this._raycaster.set(origin, back);
+    this._raycaster.far = RADIUS + 0.6;
+    const hit = this._raycaster.intersectObjects(this.level.colorables, false)[0];
+    if (hit && hit.object.material) return hit.object.material.color;
+    return this.latchedObject.material ? this.latchedObject.material.color : null;
+  }
+
+  // Ponto de mundo na altura local de uma zona (âncora dos raycasts). Respeita a
+  // orientação atual (grudado: sobe/desce ao longo da parede).
+  _zoneAnchor(z, out) {
+    this.object.updateWorldMatrix(true, false);
+    return this.object.localToWorld(out.set(0, z.y, 0));
   }
 
   update(dt, joy, camera) {
@@ -194,18 +216,19 @@ export class Player {
 
     this._animateFace(dt, joy);
 
-    // Lerp de cor da camuflagem
-    this.material.color.lerp(this.targetColor, Math.min(1, COLOR_LERP * dt));
+    // Lerp de cor da camuflagem — por zona (P1).
+    const k = Math.min(1, COLOR_LERP * dt);
+    for (const z of this.zones) z.mat.color.lerp(z.target, k);
 
-    // Brilho pulsante quando totalmente camuflado (feedback de sucesso):
+    // Brilho pulsante quando totalmente camuflado (feedback de sucesso): cada zona
     // emite na própria cor do disfarce, então só "reluz" sem mudar o tom.
     const camo = this.isCamouflaged();
     if (camo) {
       this._glow += dt;
-      this.material.emissive.copy(this.material.color);
-      this.material.emissiveIntensity = 0.16 + 0.12 * Math.sin(this._glow * 6);
+      const gi = 0.16 + 0.12 * Math.sin(this._glow * 6);
+      for (const z of this.zones) { z.mat.emissive.copy(z.mat.color); z.mat.emissiveIntensity = gi; }
     } else {
-      this.material.emissiveIntensity = 0;
+      for (const z of this.zones) z.mat.emissiveIntensity = 0;
       this._glow = 0;
     }
 
@@ -464,27 +487,29 @@ export class Player {
   // em update) e faz o Caçador enxergar de mais perto (ver Seeker._canSee).
   toggleCrouch() { this.crouched = !this.crouched; }
 
-  // Conta-gotas MIRADO (Fase 5a — camuflagem manual estilo Meccha): amostra a cor
-  // da 1ª superfície colorável na direção da MIRA (retícula central = direção da
-  // câmera) e a assume como disfarce. Funciona no chão E grudado — a perícia é
-  // escolher a cor certa e depois grudar numa superfície que combine (a camuflagem
-  // efetiva ainda exige estar grudado + cor batendo; ver isCamouflaged). Retorna a
-  // cor (ou null) para o Game disparar pulso/som.
+  // Conta-gotas MIRADO por ZONA (Fase 5a + P1): cada zona amostra a superfície na
+  // direção da MIRA a partir da SUA altura — então mirar num trecho parede+rodapé
+  // pinta o tronco com a parede e as pernas com o rodapé de uma vez. Copia cor
+  // (métrica) E carimba a estampa (P2). Funciona no chão e grudado. Retorna a cor da
+  // primeira zona que pegou (ou null) para o Game disparar pulso/som/re-semear a roda.
   sampleColor(camera) {
     const dir = camera.getWorldDirection(this._tmpDir).normalize();
-    this._raycaster.set(this.position, dir);
-    this._raycaster.far = 8;
-    const hit = this._raycaster.intersectObjects(this.level.colorables, false)[0];
-    let mat = hit && hit.object.material;
-    // Fallback: se está grudado e a mira não pegou nada, usa a própria superfície.
-    if (!mat && this.state === 'latched' && this.latchedObject) mat = this.latchedObject.material;
-    const color = mat && mat.color;
-    if (!color) return null;
-    // Copia cor (métrica) E carimba a estampa (P2): o corpo passa a parecer a
-    // superfície (map × color), como no original. A métrica segue por material.color.
-    this.targetColor.copy(color);
-    this._stampPattern(mat.map);
-    return color;
+    let any = null;
+    for (const z of this.zones) {
+      const origin = this._zoneAnchor(z, this._tmpV);
+      this._raycaster.set(origin, dir);
+      this._raycaster.far = 8;
+      const hit = this._raycaster.intersectObjects(this.level.colorables, false)[0];
+      let mat = hit && hit.object.material;
+      // Fallback: grudado e a mira não pegou nada → usa a própria superfície grudada.
+      if (!mat && this.state === 'latched' && this.latchedObject) mat = this.latchedObject.material;
+      if (mat && mat.color) {
+        z.target.copy(mat.color);
+        this._stampZone(z, mat.map);
+        if (!any) any = mat.color;
+      }
+    }
+    return any;
   }
 
   // ------------------------------------------------------------------ HELPERS

@@ -35,6 +35,12 @@ para não desestabilizar o feel já aprovado.
 
 ## P1 — Pintura por ZONAS (bi/tri-tom) 🔴 essencial e mais difícil
 
+> **Status:** ✅ feito (2 zonas: upper/lower). `buildBody` aceita `{upper,lower}`;
+> Player tem 2 zonas (material+pele+alvo); `sampleColor`/`isCamouflaged` por zona
+> (raycast a partir da âncora de cada zona); rodapé do perímetro virou colorável de
+> madeira (carvalho) para o bi-tom valer. 3ª zona (`head`) e rodapés nos cômodos:
+> pendentes/futuro.
+
 ### Zonas
 Dividir o corpo em **2 zonas** (MVP) — `upper` (cabeça+tronco+braços) e `lower`
 (pernas/pés) — com folga para uma 3ª (`head`) depois.

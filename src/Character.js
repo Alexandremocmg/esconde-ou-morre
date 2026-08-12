@@ -19,13 +19,20 @@ import * as THREE from 'three';
 //   'cube' — geométrico (cubos; arestas vivas casam com o contorno cel)
 // Todas as formas mantêm o MESMO contrato de rig ({upper, legs[2], arms[2]}) para
 // o Gait animar e o Player posicionar olhos por (headR, headY) — sem mexer nos
-// chamadores. TODAS as partes compartilham UM material (camuflagem tinge tudo).
-export function buildBody(material, height = 1, {
+// chamadores.
+//
+// `materials` (P1 — pintura por zonas): pode ser UM THREE.Material (todas as partes
+// iguais — o Caçador usa assim) OU `{ upper, lower }`, onde `lower` pinta as PERNAS
+// e `upper` o resto (cabeça/tronco/braços/massa do blob). Assim o jogador pode ter
+// pernas de uma cor (rodapé) e tronco de outra (parede).
+export function buildBody(materials, height = 1, {
   castShadow = true, outline = false, outlineColor = 0x14181d, outlineScale = 1.07,
   kind = 'toy',
 } = {}) {
   const H = height;
   const g = new THREE.Group();
+  const matU = materials.isMaterial ? materials : materials.upper;
+  const matL = materials.isMaterial ? materials : (materials.lower || materials.upper);
   // Contorno CEL (Fase 3a): inverted-hull. Casca da MESMA geometria, inflada e só
   // BackSide numa cor escura → borda de desenho barata, que segue a animação (é
   // filha da malha-base). Desligado por padrão: o jogador NÃO usa (borda fixa
@@ -33,8 +40,8 @@ export function buildBody(material, height = 1, {
   const outlineMat = outline
     ? new THREE.MeshBasicMaterial({ color: outlineColor, side: THREE.BackSide })
     : null;
-  const mk = (geo) => {
-    const m = new THREE.Mesh(geo, material);
+  const mk = (geo, mat = matU) => {
+    const m = new THREE.Mesh(geo, mat);
     m.castShadow = castShadow;
     if (outlineMat) {
       const o = new THREE.Mesh(geo, outlineMat);
@@ -52,13 +59,13 @@ export function buildBody(material, height = 1, {
   // Cria um par esq/dir de membros num PIVÔ (o Gait balança por rotation.x).
   // parent='upper' → braços (acompanham o bob); parent='g' → pernas. restZ abre
   // lateralmente (pose de repouso dos braços). A geometria é compartilhada pelo par.
-  const limbPair = (geo, { y, x, hang, parent, restZ = 0 }) => {
+  const limbPair = (geo, mat, { y, x, hang, parent, restZ = 0 }) => {
     const pair = [];
     for (const sx of [-1, 1]) {
       const pivot = new THREE.Group();
       pivot.position.set(sx * x, y, 0);
       if (restZ) pivot.rotation.z = sx * restZ;
-      const m = mk(geo);
+      const m = mk(geo, mat);
       m.position.y = hang;
       pivot.add(m);
       (parent === 'upper' ? upper : g).add(pivot);
@@ -76,9 +83,9 @@ export function buildBody(material, height = 1, {
     blob.scale.set(1.06, 0.92, 1.0); // achatado, mais largo (gelatinoso)
     upper.add(blob);
     headR = 0.30 * H; headY = 0.14 * H; // olhos no alto-frente da massa
-    legs = limbPair(new THREE.SphereGeometry(0.10 * H, 12, 10),
+    legs = limbPair(new THREE.SphereGeometry(0.10 * H, 12, 10), matL,
       { y: -0.40 * H, x: 0.14 * H, hang: -0.02 * H, parent: 'g' });
-    arms = limbPair(new THREE.SphereGeometry(0.09 * H, 12, 10),
+    arms = limbPair(new THREE.SphereGeometry(0.09 * H, 12, 10), matU,
       { y: 0.02 * H, x: 0.34 * H, hang: -0.02 * H, parent: 'upper' });
   } else if (kind === 'cube') {
     const head = mk(new THREE.BoxGeometry(0.40 * H, 0.34 * H, 0.38 * H));
@@ -89,9 +96,9 @@ export function buildBody(material, height = 1, {
     torso.position.y = -0.08 * H;
     upper.add(torso);
     headR = 0.20 * H; headY = hY;
-    legs = limbPair(new THREE.BoxGeometry(0.15 * H, 0.18 * H, 0.15 * H),
+    legs = limbPair(new THREE.BoxGeometry(0.15 * H, 0.18 * H, 0.15 * H), matL,
       { y: -0.33 * H, x: 0.13 * H, hang: -0.09 * H, parent: 'g' });
-    arms = limbPair(new THREE.BoxGeometry(0.13 * H, 0.18 * H, 0.13 * H),
+    arms = limbPair(new THREE.BoxGeometry(0.13 * H, 0.18 * H, 0.13 * H), matU,
       { y: 0.05 * H, x: 0.30 * H, hang: -0.09 * H, parent: 'upper', restZ: -0.12 });
   } else {
     // 'toy' (padrão)
@@ -103,10 +110,10 @@ export function buildBody(material, height = 1, {
     torso.position.y = -0.02 * H;
     upper.add(torso);
     const legR = 0.115 * H, legL = 0.12 * H, legHalf = legL / 2 + legR;
-    legs = limbPair(new THREE.CapsuleGeometry(legR, legL, 6, 12),
+    legs = limbPair(new THREE.CapsuleGeometry(legR, legL, 6, 12), matL,
       { y: -0.5 * H + 2 * legHalf, x: 0.12 * H, hang: -legHalf, parent: 'g' });
     const armR = 0.10 * H, armL = 0.14 * H, armHalf = armL / 2 + armR;
-    arms = limbPair(new THREE.CapsuleGeometry(armR, armL, 6, 12),
+    arms = limbPair(new THREE.CapsuleGeometry(armR, armL, 6, 12), matU,
       { y: 0.08 * H + armHalf, x: 0.28 * H, hang: -armHalf, parent: 'upper', restZ: -0.20 });
   }
 
