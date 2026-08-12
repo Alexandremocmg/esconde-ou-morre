@@ -12,7 +12,13 @@ import { materialMaps, toonGradient } from './textures.js';
 // não de contagem de objetos. A penumbra rica vem de material.color + normal em
 // albedo CLARO — nunca de albedo escuro (que quebraria a leitura da camuflagem).
 // ─────────────────────────────────────────────────────────────────────────────
-const HALF = 12.5;     // meia-largura do piso (mansão 25×25 por andar)
+const HALF = 14.5;     // meia-largura do piso (mansão 29×29 por andar)
+// Anel da laje do 2º andar — módulo-level para o _build (janelas), _buildMezzanine
+// e _buildUpstairsRoom compartilharem a mesma geometria. Mudar HALF/RING_DEPTH
+// propaga para a borda interna (= face frontal da laje) e o centro da faixa.
+const RING_DEPTH = 4.0;                    // profundidade do anel (piso útil em cima)
+const RING_IN = HALF - RING_DEPTH;         // 10.5 — borda interna = face da laje (escada termina aqui)
+const RING_CTR = HALF - RING_DEPTH / 2;    // 12.5 — centro da faixa do anel
 const WALL_H = 7.8;    // pé-direito do salão (triplo); teto do salão em WALL_H
 const ROOM_H = 3.2;    // altura das paredes de cômodo (abaixo da laje do 2º andar)
 const ROOM2_H = 2.4;   // altura das divisórias dos quartos do 2º andar (sobre a laje)
@@ -628,7 +634,7 @@ export class Level {
   // escadaria no canto SE, guarda-corpo e arandelas. Compartilhado pelos 3 layouts.
   // Define this._stairBot/_stairTop/_balcony para as rotas montarem a patrulha vertical.
   _buildMezzanine() {
-    const DEPTH = 3.5, IN = HALF - DEPTH, CTR = HALF - DEPTH / 2; // borda interna |coord|=9
+    const DEPTH = RING_DEPTH, IN = RING_IN, CTR = RING_CTR; // borda interna |coord|=RING_IN
     // Faixas do anel (3.5 m de profundidade): fecham o vão até a escada (z≥9) e dão
     // margem ao corte de canto do Caçador. N/S largura total, E/W entre elas.
     this._addSlab(HALF * 2, DEPTH, 0, -CTR, FLOOR2_Y); // N (z∈[-12.5,-9])
@@ -644,20 +650,20 @@ export class Level {
     this._deco(new THREE.BoxGeometry(0.08, 0.1, IN * 2), MANSION.latao, -IN, railY, 0, railMat);
     this._deco(new THREE.BoxGeometry(0.08, 0.1, IN * 2), MANSION.latao, IN, railY, 0, railMat);
 
-    // ESCADARIA SUL (x=0): térreo → 2º andar, sobe em +z de z=5 até a BORDA da
-    // faixa S (z=9), onde o último degrau (topo = FLOOR2_Y) encosta na face da laje.
-    // CRÍTICO subir só até z=9, não além: a laje é um sólido de 0.4 m e sua face
-    // frontal (z=9) age como parede até os pés do jogador estarem a STEP_UP do topo.
-    // Se a escada passa da borda (ex. z=9.6), os degraus de altura cheia ficam
-    // ENTERRADOS sob a laje e o jogador bate na face ~0.34 m abaixo do piso → trava
-    // ao chegar em cima. Terminar na borda deixa um degrau cheio rente à laje (como
-    // a passagem MEZZ3 já faz). x=0 é livre no térreo dos 3 layouts.
-    const sS = this._addStairFlight(0, 3, 5, 9, 0, FLOOR2_Y, 20);
+    // ESCADARIA SUL (x=0): térreo → 2º andar, sobe em +z de z=5 até a BORDA interna
+    // da faixa S (z=IN), onde o último degrau (topo = FLOOR2_Y) encosta na face da laje.
+    // CRÍTICO subir só até z=IN, não além: a laje é um sólido de 0.4 m e sua face
+    // frontal (z=IN) age como parede até os pés do jogador estarem a STEP_UP do topo.
+    // Se a escada passa da borda, os degraus de altura cheia ficam ENTERRADOS sob a
+    // laje e o jogador bate na face ~0.34 m abaixo do piso → trava ao chegar em cima.
+    // Terminar na borda deixa um degrau cheio rente à laje (como a passagem MEZZ3 já
+    // faz). x=0 é livre no térreo dos 3 layouts.
+    const sS = this._addStairFlight(0, 3, 5, IN, 0, FLOOR2_Y, 20);
     // ESCADARIA NORTE (x=0): rota alternativa, espelhada. Sem ela, a escada única
     // era um gargalo — jogador e Caçador sempre no mesmo ponto de subida.
-    const sN = this._addStairFlight(0, 3, -5, -9, 0, FLOOR2_Y, 20);
-    this._stairBot = sS.bot; this._stairTop = wp(0, 9.3);
-    this._stairBotN = sN.bot; this._stairTopN = wp(0, -9.3);
+    const sN = this._addStairFlight(0, 3, -5, -IN, 0, FLOOR2_Y, 20);
+    this._stairBot = sS.bot; this._stairTop = wp(0, IN + 0.3);
+    this._stairBotN = sN.bot; this._stairTopN = wp(0, -(IN + 0.3));
 
     // QUARTOS DO 2º ANDAR: 4 alcovas nos cantos do anel. A divisória é PARCIAL
     // (parte da parede externa e para antes da borda interna), então corta a linha
@@ -801,9 +807,13 @@ export class Level {
       this._buildWindow(a, wy, HALF - 0.35, { x: 0, z: -1 });
       this._buildWindow(a, wy, -(HALF - 0.35), { x: 0, z: 1 });
     }
-    for (const a of [-8.5, 8.5]) {       // E/W: |z|=8.5 evita a passagem elevada
-      this._buildWindow(HALF - 0.35, wy, a, { x: -1, z: 0 });      // (sacada + lances, |z|<6.5)
-      this._buildWindow(-(HALF - 0.35), wy, a, { x: 1, z: 0 });    // e as divisórias em |z|=7.55
+    // E/W: |z| entre a passagem elevada (sacada + lances, |z|<6.5) e a divisória
+    // das alcovas (|z| = centro da faixa − 3.2), ambas dependentes do tamanho do anel.
+    const divZ = (HALF + RING_IN) / 2 - 3.2;   // z da divisória de canto
+    const wEW = (6.5 + divZ) / 2;              // janela no meio do vão livre
+    for (const a of [-wEW, wEW]) {
+      this._buildWindow(HALF - 0.35, wy, a, { x: -1, z: 0 });
+      this._buildWindow(-(HALF - 0.35), wy, a, { x: 1, z: 0 });
     }
 
     // Mezanino-varanda (2º andar) + escadaria — antes do layout, que consome
@@ -983,6 +993,10 @@ export class Level {
   _scatterProps() {
     const rand = mulberry32((this.layout * 0x9e3779b1) >>> 0);
     const range = (a, b) => a + rand() * (b - a);
+    // Densidade proporcional à área: com a pegada maior (HALF>12.5) planta mais
+    // peças para o térreo não ficar vazio (contagens originais calibradas p/ HALF=12.5).
+    const dens = (HALF * HALF) / (12.5 * 12.5);
+    const nFurn = Math.round(5 * dens), nChest = Math.round(8 * dens), nOrn = Math.round(10 * dens);
     const pick = (arr) => arr[(rand() * arr.length) | 0];
 
     const margin = 2.2;
@@ -1029,7 +1043,7 @@ export class Level {
       { r: 1.3, make: (x, z) => this._buildArmchair(x, z, pick([MANSION.bordo, MANSION.prussia, MANSION.ametista])) },
       { r: 1.3, make: (x, z) => this._buildSideboard(x, z, MANSION.carvalho) },
     ];
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < nFurn; i++) {
       const f = furniture[i % furniture.length];
       const p = findSpot(f.r, i < 3);
       if (!p) continue;
@@ -1040,7 +1054,7 @@ export class Level {
     // ~8 caixas/baús grudáveis (cores de assinatura) — esconderijos + oclusores.
     const wd = this._mat('wood');
     const chestOpts = { roughness: wd.roughness, metalness: 0, map: wd.map, normalMap: wd.normalMap, normalScale: wd.normalScale };
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0; i < nChest; i++) {
       const w = range(0.9, 1.6), d = range(0.9, 1.6), h = range(1.0, 2.6);
       const rad = Math.hypot(w, d) / 2;
       const p = findSpot(rad, i < 4);
@@ -1050,7 +1064,7 @@ export class Level {
     }
 
     // ~10 ornamentos (pedestais/vasos/cones) — densidade e cores de disfarce.
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < nOrn; i++) {
       const p = findSpot(0.6, i < 4);
       if (!p) continue;
       const roll = rand();
