@@ -103,6 +103,7 @@ export class Game {
     this._btnPaint = document.getElementById('btn-paint');
     this._btnPalette = document.getElementById('btn-palette');
     this._btnCrouch = document.getElementById('btn-crouch');
+    this._btnProne = document.getElementById('btn-prone');
     // Roda de cor (Fase 5b): ajuste fino do disfarce sobre o conta-gotas.
     this.colorPicker = new ColorPicker({ onChange: (c) => this.player.setCamouflage(c) });
     this._setupControls();
@@ -191,6 +192,7 @@ export class Game {
     };
     press(this._btnLatch, () => this.player.toggleLatch(this.camera));
     press(this._btnCrouch, () => this.player.toggleCrouch());
+    press(this._btnProne, () => this.player.toggleProne());
     press(this._btnPaint, () => {
       const color = this.player.sampleColor(this.camera); // conta-gotas mirado (Fase 5a)
       if (color) {
@@ -374,6 +376,7 @@ export class Game {
       if (lbl) lbl.textContent = latched ? 'Soltar' : 'Grudar';
     }
     if (this._btnCrouch) this._btnCrouch.classList.toggle('on', this.player.crouched);
+    if (this._btnProne) this._btnProne.classList.toggle('on', this.player.prone);
 
     // Placar: tempo decorrido (limitado à meta) e tempo camuflado
     const shown = Math.min(this.elapsed, this.surviveTime);

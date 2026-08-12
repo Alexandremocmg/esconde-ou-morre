@@ -114,7 +114,10 @@ distância — dá peso à estampa, não só à cor. Opcional; pode frustrar no 
 
 ## P3 — Poses + ocultar olhos 🟢
 
-> **Status:** 3a ✅ e 3b ✅ feitos (Player.js). 3c pendente (stretch).
+> **Status:** 3a ✅, 3b ✅ e 3c ✅ (pose DEITAR). 3c: botão 🛌 deita o boneco no
+> chão (tomba −90°, assenta em RADIUS, imóvel — mover levanta) e a camuflagem passa
+> a comparar com o TAPETE/superfície colorável logo ABAIXO; tapetes viraram
+> coloráveis (bordô). "Estátua de canto" segue como futuro (marginal).
 
 Ordenado do mais barato/impactante ao mais custoso:
 

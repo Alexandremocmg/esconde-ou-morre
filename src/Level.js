@@ -549,11 +549,13 @@ export class Level {
     this._addFixture(x, y, z, 4.5, 0.5);
   }
 
-  // Tapete persa: placa fina no chão (sceneOnly, não-colorável, não bloqueia).
-  _buildRug(x, z, w = 4, d = 3, y = 0.02) {
+  // Tapete persa: placa fina no chão. P3c: agora COLORÁVEL, em cor de assinatura
+  // (bordô) — é o alvo de camuflagem para a pose DEITADO ("virar tapete"). Não
+  // bloqueia (é _deco, sem colisão).
+  _buildRug(x, z, w = 4, d = 3, y = 0.02, color = MANSION.bordo) {
     const rg = this._mat('persianRug', { normals: false });
-    this._deco(new THREE.PlaneGeometry(w, d), 0xffffff, x, y, z, {
-      rx: -Math.PI / 2, map: rg.map, roughness: rg.roughness, colorable: false,
+    this._deco(new THREE.PlaneGeometry(w, d), color, x, y, z, {
+      rx: -Math.PI / 2, map: rg.map, roughness: rg.roughness, colorable: true,
     });
   }
 

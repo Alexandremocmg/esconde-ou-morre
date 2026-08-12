@@ -3,6 +3,7 @@ import { buildBody, Gait } from './Character.js';
 import { toonGradient } from './textures.js';
 
 const WORLD_UP = new THREE.Vector3(0, 1, 0);
+const DOWN = new THREE.Vector3(0, -1, 0); // amostra/checagem do chão na pose deitada (P3c)
 
 // Parâmetros de tuning
 // SCALE reduz o personagem inteiro de forma coerente: as dimensões físicas e os
@@ -58,6 +59,7 @@ export class Player {
     this._glow = 0;          // relógio do brilho pulsante ao camuflar
     this.crouched = false;   // agachado (o Caçador lê isto p/ reduzir o alcance de visão)
     this._crouchT = 0;       // transição suavizada de agachamento (0..1)
+    this.prone = false;      // deitado no chão (P3c): camufla contra o TAPETE embaixo
 
     this.velocity = new THREE.Vector3();
     this.wallNormal = new THREE.Vector3(0, 0, 1);
@@ -167,16 +169,24 @@ export class Player {
     z.skinTex.needsUpdate = true;
   }
 
-  // Verdadeiro se está grudado E TODAS as zonas batem com a superfície atrás de si.
-  // P1: cada zona (upper/lower) compara sua cor com a superfície colorável logo
-  // atrás dela — casa rodapé (lower) e parede (upper). Camuflado = pior zona dentro
-  // do limiar. Comparação em sRGB (ver toSRGB) + histerese (_camo). Fallback 1-cor:
-  // com uma só zona, é idêntico ao comportamento anterior.
+  // Camuflado quando TODAS as zonas batem com a superfície correspondente:
+  //  • grudado (P1): cada zona vs. a superfície ATRÁS dela (rodapé/parede);
+  //  • deitado (P3c): todas as zonas vs. o TAPETE embaixo ("virar tapete").
+  // Camuflado = pior zona dentro do limiar. sRGB (toSRGB) + histerese (_camo).
   isCamouflaged() {
-    if (this.state !== 'latched' || !this.latchedObject) { this._camo = false; return false; }
+    let surfFor;
+    if (this.prone) {
+      const floor = this._surfaceBelowColor();
+      if (!floor) { this._camo = false; return false; } // fora de tapete → exposto
+      surfFor = () => floor;
+    } else if (this.state === 'latched' && this.latchedObject) {
+      surfFor = (z) => this._surfaceBehindZone(z);
+    } else {
+      this._camo = false; return false;
+    }
     let maxDiff = 0;
     for (const z of this.zones) {
-      const surf = this._surfaceBehindZone(z);
+      const surf = surfFor(z);
       if (!surf) { this._camo = false; return false; }
       const c = z.mat.color;
       const d = Math.max(
@@ -211,7 +221,8 @@ export class Player {
   }
 
   update(dt, joy, camera) {
-    if (this.state === 'grounded') this._updateGrounded(dt, joy, camera);
+    if (this.prone) this._updateProne(dt, joy);
+    else if (this.state === 'grounded') this._updateGrounded(dt, joy, camera);
     else this._updateLatched(dt, joy);
 
     this._animateFace(dt, joy);
@@ -485,7 +496,39 @@ export class Player {
 
   // Agachar (toggle): reduz velocidade (ver _updateGrounded) e a silhueta (visual,
   // em update) e faz o Caçador enxergar de mais perto (ver Seeker._canSee).
-  toggleCrouch() { this.crouched = !this.crouched; }
+  toggleCrouch() { if (!this.prone) this.crouched = !this.crouched; }
+
+  // Deitar (P3c): pose no chão para "virar tapete". Só em pé no chão. Ao deitar,
+  // assenta no piso (centro a RADIUS) e tomba para a frente (−90° em X) mantendo o
+  // yaw; imóvel (mover levanta). A camuflagem passa a comparar com o TAPETE embaixo.
+  toggleProne() {
+    if (this.state !== 'grounded') return;
+    this.prone = !this.prone;
+    if (this.prone) {
+      this.crouched = false;
+      const floorY = this._supportTopBelow(this.position.x, this.position.z, this.position.y + 0.3);
+      this.position.y = floorY + RADIUS;
+      this.velocity.set(0, 0, 0);
+      this.object.rotation.set(-Math.PI / 2, this.object.rotation.y, 0);
+    } else {
+      const floorY = this._supportTopBelow(this.position.x, this.position.z, this.position.y + 0.5);
+      this.position.y = floorY + GROUND_Y;
+      this.object.rotation.set(0, this.object.rotation.y, 0); // levanta (reorienta ao mover)
+    }
+  }
+
+  // Deitado: imóvel; empurrar o joystick levanta (UX). Sem gravidade (já assentado).
+  _updateProne(dt, joy) {
+    if (Math.hypot(joy.x, joy.y) > 0.35) this.toggleProne();
+  }
+
+  // Cor do tapete/superfície colorável logo ABAIXO do jogador (pose deitada).
+  _surfaceBelowColor() {
+    this._raycaster.set(this._tmpV.copy(this.position), DOWN);
+    this._raycaster.far = 1.5;
+    const hit = this._raycaster.intersectObjects(this.level.colorables, false)[0];
+    return hit && hit.object.material ? hit.object.material.color : null;
+  }
 
   // Conta-gotas MIRADO por ZONA (Fase 5a + P1): cada zona amostra a superfície na
   // direção da MIRA a partir da SUA altura — então mirar num trecho parede+rodapé
@@ -493,12 +536,15 @@ export class Player {
   // (métrica) E carimba a estampa (P2). Funciona no chão e grudado. Retorna a cor da
   // primeira zona que pegou (ou null) para o Game disparar pulso/som/re-semear a roda.
   sampleColor(camera) {
-    const dir = camera.getWorldDirection(this._tmpDir).normalize();
+    // Deitado (P3c): amostra o TAPETE embaixo (raycast p/ baixo) — as duas zonas
+    // pegam o mesmo tapete. Em pé/grudado: amostra na direção da mira, por zona.
+    const dir = this.prone ? this._tmpDir.copy(DOWN) : camera.getWorldDirection(this._tmpDir).normalize();
+    const far = this.prone ? 1.5 : 8;
     let any = null;
     for (const z of this.zones) {
-      const origin = this._zoneAnchor(z, this._tmpV);
+      const origin = this.prone ? this._tmpV.copy(this.position) : this._zoneAnchor(z, this._tmpV);
       this._raycaster.set(origin, dir);
-      this._raycaster.far = 8;
+      this._raycaster.far = far;
       const hit = this._raycaster.intersectObjects(this.level.colorables, false)[0];
       let mat = hit && hit.object.material;
       // Fallback: grudado e a mira não pegou nada → usa a própria superfície grudada.

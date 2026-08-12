@@ -243,7 +243,7 @@ body {
   z-index: 7;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 9px; /* 5 botões cabem na coluna (latch/paint/cor/agachar/deitar) */
   pointer-events: none; /* só os botões capturam toque; o resto vaza p/ o look-zone */
 }
 /* Botões "candy" de party game: redondos, coloridos por ação, com anel branco. */
@@ -253,7 +253,7 @@ body {
   -webkit-tap-highlight-color: transparent;
   touch-action: none;
   user-select: none;
-  width: 72px; height: 72px;
+  width: 62px; height: 62px;
   border-radius: 50%;
   border: 3px solid rgba(255, 255, 255, 0.9);
   background: rgba(var(--accent), 0.9);
@@ -269,7 +269,7 @@ body {
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
   transition: filter 0.12s ease, transform 0.08s ease, box-shadow 0.08s ease;
 }
-#actions button .ic { font-size: 26px; line-height: 1; }
+#actions button .ic { font-size: 22px; line-height: 1; }
 #actions button .lbl { font-size: 10px; font-weight: 700; letter-spacing: 0.02em; opacity: 0.95; }
 #actions button:active {
   transform: translateY(3px);
@@ -280,6 +280,7 @@ body {
 #btn-paint   { --accent: 232, 93, 108; }   /* coral */
 #btn-palette { --accent: 160, 92, 224; }   /* roxo */
 #btn-crouch  { --accent: 99, 201, 139; }   /* verde */
+#btn-prone   { --accent: 224, 130, 90; }   /* terracota (deitar/tapete) */
 /* Estado ativo: grudado/agachado ficam realçados (mais claro + anel destacado). */
 #actions button.on {
   filter: brightness(1.25) saturate(1.15);
