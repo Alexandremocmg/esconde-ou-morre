@@ -153,8 +153,8 @@ export class Gait {
     this.crouch = 0; // 0..1: quanto está agachado (pose aplicada no fim de update)
     this.t = 0;
     this.strideLen = opts.strideLen != null ? opts.strideLen : rig.height * 0.85;
-    this.swing = opts.swing != null ? opts.swing : 0.7;     // balanço das pernas (rad)
-    this.armSwing = opts.armSwing != null ? opts.armSwing : 0.55;
+    this.swing = opts.swing != null ? opts.swing : 0.82;    // balanço das pernas (rad) — passada mais humana
+    this.armSwing = opts.armSwing != null ? opts.armSwing : 0.66;
   }
 
   // dt em s; dist = distância percorrida neste frame (m).
@@ -185,8 +185,12 @@ export class Gait {
     const upper = this.rig.upper;
     const bob = Math.abs(Math.cos(this.phase)) - 0.5;         // -0.5..0.5
     const breath = Math.sin(this.t * 2.2) * 0.01 * this.rig.height * (1 - a);
-    upper.position.y = bob * 0.06 * this.rig.height * a + breath;
-    upper.rotation.x = -0.14 * a;
+    upper.position.y = bob * 0.075 * this.rig.height * a + breath;
+    upper.rotation.x = -0.16 * a;
+    // Andar mais HUMANO: transferência de peso (sway lateral do tronco, 1 por passada)
+    // + leve rolagem — as pernas ficam plantadas (estão em `g`) e o tronco balança.
+    upper.position.x = s * 0.035 * this.rig.height * a;
+    upper.rotation.z = -s * 0.07 * a;
 
     // Pose de AGACHAR (aditiva sobre a caminhada): dobra os joelhos para a frente
     // e abre a base, afunda e inclina o tronco, recolhe os braços. Sem esmagar a
