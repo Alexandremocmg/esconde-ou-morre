@@ -104,6 +104,8 @@ distância — dá peso à estampa, não só à cor. Opcional; pode frustrar no 
 
 ## P3 — Poses + ocultar olhos 🟢
 
+> **Status:** 3a ✅ e 3b ✅ feitos (Player.js). 3c pendente (stretch).
+
 Ordenado do mais barato/impactante ao mais custoso:
 
 1. **Ocultar olhos ao camuflar (3a — ganho rápido):** quando `isCamouflaged()` (ou ao

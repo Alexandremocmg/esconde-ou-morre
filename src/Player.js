@@ -98,6 +98,7 @@ export class Player {
     const pupilMat = new THREE.MeshToonMaterial({ color: 0x14181d, gradientMap: toonGradient() });
     this._pupils = [];
     this._pupilOffset = { x: 0, y: 0 }; // deslocamento suavizado (local X/Y)
+    this._eyeHide = 0;                   // 0..1: quanto as pupilas estão escondidas (P3a)
     for (const sx of [-1, 1]) {
       const pupil = new THREE.Mesh(new THREE.SphereGeometry(toy.headR * 0.16, 14, 10), pupilMat);
       pupil.userData.base = new THREE.Vector3(sx * EYE_X, EYE_Y, EYE_Z);
@@ -163,7 +164,8 @@ export class Player {
 
     // Brilho pulsante quando totalmente camuflado (feedback de sucesso):
     // emite na própria cor do disfarce, então só "reluz" sem mudar o tom.
-    if (this.isCamouflaged()) {
+    const camo = this.isCamouflaged();
+    if (camo) {
       this._glow += dt;
       this.material.emissive.copy(this.material.color);
       this.material.emissiveIntensity = 0.16 + 0.12 * Math.sin(this._glow * 6);
@@ -171,6 +173,12 @@ export class Player {
       this.material.emissiveIntensity = 0;
       this._glow = 0;
     }
+
+    // P3a: pupilas SOMEM ao camuflar (os olhos pretos denunciariam o disfarce).
+    // Escala suavizada → 0; volta ao normal (z achatado 0.6) ao sair da camuflagem.
+    this._eyeHide += ((camo ? 1 : 0) - this._eyeHide) * Math.min(1, 8 * dt);
+    const es = 1 - this._eyeHide;
+    for (const p of this._pupils) p.scale.set(es, es, 0.6 * es);
 
     // Caminhada: a fase avança pela distância REAL percorrida (chão ou parede),
     // ignorando saltos de latch/teleporte para não disparar um passo fantasma.
@@ -276,10 +284,15 @@ export class Player {
     this.wallNormal.copy(worldNormal);
     this.position.copy(hit.point).addScaledVector(this.wallNormal, RADIUS);
 
-    // Alinha a cápsula: eixo (local Y) ao longo da subida; "olho" (local Z)
-    // apontando para fora da parede (visível para a câmera).
+    // Alinha a cápsula: eixo (local Y) ao longo da subida. A "face" (local Z)
+    // aponta para FORA normalmente; mas quando CAMUFLADO ela PRENSA na parede
+    // (−normal), escondendo o rosto e mostrando as costas à câmera (P3b). Usa o
+    // flag de histerese _camo (1 frame de atraso, suavizado pelo slerp do _orientTo).
     const newUp = this._tangentUp(this.wallNormal, this._axY);
-    this._orientTo(newUp, this.wallNormal, dt);
+    const faceDir = this._camo
+      ? this._tmpDir.copy(this.wallNormal).multiplyScalar(-1)
+      : this.wallNormal;
+    this._orientTo(newUp, faceDir, dt);
 
     // Voltar ao chão: se está descendo e os "pés" da cápsula já alcançaram o
     // piso, solta e fica em pé em vez de continuar grudado (o que deixava o
