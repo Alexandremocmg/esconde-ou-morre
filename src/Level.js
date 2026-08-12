@@ -286,19 +286,30 @@ export class Level {
     };
     const rep = (len) => ({ x: Math.max(1, len / 3), y: Math.max(1, h / 3) });
 
+    // Rodapé de madeira (P1 — stretch): faixa baixa COLORÁVEL por segmento de parede,
+    // protuberante nas duas faces (BB_T > t) para a ZONA das pernas amostrar de ambos
+    // os lados. `_deco` → sem colisão (não bloqueia andar rente à base, STEP_UP=0.30).
+    const wd = this._mat('wood');
+    const bbOpts = { colorable: true, map: wd.map, roughness: wd.roughness, metalness: wd.metalness };
+    const BB_H = 0.4, BB_T = t + 0.18;
+    const bbX = (zPos, segW, segCx) => this._deco(new THREE.BoxGeometry(segW, BB_H, BB_T), MANSION.carvalho, segCx, BB_H / 2, zPos, bbOpts);
+    const bbZ = (xPos, segD, segCz) => this._deco(new THREE.BoxGeometry(BB_T, BB_H, segD), MANSION.carvalho, xPos, BB_H / 2, segCz, bbOpts);
+
     const wallAlongX = (zPos, hasDoor) => {
-      if (!hasDoor) return void this._addBox(w, h, t, color, cx, h / 2, zPos, { ...opts, mapRepeat: rep(w) });
+      if (!hasDoor) { this._addBox(w, h, t, color, cx, h / 2, zPos, { ...opts, mapRepeat: rep(w) }); bbX(zPos, w, cx); return; }
       const seg = (w - door) / 2;
       if (seg <= 0.2) return;
-      this._addBox(seg, h, t, color, cx - (door / 2 + seg / 2), h / 2, zPos, { ...opts, mapRepeat: rep(seg) });
-      this._addBox(seg, h, t, color, cx + (door / 2 + seg / 2), h / 2, zPos, { ...opts, mapRepeat: rep(seg) });
+      const cxL = cx - (door / 2 + seg / 2), cxR = cx + (door / 2 + seg / 2);
+      this._addBox(seg, h, t, color, cxL, h / 2, zPos, { ...opts, mapRepeat: rep(seg) }); bbX(zPos, seg, cxL);
+      this._addBox(seg, h, t, color, cxR, h / 2, zPos, { ...opts, mapRepeat: rep(seg) }); bbX(zPos, seg, cxR);
     };
     const wallAlongZ = (xPos, hasDoor) => {
-      if (!hasDoor) return void this._addBox(t, h, d, color, xPos, h / 2, cz, { ...opts, mapRepeat: rep(d) });
+      if (!hasDoor) { this._addBox(t, h, d, color, xPos, h / 2, cz, { ...opts, mapRepeat: rep(d) }); bbZ(xPos, d, cz); return; }
       const seg = (d - door) / 2;
       if (seg <= 0.2) return;
-      this._addBox(t, h, seg, color, xPos, h / 2, cz - (door / 2 + seg / 2), { ...opts, mapRepeat: rep(seg) });
-      this._addBox(t, h, seg, color, xPos, h / 2, cz + (door / 2 + seg / 2), { ...opts, mapRepeat: rep(seg) });
+      const czN = cz - (door / 2 + seg / 2), czS = cz + (door / 2 + seg / 2);
+      this._addBox(t, h, seg, color, xPos, h / 2, czN, { ...opts, mapRepeat: rep(seg) }); bbZ(xPos, seg, czN);
+      this._addBox(t, h, seg, color, xPos, h / 2, czS, { ...opts, mapRepeat: rep(seg) }); bbZ(xPos, seg, czS);
     };
 
     wallAlongX(cz - hd, doors.includes('n'));

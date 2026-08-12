@@ -37,9 +37,9 @@ para não desestabilizar o feel já aprovado.
 
 > **Status:** ✅ feito (2 zonas: upper/lower). `buildBody` aceita `{upper,lower}`;
 > Player tem 2 zonas (material+pele+alvo); `sampleColor`/`isCamouflaged` por zona
-> (raycast a partir da âncora de cada zona); rodapé do perímetro virou colorável de
-> madeira (carvalho) para o bi-tom valer. 3ª zona (`head`) e rodapés nos cômodos:
-> pendentes/futuro.
+> (raycast a partir da âncora de cada zona); rodapé colorável de madeira (carvalho)
+> no **perímetro E nos cômodos** (por segmento de parede, respeitando vãos) para o
+> bi-tom valer em toda parte. 3ª zona (`head`/friso) segue futuro.
 
 ### Zonas
 Dividir o corpo em **2 zonas** (MVP) — `upper` (cabeça+tronco+braços) e `lower`
