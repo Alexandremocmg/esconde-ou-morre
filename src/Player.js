@@ -77,6 +77,18 @@ export class Player {
     this.material = bodyMat;
     this.targetColor = new THREE.Color(0xeef0f2);
 
+    // P2 (carimbo de estampa): a "pele" do corpo é um CanvasTexture editável. Base
+    // BRANCA → mapa branco × material.color = cor sólida (idêntico ao pré-P2, então
+    // a métrica de camuflagem por cor segue honesta). O botão 🎨 carimba aqui a
+    // estampa da superfície mirada; a roda de cor (5b) limpa para cor sólida.
+    this._skin = document.createElement('canvas');
+    this._skin.width = this._skin.height = 128;
+    this._skinCtx = this._skin.getContext('2d');
+    this._clearPattern();
+    this._skinTex = new THREE.CanvasTexture(this._skin);
+    this._skinTex.colorSpace = THREE.SRGBColorSpace;
+    bodyMat.map = this._skinTex;
+
     // Boneco branco na forma escolhida no menu (Fase 4): 'toy' | 'blob' | 'cube'.
     // A colisão/latch NÃO muda com a forma (usa a cápsula lógica); só o visual.
     const H = HALF_EXTENT * 2; // altura total = extensão vertical da cápsula de colisão
@@ -128,9 +140,32 @@ export class Player {
     return this._tangentUp(this.wallNormal, this._axY);
   }
 
-  // Aplica uma cor de camuflagem (alvo do lerp).
+  // Aplica uma cor de camuflagem SÓLIDA (alvo do lerp) e limpa a estampa (P2):
+  // usado pela roda de cor (5b), onde o jogador escolhe um tom puro.
   setCamouflage(color) {
     this.targetColor.copy(color);
+    this._clearPattern();
+  }
+
+  // P2: pinta a pele de branco (mapa branco × material.color = cor sólida).
+  _clearPattern() {
+    const c = this._skinCtx, s = this._skin.width;
+    c.fillStyle = '#fff';
+    c.fillRect(0, 0, s, s);
+    if (this._skinTex) this._skinTex.needsUpdate = true;
+  }
+
+  // P2: carimba a estampa de uma superfície na pele. `map` é o Texture da
+  // superfície (seu `.image` é o canvas do padrão gerado em textures.js). Sem
+  // map (props de cor lisa), volta à pele branca → cor sólida.
+  _stampPattern(map) {
+    const img = map && map.image;
+    if (!img) { this._clearPattern(); return; }
+    const c = this._skinCtx, s = this._skin.width;
+    c.fillStyle = '#fff';
+    c.fillRect(0, 0, s, s);
+    try { c.drawImage(img, 0, 0, s, s); } catch (_) { this._clearPattern(); return; }
+    if (this._skinTex) this._skinTex.needsUpdate = true;
   }
 
   // Verdadeiro se está grudado E a cor atual bate com a da superfície grudada.
@@ -440,13 +475,15 @@ export class Player {
     this._raycaster.set(this.position, dir);
     this._raycaster.far = 8;
     const hit = this._raycaster.intersectObjects(this.level.colorables, false)[0];
-    let color = hit && hit.object.material && hit.object.material.color;
+    let mat = hit && hit.object.material;
     // Fallback: se está grudado e a mira não pegou nada, usa a própria superfície.
-    if (!color && this.state === 'latched' && this.latchedObject && this.latchedObject.material) {
-      color = this.latchedObject.material.color;
-    }
+    if (!mat && this.state === 'latched' && this.latchedObject) mat = this.latchedObject.material;
+    const color = mat && mat.color;
     if (!color) return null;
-    this.setCamouflage(color);
+    // Copia cor (métrica) E carimba a estampa (P2): o corpo passa a parecer a
+    // superfície (map × color), como no original. A métrica segue por material.color.
+    this.targetColor.copy(color);
+    this._stampPattern(mat.map);
     return color;
   }
 

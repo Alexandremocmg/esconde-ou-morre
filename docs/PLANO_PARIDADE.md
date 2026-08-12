@@ -76,6 +76,10 @@ Dividir o corpo em **2 zonas** (MVP) — `upper` (cabeça+tronco+braços) e `low
 
 ## P2 — Copiar TEXTURA/estampa da parede 🟡
 
+> **Status:** ✅ feito (MVP, métrica por cor). Pele = CanvasTexture; 🎨 carimba a
+> estampa da superfície mirada; roda de cor limpa para cor sólida. Stretch (match de
+> padrão real) segue pendente.
+
 ### Ideia
 A "pele" do corpo vira um **CanvasTexture** editável; o conta-gotas passa a **carimbar o
 padrão** da superfície (não só a cor).
