@@ -644,12 +644,18 @@ export class Level {
     this._deco(new THREE.BoxGeometry(0.08, 0.1, IN * 2), MANSION.latao, -IN, railY, 0, railMat);
     this._deco(new THREE.BoxGeometry(0.08, 0.1, IN * 2), MANSION.latao, IN, railY, 0, railMat);
 
-    // ESCADARIA SUL (x=0): térreo → 2º andar, sobe em +z de z=5 até z=9.6, onde
-    // sobrepõe a faixa S (z≥9) — SEM vão. x=0 é livre no térreo dos 3 layouts.
-    const sS = this._addStairFlight(0, 3, 5, 9.6, 0, FLOOR2_Y, 20);
+    // ESCADARIA SUL (x=0): térreo → 2º andar, sobe em +z de z=5 até a BORDA da
+    // faixa S (z=9), onde o último degrau (topo = FLOOR2_Y) encosta na face da laje.
+    // CRÍTICO subir só até z=9, não além: a laje é um sólido de 0.4 m e sua face
+    // frontal (z=9) age como parede até os pés do jogador estarem a STEP_UP do topo.
+    // Se a escada passa da borda (ex. z=9.6), os degraus de altura cheia ficam
+    // ENTERRADOS sob a laje e o jogador bate na face ~0.34 m abaixo do piso → trava
+    // ao chegar em cima. Terminar na borda deixa um degrau cheio rente à laje (como
+    // a passagem MEZZ3 já faz). x=0 é livre no térreo dos 3 layouts.
+    const sS = this._addStairFlight(0, 3, 5, 9, 0, FLOOR2_Y, 20);
     // ESCADARIA NORTE (x=0): rota alternativa, espelhada. Sem ela, a escada única
     // era um gargalo — jogador e Caçador sempre no mesmo ponto de subida.
-    const sN = this._addStairFlight(0, 3, -5, -9.6, 0, FLOOR2_Y, 20);
+    const sN = this._addStairFlight(0, 3, -5, -9, 0, FLOOR2_Y, 20);
     this._stairBot = sS.bot; this._stairTop = wp(0, 9.3);
     this._stairBotN = sN.bot; this._stairTopN = wp(0, -9.3);
 
