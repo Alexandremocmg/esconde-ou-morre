@@ -691,12 +691,16 @@ export class Level {
     this._addSlab(HW * 2, HALF - IN, 0, (HALF + IN) / 2, FLOOR2_Y);    // centro-S: z∈[10.5,14.5]
     this._addSlab(HW * 2, HZ * 2, 0, 0, FLOOR2_Y);                     // miolo:    z∈[-4.5,4.5]
     this._addSlab(HW * 2, HALF - IN, 0, -(HALF + IN) / 2, FLOOR2_Y);   // centro-N: z∈[-14.5,-10.5]
-    // Guarda-corpo SÓLIDO dos dois poços (Fase B): balaustrada com COLISÃO real —
-    // topo a PH=1 m > STEP_UP (0.30), então BLOQUEIA a queda, não é só visual. Cada
-    // poço deixa a boca da escada ABERTA (face z=±IN, onde o topo da escada encosta no
-    // bloco centro) e mura as 3 bordas de queda: uma travessa junto ao miolo (z=±HZ) e
-    // duas laterais (x=±HW). Como HW = meia-largura da escada, uma mureta por borda sela.
-    const PH = 1.0, PY = FLOOR2_Y + PH / 2, PT = 0.16;
+    // Guarda-corpo SÓLIDO dos dois poços: BALAUSTRADA BAIXA (PH=0.6), não parede.
+    // Ainda bloqueia a queda — a colisão só ignora sólidos com topo <= pés+STEP_UP
+    // (3.4+0.30=3.70) e o topo daqui é 4.00 — mas agora se enxerga POR CIMA: do
+    // corredor central você vê o vão e os degraus, e a escada se lê como escada.
+    // Com PH=1.0 as três murets formavam um U opaco de frente para o corredor e o
+    // 2º andar parecia ter "paredes tampando as escadas" (relato do playtest).
+    // A boca do lance segue aberta na face externa (z=±IN), onde o topo dos degraus
+    // encosta na laje; as 3 bordas de queda (travessa em z=±HZ + laterais x=±HW)
+    // continuam protegidas.
+    const PH = 0.6, PY = FLOOR2_Y + PH / 2, PT = 0.16;
     const boP = this._mat('boiserie');
     const guard = { climbable: false, roughness: boP.roughness, metalness: 0.02, map: boP.map, normalMap: boP.normalMap, normalScale: boP.normalScale, mapRepeat: { x: 1, y: 1 } };
     for (const sz of [1, -1]) {                    // sz=+1 poço S, sz=-1 poço N
@@ -715,6 +719,10 @@ export class Level {
     // laje e o jogador bate na face ~0.34 m abaixo do piso → trava ao chegar em cima.
     // Terminar na borda deixa um degrau cheio rente à laje (como a passagem MEZZ3 já
     // faz). x=0 é livre no térreo dos 3 layouts.
+    // O SENTIDO é subir PARA FORA de propósito: do hall (onde se joga a maior parte
+    // do tempo) você encara os DEGRAUS, convidativos. Inverter o lance põe o costado
+    // maciço de 3.4 m de frente para o hall — vira um paredão que tapa a escada
+    // (testado e revertido; a legibilidade do térreo pesa mais que a do 2º andar).
     const sS = this._addStairFlight(0, 3, 5, IN, 0, FLOOR2_Y, 20);
     // ESCADARIA NORTE (x=0): rota alternativa, espelhada. Sem ela, a escada única
     // era um gargalo — jogador e Caçador sempre no mesmo ponto de subida.
