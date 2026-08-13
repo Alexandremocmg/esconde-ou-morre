@@ -45,6 +45,10 @@ const DOWN = new THREE.Vector3(0, -1, 0);
 const AVOID_PROBE = 2.4;              // alcance de antecipação à frente (m)
 const AVOID_MARGIN = 0.6;            // não desvia do próprio alvo (recuo do alcance)
 const AVOID_ANGLES = [0.45, 0.9, 1.35]; // rad testados p/ cada lado
+// Contorno de obstáculo (wall-following) ao bater de frente: tempo comprometido
+// e trecho mínimo antes de poder soltar quando a reta ao alvo abre.
+const SLIDE_TIME = 1.0;
+const SLIDE_MIN = 0.25;
 
 // Rotas de fallback (só usadas se o layout não fornecer routes — hoje sempre
 // fornece). Reescaladas para a pegada da mansão (HALF=12.5); antes ±12 (arena 80×80).
@@ -123,6 +127,9 @@ export class Seeker {
     this._bestDist = Infinity; // menor distância já atingida ao alvo (à prova de oscilação)
     this._noImproveT = 0;      // tempo sem MELHORAR esse melhor alcance
     this._unstickT = 0;        // enquanto > 0: whiskers OFF, vai reto e desliza na colisão
+    this._slideT = 0;          // enquanto > 0: contorno comprometido pela tangente latcheada
+    this._slideX = 0; this._slideZ = 0;
+    this._pushX = 0; this._pushZ = 0; // normal do último contato (define a tangente)
 
     // Visor emissivo na frente da cabeça (+Z): indica a direção da visão e dá o
     // ar sinistro de um scanner (contraponto aos olhinhos amigáveis do jogador).
@@ -304,12 +311,51 @@ export class Seeker {
     const desiredYaw = Math.atan2(dir.x, dir.z);
     this.yaw = approachAngle(this.yaw, desiredYaw, TURN_RATE * dt);
 
-    this.group.position.x += dir.x * speed * dt;
-    this.group.position.z += dir.z * speed * dt;
+    const step = speed * dt;
+    const beforeX = this.group.position.x, beforeZ = this.group.position.z;
+    // Enquanto o CONTORNO está comprometido (_slideT), anda pela tangente latcheada
+    // em vez de mirar o alvo. Sem esse compromisso ele desliza 1 frame, no frame
+    // seguinte volta a mirar o alvo (= dentro do pilar) e oscila na face para sempre.
+    let mvx = dir.x, mvz = dir.z;
+    if (this._slideT > 0) {
+      // Solta o contorno assim que a RETA até o alvo fica livre (teste exato contra
+      // os AABBs de colisão). Contornar além disso só afastaria. Mas só depois de um
+      // trecho MÍNIMO de contorno: liberar no primeiro frame livre o recolocaria de
+      // frente para a mesma face no frame seguinte (oscilação parada).
+      const andou = SLIDE_TIME - this._slideT;
+      if (andou > SLIDE_MIN && this._pathClear(target.x, target.z)) this._slideT = 0;
+      else { mvx = this._slideX; mvz = this._slideZ; this._slideT -= dt; }
+    }
+    this.group.position.x += mvx * step;
+    this.group.position.z += mvz * step;
     // Empurrão-para-fora contra sólidos: impede o Caçador de VAZAR por dentro de
     // móveis/murets (ele não tinha colisão — só bigodes de desvio). Roda ANTES da
     // sonda de chão, que re-amostra no XZ já corrigido.
     this._resolveSolids();
+
+    // DESLIZE TANGENCIAL (contato frontal). Batendo de FRENTE num pilar/parede, o
+    // empurrão da colisão é exatamente oposto ao avanço: os dois se anulam e o
+    // Caçador fica parado encarando o obstáculo (reproduzido: 872 frames travado
+    // num pilar). Aqui, ao detectar que quase não saiu do lugar, ele anda pela
+    // TANGENTE da normal de contato — contorna a quina em vez de empurrar a face.
+    const movedLen = Math.hypot(this.group.position.x - beforeX, this.group.position.z - beforeZ);
+    const pushLen = Math.hypot(this._pushX, this._pushZ);
+    if (pushLen > 1e-6 && movedLen < 0.35 * step) {
+      const nx = this._pushX / pushLen, nz = this._pushZ / pushLen;
+      // Duas tangentes possíveis; prefere a que já aponta para o alvo. No caso
+      // exatamente frontal as duas empatam (produto ~0) → desempata pelo lado
+      // preferido persistente (_avoidBias), senão ele oscilaria entre os lados.
+      let tx = -nz, tz = nx;
+      const along = tx * dir.x + tz * dir.z;
+      if (along < -0.05 || (Math.abs(along) <= 0.05 && this._avoidBias < 0)) { tx = nz; tz = -nx; }
+      // COMPROMISSO: segue essa tangente por ~0.6 s (~3.7 m na velocidade de caça),
+      // o bastante para passar da quina de um pilar (1.1 m) antes de re-mirar o alvo.
+      this._slideX = tx; this._slideZ = tz; this._slideT = SLIDE_TIME;
+      this.group.position.x += tx * step;
+      this.group.position.z += tz * step;
+      this._resolveSolids();
+      this.yaw = approachAngle(this.yaw, Math.atan2(tx, tz), TURN_RATE * dt);
+    }
     // Y pela SONDA DE CHÃO (rampa/laje/degrau), não constante. A rampa dá
     // interpolação de graça e cobre o mezanino sem caso especial; falha em
     // segurança (sem hit → mantém o Y anterior, não cai no vazio).
@@ -324,6 +370,9 @@ export class Seeker {
     if (newDist < this._bestDist - 0.1) { this._bestDist = newDist; this._noImproveT = 0; }
     else this._noImproveT += dt;
     this._unstickT = this._noImproveT > 0.5 ? 1.2 : Math.max(0, this._unstickT - dt);
+    // Contornou para o lado errado (obstáculo largo/beco)? Inverte o lado preferido
+    // e re-baselina, para tentar o outro contorno em vez de insistir no mesmo.
+    if (this._noImproveT > 1.8) { this._avoidBias = -this._avoidBias; this._noImproveT = 0; this._bestDist = newDist; }
   }
 
   // Sonda vertical contra level.walkables (chão, lajes, degraus): retorna a altura
@@ -342,11 +391,54 @@ export class Seeker {
   // ponto do AABB mais próximo no plano XZ, empurra até BODY_R, deslizando nas faces.
   // Pula sólidos fora da faixa vertical do corpo e os "subíveis" (degraus/lajes que ele
   // pisa) — senão o próprio chão/escada o barraria como parede.
+  // A reta até (tx,tz) está livre para o CORPO passar? Slab test 2D do segmento
+  // contra cada AABB de colisão dilatado por BODY_R (Minkowski: corpo vira ponto).
+  // Usa os mesmos filtros de _resolveSolids — ignora enfeites (seekerPass), sólidos
+  // fora da faixa vertical do corpo e degraus subíveis. Só roda durante o contorno.
+  _pathClear(tx, tz) {
+    const STEP_UP = 0.30, MAX = 8;
+    const p = this.group.position;
+    const feet = p.y - EYE_Y, top = feet + BODY_H;
+    let dx = tx - p.x, dz = tz - p.z;
+    const len = Math.hypot(dx, dz);
+    if (len < 1e-4) return true;
+    const lim = Math.min(len, MAX);
+    dx /= len; dz /= len;
+    for (const box of this.level.solids) {
+      if (box.seekerPass) continue;
+      if (box.min.y >= top || box.max.y <= feet) continue;
+      if (box.max.y <= feet + STEP_UP) continue;
+      // AABB dilatado pelo raio do corpo
+      const minX = box.min.x - BODY_R, maxX = box.max.x + BODY_R;
+      const minZ = box.min.z - BODY_R, maxZ = box.max.z + BODY_R;
+      let t0 = 0, t1 = lim;
+      if (Math.abs(dx) < 1e-9) { if (p.x < minX || p.x > maxX) continue; }
+      else {
+        let a = (minX - p.x) / dx, b = (maxX - p.x) / dx;
+        if (a > b) { const s = a; a = b; b = s; }
+        t0 = Math.max(t0, a); t1 = Math.min(t1, b);
+        if (t0 > t1) continue;
+      }
+      if (Math.abs(dz) < 1e-9) { if (p.z < minZ || p.z > maxZ) continue; }
+      else {
+        let a = (minZ - p.z) / dz, b = (maxZ - p.z) / dz;
+        if (a > b) { const s = a; a = b; b = s; }
+        t0 = Math.max(t0, a); t1 = Math.min(t1, b);
+        if (t0 > t1) continue;
+      }
+      return false; // algum sólido corta o caminho
+    }
+    return true;
+  }
+
+  // Guarda a NORMAL do contato (soma dos empurrões) em _pushX/_pushZ: é ela que
+  // define a tangente para deslizar quando o Caçador bate de frente.
   _resolveSolids() {
     const STEP_UP = 0.30;
     const p = this.group.position;
     const feet = p.y - EYE_Y, top = feet + BODY_H;
     const r = BODY_R, r2 = r * r;
+    this._pushX = 0; this._pushZ = 0;
     for (let pass = 0; pass < 2; pass++) {
       let moved = false;
       for (const box of this.level.solids) {
@@ -361,6 +453,7 @@ export class Seeker {
           if (d2 >= r2) continue;
           const dist = Math.sqrt(d2), push = (r - dist) / dist;
           p.x += dx * push; p.z += dz * push; moved = true;
+          this._pushX += dx * push; this._pushZ += dz * push;
         } else {
           const midX = (box.min.x + box.max.x) * 0.5, midZ = (box.min.z + box.max.z) * 0.5;
           const penX = Math.min(p.x - box.min.x, box.max.x - p.x);
