@@ -16,9 +16,8 @@ const HALF = 14.5;     // meia-largura do piso (mansão 29×29 por andar)
 // Anel da laje do 2º andar — módulo-level para o _build (janelas), _buildMezzanine
 // e _buildUpstairsRoom compartilharem a mesma geometria. Mudar HALF/RING_DEPTH
 // propaga para a borda interna (= face frontal da laje) e o centro da faixa.
-const RING_DEPTH = 4.0;                    // profundidade do anel (piso útil em cima)
-const RING_IN = HALF - RING_DEPTH;         // 10.5 — borda interna = face da laje (escada termina aqui)
-const RING_CTR = HALF - RING_DEPTH / 2;    // 12.5 — centro da faixa do anel
+const RING_DEPTH = 4.0;                    // profundidade da faixa útil (alcovas + janelas E/W)
+const RING_IN = HALF - RING_DEPTH;         // 10.5 — topo das escadarias + face onde os poços da laje terminam
 const WALL_H = 7.8;    // pé-direito do salão (triplo); teto do salão em WALL_H
 const ROOM_H = 3.2;    // altura das paredes de cômodo (abaixo da laje do 2º andar)
 const ROOM2_H = 2.4;   // altura das divisórias dos quartos do 2º andar (sobre a laje)
@@ -571,6 +570,7 @@ export class Level {
     this._deco(new THREE.CylinderGeometry(0.28, 0.32, 1.0, 16), MANSION.carvalho, x, base + 0.5, z, { cast: true });
     if (kind === 0) this._deco(new THREE.SphereGeometry(0.32, 16, 12), MANSION.marmore, x, base + 1.2, z, { roughness: 0.25, cast: true }); // busto/urna
     else this._deco(new THREE.ConeGeometry(0.3, 0.7, 14), MANSION.latao, x, base + 1.35, z, { metalness: 0.5, roughness: 0.35, cast: true }); // chama/obelisco
+    this._addSolid(0.7, 1.6, 0.7, x, base + 0.8, z); // colisão (pedestal+peça): jogador não atravessa
   }
 
   // ── NOVOS TIPOS (variedade visual do 2º andar) ──────────────────────────────
@@ -580,6 +580,7 @@ export class Level {
     this._deco(new THREE.CylinderGeometry(0.26, 0.34, 0.6, 14), MANSION.carvalho, x, base + 0.3, z, { cast: true, roughness: 0.6 });
     this._addSphere(0.45, MANSION.salvia, x, base + 1.0, z, { roughness: 0.9 });
     this._deco(new THREE.ConeGeometry(0.34, 0.6, 12), MANSION.salvia, x, base + 1.5, z, { roughness: 0.9, cast: true });
+    this._addSolid(0.7, 1.8, 0.7, x, base + 0.9, z); // colisão (vaso+folhagem): jogador não atravessa
   }
 
   // Biombo/divisória decorativa: painel fino e alto (corpo grudável = mais um alvo
@@ -602,6 +603,7 @@ export class Level {
     this._deco(new THREE.CylinderGeometry(0.12, 0.16, 0.8, 12), MANSION.ebano, x, base + 0.4, z, { cast: true });
     this._deco(new THREE.CylinderGeometry(0.7, 0.7, 0.1, 24), MANSION.marmore, x, base + 0.85, z, { roughness: 0.25, cast: true });
     this._deco(new THREE.SphereGeometry(0.16, 12, 10), MANSION.latao, x, base + 1.02, z, { colorable: false, metalness: 0.5, roughness: 0.35 });
+    this._addSolid(1.2, 1.0, 1.2, x, base + 0.5, z); // colisão (pé+tampo): jogador não atravessa
   }
 
   // ── VERTICALIDADE: laje, degrau, mezanino ───────────────────────────────────
@@ -653,11 +655,20 @@ export class Level {
       const zc = z0 + (i - 0.5) * dz;
       this._addStep(width, Math.abs(dz) + 0.02, cx, zc, baseY + i * ((topY - baseY) / steps), baseY);
     }
-    // Corrimão lateral acompanhando a inclinação.
+    // Corrimãos SÓLIDOS nos DOIS lados. Visual = brass acompanhando a inclinação; a
+    // COLISÃO vem de uma barreira invisível (_addSolid, 0 malhas) por lado, cobrindo os
+    // ~70% superiores do lance — onde uma saída lateral seria queda > STEP_UP. Pula os
+    // 30% de baixo para não murar o térreo sob a base da escada.
     const rise = topY - baseY, run = Math.abs(z1 - z0);
-    this._deco(new THREE.BoxGeometry(0.08, 0.1, Math.hypot(run, rise)), MANSION.latao,
-      cx - width / 2 - 0.05, (baseY + topY) / 2 + 0.9, (z0 + z1) / 2,
-      { colorable: false, rx: Math.sign(z1 - z0) * -Math.atan2(rise, run), metalness: 0.5 });
+    const railY = (baseY + topY) / 2 + 0.9, railTilt = Math.sign(z1 - z0) * -Math.atan2(rise, run);
+    const zLo = z0 + 0.3 * (z1 - z0);
+    for (const sx of [-1, 1]) {
+      this._deco(new THREE.BoxGeometry(0.08, 0.1, Math.hypot(run, rise)), MANSION.latao,
+        cx + sx * (width / 2 + 0.05), railY, (z0 + z1) / 2,
+        { colorable: false, rx: railTilt, metalness: 0.5 });
+      this._addSolid(0.1, (topY + 0.9) - (baseY + 1.0), Math.abs(z1 - zLo),
+        cx + sx * (width / 2), (baseY + 1.0 + topY + 0.9) / 2, (zLo + z1) / 2);
+    }
     return { bot: wp(cx, z0), top: wp(cx, z1) };
   }
 
@@ -665,21 +676,35 @@ export class Level {
   // escadaria no canto SE, guarda-corpo e arandelas. Compartilhado pelos 3 layouts.
   // Define this._stairBot/_stairTop/_balcony para as rotas montarem a patrulha vertical.
   _buildMezzanine() {
-    const DEPTH = RING_DEPTH, IN = RING_IN, CTR = RING_CTR; // borda interna |coord|=RING_IN
-    // Faixas do anel (3.5 m de profundidade): fecham o vão até a escada (z≥9) e dão
-    // margem ao corte de canto do Caçador. N/S largura total, E/W entre elas.
-    this._addSlab(HALF * 2, DEPTH, 0, -CTR, FLOOR2_Y); // N (z∈[-12.5,-9])
-    this._addSlab(HALF * 2, DEPTH, 0, CTR, FLOOR2_Y);  // S (z∈[9,12.5])
-    this._addSlab(DEPTH, IN * 2, CTR, 0, FLOOR2_Y);    // E (x∈[9,12.5])
-    this._addSlab(DEPTH, IN * 2, -CTR, 0, FLOOR2_Y);   // W
-
-    // Guarda-corpo (deco baixo) na borda interna — só visual, não bloqueia.
-    const railY = FLOOR2_Y + 0.5;
-    const railMat = { colorable: false, roughness: 0.4, metalness: 0.5 };
-    this._deco(new THREE.BoxGeometry(IN * 2, 0.1, 0.08), MANSION.latao, 0, railY, -IN, railMat);
-    this._deco(new THREE.BoxGeometry(IN * 2, 0.1, 0.08), MANSION.latao, 0, railY, IN, railMat);
-    this._deco(new THREE.BoxGeometry(0.08, 0.1, IN * 2), MANSION.latao, -IN, railY, 0, railMat);
-    this._deco(new THREE.BoxGeometry(0.08, 0.1, IN * 2), MANSION.latao, IN, railY, 0, railMat);
+    const IN = RING_IN; // topo das escadarias + face onde os poços terminam (herdado)
+    // LAJE CHEIA do 2º andar (Fase B — "laje grande com esconderijos"): no lugar do
+    // antigo ANEL (faixa de 4 m em volta de um vão de 21×21), um piso sólido 29×29 em
+    // FLOOR2_Y. Deixa DOIS poços sobre as escadarias (S e N) para o jogador EMERGIR —
+    // sem eles a laje viraria teto e prenderia quem sobe (o mesmo travamento que a
+    // escada já resolvia ao terminar na borda). Cada poço = x∈[-HW,HW], z∈[HZ..IN].
+    // A laje é montada por 5 retângulos que contornam os poços (mesma contagem do anel).
+    const HW = 1.5;  // meia-largura do poço = meia-largura da escada (3 m) → sem sacada lateral aberta
+    const HZ = 4.5;  // início do poço em z; o miolo z∈[-HZ,HZ] liga as duas saídas de escada
+    this._addSlab(HALF - HW, HALF * 2, -(HALF + HW) / 2, 0, FLOOR2_Y); // W: x∈[-14.5,-2]
+    this._addSlab(HALF - HW, HALF * 2, (HALF + HW) / 2, 0, FLOOR2_Y);  // E: x∈[2,14.5]
+    this._addSlab(HW * 2, HALF - IN, 0, (HALF + IN) / 2, FLOOR2_Y);    // centro-S: z∈[10.5,14.5]
+    this._addSlab(HW * 2, HZ * 2, 0, 0, FLOOR2_Y);                     // miolo:    z∈[-4.5,4.5]
+    this._addSlab(HW * 2, HALF - IN, 0, -(HALF + IN) / 2, FLOOR2_Y);   // centro-N: z∈[-14.5,-10.5]
+    // Guarda-corpo SÓLIDO dos dois poços (Fase B): balaustrada com COLISÃO real —
+    // topo a PH=1 m > STEP_UP (0.30), então BLOQUEIA a queda, não é só visual. Cada
+    // poço deixa a boca da escada ABERTA (face z=±IN, onde o topo da escada encosta no
+    // bloco centro) e mura as 3 bordas de queda: uma travessa junto ao miolo (z=±HZ) e
+    // duas laterais (x=±HW). Como HW = meia-largura da escada, uma mureta por borda sela.
+    const PH = 1.0, PY = FLOOR2_Y + PH / 2, PT = 0.16;
+    const boP = this._mat('boiserie');
+    const guard = { climbable: false, roughness: boP.roughness, metalness: 0.02, map: boP.map, normalMap: boP.normalMap, normalScale: boP.normalScale, mapRepeat: { x: 1, y: 1 } };
+    for (const sz of [1, -1]) {                    // sz=+1 poço S, sz=-1 poço N
+      const zCross = sz * HZ;                       // travessa junto ao miolo
+      const zSideMid = sz * (HZ + IN) / 2;          // centro das laterais
+      this._addBox(HW * 2, PH, PT, MANSION.marmore, 0, PY, zCross, guard);        // travessa
+      this._addBox(PT, PH, IN - HZ, MANSION.marmore, -HW, PY, zSideMid, guard);   // lateral W
+      this._addBox(PT, PH, IN - HZ, MANSION.marmore, HW, PY, zSideMid, guard);    // lateral E
+    }
 
     // ESCADARIA SUL (x=0): térreo → 2º andar, sobe em +z de z=5 até a BORDA interna
     // da faixa S (z=IN), onde o último degrau (topo = FLOOR2_Y) encosta na face da laje.
@@ -731,14 +756,12 @@ export class Level {
     this._buildSconce(HALF - 0.4, FLOOR2_Y + 2, 0);
     this._buildSconce(0, FLOOR2_Y + 2, HALF - 0.4);
 
-    // Enriquecimento visual do ANEL (variedade — Fase B). O anel é largo (DEPTH=4)
-    // e estava vazio entre as alcovas. A faixa de patrulha corre em |coord|=bc≈12.6
-    // (ver _balcony): peças COM colisão (aparador/poltrona/biombo, via _addBox) só
-    // vão contra a parede externa (|coord|≥13.4) ou junto ao guarda-corpo interno
-    // (|coord|≤11.5), nunca sobre a linha 12.6; peças SEM colisão (planta/mesa/
-    // quadro/espelho, via _deco/_addSphere) vão onde a leitura pede. Evita o eixo
-    // x=0 (pés das escadarias, |z|∈[5,10.5]) e a faixa W (passagem elevada da sacada).
-    this._decorateRing();
+    // Esconderijos da LAJE (Fase B — "laje grande com objetos pra esconder"). Com o
+    // piso cheio, o 2º andar vira um campo de cobertura: móveis-esconderijo COM colisão
+    // (guarda-roupas/baús/biombos, via _addBox → grudáveis = camo + oclusão) espalhados
+    // em corredores, mais acentos decorativos. Evita os poços das escadas (x∈[-2,2],
+    // |z|∈[4.5,10.5]), a faixa da sacada (x<-9, |z|<6.5) e as 4 alcovas de canto.
+    this._decorateFloor2();
 
     // Waypoints do anel (Y é ignorado no alcance; serve de XZ-alvo). Laço de 8
     // pontos hugando o anel (cantos + meios de aresta) para não cortar o canto e
@@ -755,35 +778,48 @@ export class Level {
     this._upperLoop = this._balcony;
   }
 
-  // Popular o anel do 2º andar com variedade visual (Fase B). base = FLOOR2_Y.
-  // Regra de colisão (ver comentário no chamador): sólidos contra as paredes
-  // externas ou no rail interno; decorativos livres. Nada no eixo x=0 nem na
-  // faixa W (sacada). Coordenadas escolhidas à mão para deixar a linha bc≈12.6 livre.
-  _decorateRing() {
-    const b = FLOOR2_Y, w = HALF;
-    // — Faixa N (parede externa em -z): peças de frente para +z (orientação nativa
-    //   de _buildSideboard/_buildArmchair). x afastado do eixo das escadas (x=0).
-    this._buildSideboard(-5.5, -(w - 0.6), MANSION.carvalho, b);
-    this._buildArmchair(5.5, -(w - 0.9), MANSION.prussia, b);
-    // — Faixa S (parede externa em +z): decorativos (a poltrona/aparador olham para
-    //   +z, então encarariam a parede aqui). Longe do topo das escadas em (0,~10.8).
-    this._buildRoundTable(6.0, w - 0.7, b);
-    this._buildPlant(-6.0, w - 0.7, b);
-    // — Faixa E (parede externa em +x): sólidos ficariam salientes (largura em x),
-    //   então só decorativos contra a parede + um BIOMBO fino no rail interno,
-    //   paralelo à parede (dir para o vão), dando cobertura de linha de visão.
-    this._buildPlant(w - 0.7, -4.5, b);
-    this._buildRoundTable(w - 0.7, 5.5, b);
-    this._buildScreen(RING_IN + 0.9, 3.2, MANSION.ametista, b, { x: -1, z: 0 });
-    // — Faixa W (sob a sacada): só plantas nas pontas, além dos lances (|z|>6.5) e
-    //   aquém das divisórias de canto — sem tocar a passagem elevada.
-    this._buildPlant(-(w - 0.7), 8.0, b);
-    this._buildPlant(-(w - 0.7), -8.0, b);
+  // Móvel-esconderijo de madeira: 1 malha, grudável+colorável (alvo de camuflagem
+  // E cobertura de linha de visão), com colisão. h alto = guarda-roupa; baixo = baú.
+  _hideBox(w, h, d, color, x, z, base) {
+    const wd = this._mat('wood');
+    this._addBox(w, h, d, color, x, base + h / 2, z, {
+      roughness: wd.roughness, metalness: 0, map: wd.map, normalMap: wd.normalMap, normalScale: wd.normalScale,
+    });
+  }
+
+  // Popular a LAJE CHEIA do 2º andar com esconderijos (Fase B). base = FLOOR2_Y.
+  // Campos livres (evitam poços das escadas, sacada e alcovas de canto): campo E
+  // (x∈[3,10]) e campo W (x∈[-8,-3]), ambos em |z|≲8, mantendo o corredor central
+  // x∈[-2,2] aberto entre as duas saídas de escada. Rotação de cor por layout dá
+  // variedade aos 3 mapas sem custo de malha. Tudo com colisão vira cobertura.
+  _decorateFloor2() {
+    const b = FLOOR2_Y;
+    const pal = [MANSION.bordo, MANSION.prussia, MANSION.ametista, MANSION.ebano, MANSION.porcelana];
+    const col = (i) => pal[(i + this.layout) % pal.length];
+
+    // — Guarda-roupas altos (2 m): melhores esconderijos (bloqueiam visão em pé).
+    //   Pares espelhados nos campos E/W; x≥-7 mantém-nos a leste da sacada (x≤-9).
+    const wardrobe = [[-7, -4], [-7, 4], [7, -4], [7, 4], [9.5, 0]];
+    wardrobe.forEach(([x, z], i) => this._hideBox(1.4, 2.0, 0.8, col(i), x, z, b));
+    // — Baús/arcas mais baixos (1.2 m): cobertura agachada, espalhados nos campos.
+    const chest = [[-4, -6], [-4, 6], [4, -6], [4, 6], [-5.5, 0], [5.5, 0]];
+    chest.forEach(([x, z]) => this._hideBox(1.3, 1.2, 1.1, MANSION.carvalho, x, z, b));
+    // — Biombos (cortam linha de visão sem virar beco), um em cada campo.
+    this._buildScreen(-8.5, -7, col(2), b, { x: 1, z: 0 });
+    this._buildScreen(8, 6.5, col(4), b, { x: 1, z: 0 });
+
+    // — Acentos decorativos (sem colisão): plantas e mesas nas bordas livres.
+    this._buildPlant(12.8, -6, b);
+    this._buildPlant(12.8, 6, b);
+    this._buildPlant(-6, 12.8, b);
+    this._buildRoundTable(11, 3, b);
+    this._buildRoundTable(11, -3, b);
+
     // — Quadros nas paredes externas do 2º andar (sem colisão), entre as janelas
     //   (x=±5 em N/S) e as alcovas de canto. y ao lado dos caixilhos.
     for (const sz of [-1, 1]) {
-      this._buildPainting(-9.3, b + 1.7, sz * (w - 0.32), { x: 0, z: -sz }, 1.3, 1.7);
-      this._buildPainting(9.3, b + 1.7, sz * (w - 0.32), { x: 0, z: -sz }, 1.3, 1.7);
+      this._buildPainting(-9.3, b + 1.7, sz * (HALF - 0.32), { x: 0, z: -sz }, 1.3, 1.7);
+      this._buildPainting(9.3, b + 1.7, sz * (HALF - 0.32), { x: 0, z: -sz }, 1.3, 1.7);
     }
   }
 

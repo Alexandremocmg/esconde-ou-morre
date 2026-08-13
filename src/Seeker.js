@@ -298,6 +298,10 @@ export class Seeker {
 
     this.group.position.x += dir.x * speed * dt;
     this.group.position.z += dir.z * speed * dt;
+    // Empurrão-para-fora contra sólidos: impede o Caçador de VAZAR por dentro de
+    // móveis/murets (ele não tinha colisão — só bigodes de desvio). Roda ANTES da
+    // sonda de chão, que re-amostra no XZ já corrigido.
+    this._resolveSolids();
     // Y pela SONDA DE CHÃO (rampa/laje/degrau), não constante. A rampa dá
     // interpolação de graça e cobre o mezanino sem caso especial; falha em
     // segurança (sem hit → mantém o Y anterior, não cai no vazio).
@@ -313,6 +317,42 @@ export class Seeker {
     this._probe.far = FLOOR_PROBE_UP + FLOOR_PROBE_DOWN;
     const hit = this._probe.intersectObjects(this.level.walkables, false)[0];
     return hit ? hit.point.y + EYE_Y : prevY;
+  }
+
+  // Empurrão-para-fora horizontal contra level.solids (rede de segurança de colisão;
+  // os bigodes de _steer continuam o desvio primário). Espelha Player._resolveHorizontal:
+  // ponto do AABB mais próximo no plano XZ, empurra até BODY_R, deslizando nas faces.
+  // Pula sólidos fora da faixa vertical do corpo e os "subíveis" (degraus/lajes que ele
+  // pisa) — senão o próprio chão/escada o barraria como parede.
+  _resolveSolids() {
+    const STEP_UP = 0.30;
+    const p = this.group.position;
+    const feet = p.y - EYE_Y, top = feet + BODY_H;
+    const r = BODY_R, r2 = r * r;
+    for (let pass = 0; pass < 2; pass++) {
+      let moved = false;
+      for (const box of this.level.solids) {
+        if (box.min.y >= top || box.max.y <= feet) continue;
+        if (box.max.y <= feet + STEP_UP) continue;
+        const cx = Math.min(Math.max(p.x, box.min.x), box.max.x);
+        const cz = Math.min(Math.max(p.z, box.min.z), box.max.z);
+        const dx = p.x - cx, dz = p.z - cz;
+        const d2 = dx * dx + dz * dz;
+        if (d2 > 1e-8) {
+          if (d2 >= r2) continue;
+          const dist = Math.sqrt(d2), push = (r - dist) / dist;
+          p.x += dx * push; p.z += dz * push; moved = true;
+        } else {
+          const midX = (box.min.x + box.max.x) * 0.5, midZ = (box.min.z + box.max.z) * 0.5;
+          const penX = Math.min(p.x - box.min.x, box.max.x - p.x);
+          const penZ = Math.min(p.z - box.min.z, box.max.z - p.z);
+          if (penX < penZ) p.x += (p.x >= midX ? 1 : -1) * (penX + r);
+          else p.z += (p.z >= midZ ? 1 : -1) * (penZ + r);
+          moved = true;
+        }
+      }
+      if (!moved) return;
+    }
   }
 
   // ------------------------------------------------------ OBSTACLE AVOIDANCE
