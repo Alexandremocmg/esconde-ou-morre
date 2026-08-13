@@ -120,6 +120,9 @@ export class Seeker {
     // dessincroniza os dois Caçadores.
     this.gait = new Gait(toy.rig, { phase: this._bobPhase });
     this._prevPos = this.group.position.clone();
+    this._bestDist = Infinity; // menor distância já atingida ao alvo (à prova de oscilação)
+    this._noImproveT = 0;      // tempo sem MELHORAR esse melhor alcance
+    this._unstickT = 0;        // enquanto > 0: whiskers OFF, vai reto e desliza na colisão
 
     // Visor emissivo na frente da cabeça (+Z): indica a direção da visão e dá o
     // ar sinistro de um scanner (contraponto aos olhinhos amigáveis do jogador).
@@ -290,7 +293,12 @@ export class Seeker {
     // Só antecipa obstáculos ENTRE nós e o alvo — nunca desvia da parede onde
     // o jogador está grudado (senão o Caçador nunca fecharia a captura).
     const probeFar = Math.min(AVOID_PROBE, distToTarget - AVOID_MARGIN);
-    const dir = this._steer(desired, probeFar);
+    // ANTITRAVAMENTO (ele não tem pathfinding): os whiskers de _steer caem em
+    // MÍNIMO LOCAL no campo de móveis denso do 2º andar — oscilam de lado sem se
+    // aproximar. Ao detectar estagnação, desligo os whiskers por ~1 s e vou RETO no
+    // alvo: a colisão-deslizante (_resolveSolids) contorna o móvel. Validado em sim:
+    // reto+slide chega; whiskers travam.
+    const dir = this._unstickT > 0 ? desired : this._steer(desired, probeFar);
 
     // Gira suavemente em direção ao rumo escolhido
     const desiredYaw = Math.atan2(dir.x, dir.z);
@@ -306,6 +314,16 @@ export class Seeker {
     // interpolação de graça e cobre o mezanino sem caso especial; falha em
     // segurança (sem hit → mantém o Y anterior, não cai no vazio).
     this.group.position.y = this._groundY(this.group.position.x, this.group.position.z, this.group.position.y);
+
+    // Detecção de trava À PROVA DE OSCILAÇÃO: a jitter do mínimo local às vezes
+    // reduz a distância por 1 frame e zeraria um contador ingênuo. Em vez disso,
+    // só conta MELHORA do MELHOR alcance já atingido (_bestDist). Sem melhora real
+    // por >0.5 s → arma o slide (whiskers OFF, vai reto; a colisão-deslizante
+    // contorna). _bestDist relaxa devagar p/ re-baselinar um alvo que se afastou.
+    const newDist = Math.hypot(target.x - this.group.position.x, target.z - this.group.position.z);
+    if (newDist < this._bestDist - 0.1) { this._bestDist = newDist; this._noImproveT = 0; }
+    else this._noImproveT += dt;
+    this._unstickT = this._noImproveT > 0.5 ? 1.2 : Math.max(0, this._unstickT - dt);
   }
 
   // Sonda vertical contra level.walkables (chão, lajes, degraus): retorna a altura
@@ -407,7 +425,12 @@ export class Seeker {
     this.loseTimer = 0;
     this.chaseRamp = 0;
     this.lastKnown.copy(this.player.position);
+    this._resetUnstick(); // nova caça começa com whiskers (re-baseline do antitravamento)
   }
+
+  // Rearma o antitravamento: cada perseguição/ronda recomeça tentando os whiskers;
+  // se travar de novo, o slide pegajoso assume até chegar (ver _moveToward).
+  _resetUnstick() { this._bestDist = Infinity; this._noImproveT = 0; this._unstickT = 0; }
 
   _enterPatrol() {
     this.state = 'patrol';
@@ -422,6 +445,7 @@ export class Seeker {
       if (d < bestD) { bestD = d; best = i; }
     }
     this.wpIndex = best;
+    this._resetUnstick();
   }
 
   // --------------------------------------------------------------- API DE PERIGO

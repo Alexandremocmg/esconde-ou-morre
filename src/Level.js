@@ -173,7 +173,7 @@ export class Level {
     climbable = true, colorable = true,
     map = null, mapRepeat = null, roughness = 0.85, metalness = 0.0,
     normalMap = null, normalScale = 1,
-    emissive = null, emissiveIntensity = 0,
+    emissive = null, emissiveIntensity = 0, seekerPass = false,
   } = {}) {
     const radius = Math.min(0.22, 0.14 * Math.min(w, h, d));
     const mat = new THREE.MeshToonMaterial({ color, gradientMap: toonGradient() });
@@ -200,7 +200,7 @@ export class Level {
     this.scene.add(mesh);
     if (climbable) this.climbables.push(mesh);
     if (colorable) this.colorables.push(mesh);
-    this._addSolid(w, h, d, x, y, z);
+    this._addSolid(w, h, d, x, y, z, { seekerPass });
     return mesh;
   }
 
@@ -781,10 +781,14 @@ export class Level {
 
   // Móvel-esconderijo de madeira: 1 malha, grudável+colorável (alvo de camuflagem
   // E cobertura de linha de visão), com colisão. h alto = guarda-roupa; baixo = baú.
+  // seekerPass: o Caçador ATRAVESSA (barra só o jogador). Sem pathfinding, ele
+  // entalava no vão estreito entre um móvel e um pilar estrutural (vão 1.0m < corpo
+  // 1.2m). Assim ele colide só com estrutura (paredes/pilares/murets), sempre passável.
   _hideBox(w, h, d, color, x, z, base) {
     const wd = this._mat('wood');
     this._addBox(w, h, d, color, x, base + h / 2, z, {
       roughness: wd.roughness, metalness: 0, map: wd.map, normalMap: wd.normalMap, normalScale: wd.normalScale,
+      seekerPass: true,
     });
   }
 
