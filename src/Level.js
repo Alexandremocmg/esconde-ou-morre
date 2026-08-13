@@ -113,11 +113,15 @@ export class Level {
     }
   }
 
-  _addSolid(w, h, d, x, y, z) {
+  // opts.seekerPass=true → colisão SÓ do jogador/câmera (o Caçador ignora). Para
+  // enfeites: barram você, mas não prendem o Caçador (que não tem pathfinding e
+  // ficava travado orbitando props pequenos na linha de patrulha).
+  _addSolid(w, h, d, x, y, z, opts = {}) {
     const box = new THREE.Box3().setFromCenterAndSize(
       new THREE.Vector3(x, y, z),
       new THREE.Vector3(w, h, d)
     );
+    if (opts.seekerPass) box.seekerPass = true;
     this.solids.push(box);
   }
 
@@ -570,7 +574,7 @@ export class Level {
     this._deco(new THREE.CylinderGeometry(0.28, 0.32, 1.0, 16), MANSION.carvalho, x, base + 0.5, z, { cast: true });
     if (kind === 0) this._deco(new THREE.SphereGeometry(0.32, 16, 12), MANSION.marmore, x, base + 1.2, z, { roughness: 0.25, cast: true }); // busto/urna
     else this._deco(new THREE.ConeGeometry(0.3, 0.7, 14), MANSION.latao, x, base + 1.35, z, { metalness: 0.5, roughness: 0.35, cast: true }); // chama/obelisco
-    this._addSolid(0.7, 1.6, 0.7, x, base + 0.8, z); // colisão (pedestal+peça): jogador não atravessa
+    this._addSolid(0.7, 1.6, 0.7, x, base + 0.8, z, { seekerPass: true }); // barra jogador; Caçador atravessa
   }
 
   // ── NOVOS TIPOS (variedade visual do 2º andar) ──────────────────────────────
@@ -580,7 +584,7 @@ export class Level {
     this._deco(new THREE.CylinderGeometry(0.26, 0.34, 0.6, 14), MANSION.carvalho, x, base + 0.3, z, { cast: true, roughness: 0.6 });
     this._addSphere(0.45, MANSION.salvia, x, base + 1.0, z, { roughness: 0.9 });
     this._deco(new THREE.ConeGeometry(0.34, 0.6, 12), MANSION.salvia, x, base + 1.5, z, { roughness: 0.9, cast: true });
-    this._addSolid(0.7, 1.8, 0.7, x, base + 0.9, z); // colisão (vaso+folhagem): jogador não atravessa
+    this._addSolid(0.7, 1.8, 0.7, x, base + 0.9, z, { seekerPass: true }); // barra jogador; Caçador atravessa
   }
 
   // Biombo/divisória decorativa: painel fino e alto (corpo grudável = mais um alvo
@@ -603,7 +607,7 @@ export class Level {
     this._deco(new THREE.CylinderGeometry(0.12, 0.16, 0.8, 12), MANSION.ebano, x, base + 0.4, z, { cast: true });
     this._deco(new THREE.CylinderGeometry(0.7, 0.7, 0.1, 24), MANSION.marmore, x, base + 0.85, z, { roughness: 0.25, cast: true });
     this._deco(new THREE.SphereGeometry(0.16, 12, 10), MANSION.latao, x, base + 1.02, z, { colorable: false, metalness: 0.5, roughness: 0.35 });
-    this._addSolid(1.2, 1.0, 1.2, x, base + 0.5, z); // colisão (pé+tampo): jogador não atravessa
+    this._addSolid(1.2, 1.0, 1.2, x, base + 0.5, z, { seekerPass: true }); // barra jogador; Caçador atravessa
   }
 
   // ── VERTICALIDADE: laje, degrau, mezanino ───────────────────────────────────

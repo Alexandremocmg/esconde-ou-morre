@@ -332,6 +332,7 @@ export class Seeker {
     for (let pass = 0; pass < 2; pass++) {
       let moved = false;
       for (const box of this.level.solids) {
+        if (box.seekerPass) continue; // enfeites (só barram o jogador) — não travar o Caçador
         if (box.min.y >= top || box.max.y <= feet) continue;
         if (box.max.y <= feet + STEP_UP) continue;
         const cx = Math.min(Math.max(p.x, box.min.x), box.max.x);
