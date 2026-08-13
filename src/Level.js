@@ -655,19 +655,16 @@ export class Level {
       const zc = z0 + (i - 0.5) * dz;
       this._addStep(width, Math.abs(dz) + 0.02, cx, zc, baseY + i * ((topY - baseY) / steps), baseY);
     }
-    // Corrimãos SÓLIDOS nos DOIS lados. Visual = brass acompanhando a inclinação; a
-    // COLISÃO vem de uma barreira invisível (_addSolid, 0 malhas) por lado, cobrindo os
-    // ~70% superiores do lance — onde uma saída lateral seria queda > STEP_UP. Pula os
-    // 30% de baixo para não murar o térreo sob a base da escada.
+    // Corrimãos SÓ VISUAIS nos DOIS lados (brass acompanhando a inclinação). SEM
+    // colisão: barreiras sólidas laterais das duas escadarias (ambas em cx=0) se
+    // encontravam e muravam o próprio caminho de subida. A queda lateral é rara e
+    // menos ruim que travar o lance — fica só o guia visual.
     const rise = topY - baseY, run = Math.abs(z1 - z0);
     const railY = (baseY + topY) / 2 + 0.9, railTilt = Math.sign(z1 - z0) * -Math.atan2(rise, run);
-    const zLo = z0 + 0.3 * (z1 - z0);
     for (const sx of [-1, 1]) {
       this._deco(new THREE.BoxGeometry(0.08, 0.1, Math.hypot(run, rise)), MANSION.latao,
         cx + sx * (width / 2 + 0.05), railY, (z0 + z1) / 2,
         { colorable: false, rx: railTilt, metalness: 0.5 });
-      this._addSolid(0.1, (topY + 0.9) - (baseY + 1.0), Math.abs(z1 - zLo),
-        cx + sx * (width / 2), (baseY + 1.0 + topY + 0.9) / 2, (zLo + z1) / 2);
     }
     return { bot: wp(cx, z0), top: wp(cx, z1) };
   }
