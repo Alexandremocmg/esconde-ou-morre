@@ -1,4 +1,4 @@
-import { Game } from './Game.js';
+import { Game } from './Game.js?v=3';
 
 // O jogo só arranca após um gesto do usuário — necessário para fullscreen
 // e para a tentativa de travar a orientação em paisagem no mobile.

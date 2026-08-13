@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import { buildHumanoid, Gait } from './Character.js';
-import { toonGradient } from './textures.js';
+import { buildHumanoid, Gait } from './Character.js?v=3';
+import { toonGradient } from './textures.js?v=3';
 
 // Parâmetros do Caçador
 const BODY_R = 0.6;

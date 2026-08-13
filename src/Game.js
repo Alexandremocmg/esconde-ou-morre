@@ -1,12 +1,12 @@
 import * as THREE from 'three';
-import { Level } from './Level.js';
-import { Player } from './Player.js';
-import { Seeker, WAYPOINTS_ALT } from './Seeker.js';
-import { FollowCamera } from './FollowCamera.js';
-import { Joystick } from './Joystick.js';
-import { Effects } from './Effects.js';
-import { Audio } from './Audio.js';
-import { ColorPicker } from './ColorPicker.js';
+import { Level } from './Level.js?v=3';
+import { Player } from './Player.js?v=3';
+import { Seeker, WAYPOINTS_ALT } from './Seeker.js?v=3';
+import { FollowCamera } from './FollowCamera.js?v=3';
+import { Joystick } from './Joystick.js?v=3';
+import { Effects } from './Effects.js?v=3';
+import { Audio } from './Audio.js?v=3';
+import { ColorPicker } from './ColorPicker.js?v=3';
 
 // Partida (Fase 4): objetivo = sobreviver ao Caçador até o tempo acabar.
 const BASE_SURVIVE = 60;      // s de sobrevivência no estágio 1

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import { buildBody, Gait } from './Character.js';
-import { toonGradient } from './textures.js';
+import { buildBody, Gait } from './Character.js?v=3';
+import { toonGradient } from './textures.js?v=3';
 
 const WORLD_UP = new THREE.Vector3(0, 1, 0);
 const DOWN = new THREE.Vector3(0, -1, 0); // amostra/checagem do chão na pose deitada (P3c)

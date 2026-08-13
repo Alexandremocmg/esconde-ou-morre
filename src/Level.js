@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
-import { materialMaps, toonGradient } from './textures.js';
+import { materialMaps, toonGradient } from './textures.js?v=3';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MANSÃO DE LUXO — térreo (Fase 3). Pegada ~25×25 m por andar (10,7× menor que a
