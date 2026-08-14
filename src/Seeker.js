@@ -85,7 +85,7 @@ export class Seeker {
 
     // Rota de patrulha (permite instanciar Caçadores com rotas alternadas).
     this.waypoints = opts.waypoints || WAYPOINTS;
-    const bodyColor = opts.color != null ? opts.color : 0xd21f1f;
+    const bodyColor = opts.color != null ? opts.color : 0xE8431C; // vermelho-laranja de alerta (guia toon)
 
     this.state = 'patrol'; // 'patrol' | 'chase' | 'caught'
     this.yaw = 0;
@@ -116,7 +116,9 @@ export class Seeker {
     const bodyMat = new THREE.MeshToonMaterial({
       color: bodyColor, gradientMap: toonGradient(),
     });
-    const toy = buildHumanoid(bodyMat, BODY_H, { outline: true }); // contorno cel (Fase 3a): ameaça "salta"
+    // Contorno cel (Fase 3a) mais grosso e quente (tinta escura) — casa com a arte
+    // toon gerada e faz a ameaça "saltar" contra o fundo claro.
+    const toy = buildHumanoid(bodyMat, BODY_H, { outline: true, outlineColor: 0x1a0d0d, outlineScale: 1.09 });
     this.bodyGroup.add(toy.group);
 
     // Caminhada procedural (mesmo Gait do jogador): pernas/braços balançam e o
@@ -131,15 +133,29 @@ export class Seeker {
     this._slideX = 0; this._slideZ = 0;
     this._pushX = 0; this._pushZ = 0; // normal do último contato (define a tangente)
 
-    // Visor emissivo na frente da cabeça (+Z): indica a direção da visão e dá o
-    // ar sinistro de um scanner (contraponto aos olhinhos amigáveis do jogador).
-    // Vai no tronco (`upper`) para acompanhar o bob/inclinação da caminhada.
-    const visor = new THREE.Mesh(
-      new THREE.BoxGeometry(toy.headR * 1.1, toy.headR * 0.5, 0.18),
-      new THREE.MeshToonMaterial({ color: 0x140505, emissive: 0x330000, gradientMap: toonGradient() })
-    );
-    visor.position.set(0, toy.headY, toy.headR + 0.05);
-    toy.rig.upper.add(visor);
+    // Cara AMEAÇADORA (Fase 6b, guiada por arte toon gerada): olhos amarelos que
+    // "brilham" (emissivos), sobrancelhas escuras inclinadas (carranca) e presas.
+    // Vai no tronco (`upper`) para acompanhar o bob/inclinação da caminhada e marca
+    // a frente (+Z) — o que também indica a direção da visão (substitui o visor).
+    const R = toy.headR, hy = toy.headY, fz = R * 0.9;
+    const eyeMat = new THREE.MeshToonMaterial({ color: 0xffcf33, emissive: 0xffb300, emissiveIntensity: 1.3, gradientMap: toonGradient() });
+    const browMat = new THREE.MeshToonMaterial({ color: 0x1a0d0d, gradientMap: toonGradient() });
+    const fangMat = new THREE.MeshToonMaterial({ color: 0xfff4e0, gradientMap: toonGradient() });
+    const face = new THREE.Group();
+    for (const sx of [-1, 1]) {
+      const eye = new THREE.Mesh(new THREE.SphereGeometry(R * 0.20, 14, 12), eyeMat);
+      eye.position.set(sx * R * 0.38, hy + R * 0.06, fz);
+      face.add(eye);
+      const brow = new THREE.Mesh(new THREE.BoxGeometry(R * 0.44, R * 0.12, R * 0.14), browMat);
+      brow.position.set(sx * R * 0.36, hy + R * 0.30, fz);
+      brow.rotation.z = sx * 0.5; // ponta interna baixa = carranca "\ /"
+      face.add(brow);
+      const fang = new THREE.Mesh(new THREE.ConeGeometry(R * 0.07, R * 0.20, 8), fangMat);
+      fang.position.set(sx * R * 0.14, hy - R * 0.34, fz * 0.98);
+      fang.rotation.x = Math.PI; // ponta para baixo
+      face.add(fang);
+    }
+    toy.rig.upper.add(face);
 
     // Cone de visão (visual/debug), apontando +Z a partir dos olhos
     const coneR = Math.tan(VISION_HALF_ANGLE) * VISION_RANGE;

@@ -1,6 +1,26 @@
 import * as THREE from 'three';
 import { buildBody, Gait } from './Character.js?v=3';
-import { toonGradient } from './textures.js?v=3';
+import { toonGradient, panelNormal, panelLinesCanvas } from './textures.js?v=3';
+import { loadPlayerModel } from './PlayerModel.js?v=3';
+import { TUNE } from './Tuner.js?v=3';
+
+// Boneco em GLB (Higgsfield, a partir da imagem de referência). Assíncrono: o
+// corpo procedural aparece por um instante e é substituído quando o modelo chega.
+// Se o arquivo faltar/falhar, o procedural continua — o jogo nunca fica sem corpo.
+const MODEL_URL = 'assets/player.glb?v=3';
+// Clipe de LOCOMOÇÃO separado (28 KB): o jogo corre a ~4,9 alturas de corpo por
+// segundo, então o clipe certo é de CORRIDA, não de caminhada.
+// Clipes de locomoção (28-31 KB cada), trocáveis no painel de ajustes.
+const MODEL_ANIMS = {
+  run1: 'assets/player-run.glb?v=3',   // RunFast
+  run2: 'assets/player-run2.glb?v=3',  // Run_02
+};
+// Endireita só PESCOÇO/CABEÇA na corrida (ver PlayerModel: mexer no quadril ou na
+// coluna quebra a passada). Deixa o boneco olhando à frente, não para o chão.
+const LEAN_DAMP = 0.5;
+// Parado, baixa os braços da A-pose de repouso para um "em pé" relaxado
+// (calibrado comparando 0 / ±0,3 / ±0,55 no render).
+const ARM_DROP = 0.32;
 
 const WORLD_UP = new THREE.Vector3(0, 1, 0);
 const DOWN = new THREE.Vector3(0, -1, 0); // amostra/checagem do chão na pose deitada (P3c)
@@ -79,23 +99,38 @@ export class Player {
     // raycasts de amostra/checagem).
     const H = HALF_EXTENT * 2; // altura total = extensão vertical da cápsula de colisão
     const BASE = 0xeef0f2;     // branco art toy (a camuflagem tinge por cima)
+    // Painéis facetados do art toy (ver referência): o RELEVO vive no normalMap —
+    // fora do mapa de cor, que `_stampZone` sobrescreve ao camuflar. A linha
+    // correspondente é carimbada por cima da pele em `_drawPanels`. gradientMap de
+    // 4 bandas (em vez de 3): com 3 o relevo quase não aparecia entre as bandas.
+    const panelN = panelNormal({ size: 256, strength: 2.6 });
     const makeZone = (name, y) => {
+      // 256² (era 128²): a 128 as juntas dos painéis saíam borradas ao esticar
+      // pelo corpo. A estampa da camuflagem também ganha nitidez.
       const skin = document.createElement('canvas');
-      skin.width = skin.height = 128;
+      skin.width = skin.height = 256;
       const skinCtx = skin.getContext('2d');
-      skinCtx.fillStyle = '#fff'; skinCtx.fillRect(0, 0, 128, 128);
+      skinCtx.fillStyle = '#fff'; skinCtx.fillRect(0, 0, 256, 256);
       const skinTex = new THREE.CanvasTexture(skin);
       skinTex.colorSpace = THREE.SRGBColorSpace;
-      const mat = new THREE.MeshToonMaterial({ color: BASE, gradientMap: toonGradient(), map: skinTex });
+      const mat = new THREE.MeshToonMaterial({
+        color: BASE, gradientMap: toonGradient(4), map: skinTex,
+        normalMap: panelN, normalScale: new THREE.Vector2(0.6, 0.6),
+      });
       return { name, y, mat, target: new THREE.Color(BASE), skin, skinCtx, skinTex };
     };
     this.zones = [makeZone('upper', 0.12 * H), makeZone('lower', -0.30 * H)];
+    for (const z of this.zones) this._clearZone(z); // pele branca JÁ com as juntas
 
     // Boneco branco na forma escolhida no menu (Fase 4): 'toy' | 'blob' | 'cube'.
     // A colisão/latch NÃO muda com a forma (usa a cápsula lógica); só o visual.
     const kind = sessionStorage.getItem('eom-body') || 'toy';
     const toy = buildBody({ upper: this.zones[0].mat, lower: this.zones[1].mat }, H, { kind });
     this.object.add(toy.group);
+    this._proc = toy;      // corpo procedural (fallback / substituído pelo GLB)
+    this.model = null;     // modelo GLB, quando carregar
+    this._animSpeed = 0;   // velocidade SUAVIZADA que dirige a animação do GLB
+    this._idleT = 1;       // 0 = correndo, 1 = parado (pose de pé)
 
     // Caminhada procedural: pernas/braços balançam e o corpo bobeia/inclina,
     // sincronizados com a distância percorrida (ver Gait em Character.js).
@@ -122,7 +157,32 @@ export class Player {
     }
     this._t = 0; // relógio p/ articulação dos olhos
 
+    // Emblema do peito (art toy da referência): anel gravado + miolo, salientes na
+    // frente do torso. Usa a MESMA `zones[0].mat` → recolore junto com a camuflagem
+    // (uma cor fixa aqui denunciaria o jogador camuflado). A âncora sai do bounding
+    // box do torso, então cai certo nas 4 formas (cápsula/esfera/caixa).
+    if (toy.torso) {
+      toy.torso.geometry.computeBoundingBox();
+      const bb = toy.torso.geometry.boundingBox;
+      const front = bb.max.z * (toy.torso.scale.z || 1);   // face frontal do torso
+      const cy = (bb.max.y + bb.min.y) * 0.5 * (toy.torso.scale.y || 1);
+      const R = toy.headR * 0.30;                          // emblema discreto
+      const emblem = new THREE.Group();
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(R, R * 0.26, 8, 18), this.zones[0].mat);
+      const core = new THREE.Mesh(new THREE.CylinderGeometry(R * 0.42, R * 0.42, R * 0.34, 14), this.zones[0].mat);
+      core.rotation.x = Math.PI / 2;                       // disco encarando +Z
+      emblem.add(ring, core);
+      // Peito alto e levemente afundado na superfície (lê como relevo, não adesivo).
+      emblem.position.set(0, cy + bb.max.y * 0.34, front - R * 0.18);
+      toy.torso.add(emblem);
+    }
+
     scene.add(this.object);
+
+    // BONECO EM GLB: troca o corpo procedural pelo modelo gerado assim que chega.
+    // Falha (arquivo ausente/inválido) => segue com o procedural.
+    loadPlayerModel(MODEL_URL, H, { animUrls: MODEL_ANIMS }).then((m) => this._useModel(m))
+      .catch((e) => console.warn('[Player] GLB não carregou, seguindo procedural:', e && e.message));
 
     // reutilizáveis (evita alocação no loop)
     this._raycaster = new THREE.Raycaster();
@@ -133,6 +193,27 @@ export class Player {
     this._axY = new THREE.Vector3();
     this._axZ = new THREE.Vector3();
     this._tmpV = new THREE.Vector3(); // âncora de zona (P1)
+  }
+
+  // Substitui o corpo procedural pelo GLB. O modelo é UMA malha com UM material,
+  // então a pintura por 2 zonas (tronco/pernas) colapsa numa zona só: a cor da
+  // camuflagem passa a valer para o corpo inteiro. A métrica segue a mesma —
+  // `isCamouflaged` compara `mat.color` com a superfície da(s) zona(s).
+  _useModel(m) {
+    this.object.remove(this._proc.group);
+    this.object.add(m.group);
+    this.model = m;
+    this.gait = null;        // o GLB traz o próprio clipe de caminhada
+    this._pupils = [];       // a referência é sem rosto — nada de pupilas no GLB
+
+    if (m.setClip) m.setClip(TUNE.clip);   // respeita a escolha salva no painel
+
+    const mat = m.materials[0];
+    const z = this.zones[0];
+    z.mat = mat;                       // zona única, agora apontando ao material do GLB
+    mat.color.copy(z.target);
+    this.zones = [z];
+    this._bodyMats = m.materials;      // sincronizados com a cor da zona (multi-material)
   }
 
   get position() { return this.object.position; }
@@ -152,10 +233,19 @@ export class Player {
     for (const z of this.zones) { z.target.copy(color); this._clearZone(z); }
   }
 
+  // Carimba as juntas dos painéis por cima da pele. Chamado no FIM de todo
+  // redesenho (limpeza e estampa) — é o que faz o painel sobreviver à camuflagem,
+  // já que `_stampZone` sobrescreve o canvas inteiro. Não afeta a MÉTRICA de
+  // camuflagem, que compara `material.color` e não o mapa (ver isCamouflaged).
+  _drawPanels(z) {
+    z.skinCtx.drawImage(panelLinesCanvas(256), 0, 0, z.skin.width, z.skin.height);
+  }
+
   // Pinta a pele de UMA zona de branco (mapa branco × color = cor sólida).
   _clearZone(z) {
     z.skinCtx.fillStyle = '#fff';
     z.skinCtx.fillRect(0, 0, z.skin.width, z.skin.height);
+    this._drawPanels(z);
     z.skinTex.needsUpdate = true;
   }
 
@@ -166,6 +256,7 @@ export class Player {
     z.skinCtx.fillStyle = '#fff';
     z.skinCtx.fillRect(0, 0, z.skin.width, z.skin.height);
     if (img) { try { z.skinCtx.drawImage(img, 0, 0, z.skin.width, z.skin.height); } catch (_) { /* ok */ } }
+    this._drawPanels(z); // painéis por cima da estampa (senão sumiriam ao camuflar)
     z.skinTex.needsUpdate = true;
   }
 
@@ -254,13 +345,53 @@ export class Player {
     let dist = this.object.position.distanceTo(this._prevPos);
     dist = Math.min(dist, MOVE_SPEED * dt * 1.6);
     this._prevPos.copy(this.object.position);
-    this.gait.update(dt, dist);
 
-    // Agachar: pose HUMANOIDE (dobra pernas + afunda/inclina o tronco), aplicada
-    // pelo Gait sobre o rig — bem mais orgânica que comprimir a malha. É só visual:
-    // a cápsula de colisão/latch não muda (evita regressão de degrau/pin).
-    this._crouchT += ((this.crouched ? 1 : 0) - this._crouchT) * Math.min(1, 10 * dt);
-    this.gait.crouch = this._crouchT;
+    if (this.model) {
+      // GLB: a animação avança pela DISTÂNCIA percorrida (um ciclo por `stride`),
+      // não pelo relógio — mesma ideia do Gait procedural. Com timeScale fixo o
+      // boneco parecia andar devagar enquanto deslizava rápido (pé patinando).
+      // A VELOCIDADE é suavizada: o deslocamento bruto por quadro oscila (colisão,
+      // degrau, latch, variação de dt) e alimentar isso direto na animação fazia a
+      // cadência pular — lia como tremor.
+      const m = this.model;
+      const rawSpeed = dt > 1e-5 ? dist / dt : 0;
+      this._animSpeed += (rawSpeed - this._animSpeed) * Math.min(1, 6 * dt);
+      const moving = this._animSpeed > 0.15;
+      if (m.mixer) {
+        const cycle = m.walk ? m.walk.getClip().duration : 0;
+        const step = (moving && m.stride > 1e-4 && cycle > 0)
+          ? (this._animSpeed * dt / (m.stride * TUNE.strideGain)) * cycle // velocidade suave → tempo de animação
+          : 0;
+        // NUNCA pausar a ação: pausada, o mixer para de REESCREVER a pose, e o
+        // `applyPose` abaixo passaria a misturar sobre o próprio resultado do
+        // quadro anterior — acumulando e fazendo a transição "saltar" (parecia
+        // remendo). Com update(0) a pose do clipe é reaplicada sem avançar.
+        if (m.walk) m.walk.paused = false;
+        m.mixer.update(step);
+      }
+      // PARADO: volta à pose de pé (senão congela no meio da passada, virando
+      // estátua correndo). CORRENDO: dobra do tronco domada — o sprint original
+      // deita o corpo quase na horizontal e amassa as costas.
+      // Transição lenta o bastante para ler como desaceleração, não como corte.
+      this._idleT += ((moving ? 0 : 1) - this._idleT) * Math.min(1, TUNE.idleRate * dt);
+      if (m.applyPose) m.applyPose(this._idleT, TUNE.headUp, TUNE.armDrop, this._crouchT * TUNE.crouch);
+      this._crouchT += ((this.crouched ? 1 : 0) - this._crouchT) * Math.min(1, 10 * dt);
+      // Respiração sutil quando parado — impede a leitura de "estátua".
+      if (m.group) {
+        const br = Math.sin(this._t * 1.9) * TUNE.breath * this._idleT;
+        m.group.position.y = br;
+        m.group.rotation.x = br * 0.5;
+      }
+      // A cor da camuflagem vale para todos os materiais do modelo.
+      if (this._bodyMats) for (const m of this._bodyMats) m.color.copy(this.zones[0].mat.color);
+    } else {
+      this.gait.update(dt, dist);
+      // Agachar: pose HUMANOIDE (dobra pernas + afunda/inclina o tronco), aplicada
+      // pelo Gait sobre o rig — bem mais orgânica que comprimir a malha. É só visual:
+      // a cápsula de colisão/latch não muda (evita regressão de degrau/pin).
+      this._crouchT += ((this.crouched ? 1 : 0) - this._crouchT) * Math.min(1, 10 * dt);
+      this.gait.crouch = this._crouchT;
+    }
   }
 
   // Articulação da face: as pupilas deslizam na direção do joystick, dando vida

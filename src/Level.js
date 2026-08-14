@@ -2,6 +2,12 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { materialMaps, toonGradient } from './textures.js?v=3';
 
+// Carregador de imagem compartilhado (quadros, céu). Único asset externo do jogo:
+// arte toon gerada, empacotada em assets/ — segue offline (servida localmente).
+const _texLoader = new THREE.TextureLoader();
+// Pinturas toon geradas: rodam nas molduras douradas (superfícies NÃO-colaráveis).
+const PAINTINGS = ['painting-1.jpg', 'painting-2.jpg', 'painting-3.jpg', 'painting-4.jpg'];
+
 // ─────────────────────────────────────────────────────────────────────────────
 // MANSÃO DE LUXO — térreo (Fase 3). Pegada ~25×25 m por andar (10,7× menor que a
 // arena Backrooms), o que reescala visão/fog/sombra (ver Game.js) e o balanço.
@@ -66,6 +72,8 @@ export class Level {
     this._aniso = this._mobile ? 2 : 4;
     this._matCache = new Map(); // materiais compartilhados (SÓ não-climbables — ver _stdMat)
     this._geoCache = new Map(); // geometrias compartilhadas (seguro sempre)
+    this._imgCache = new Map(); // texturas de imagem (assets/) — 1 upload por arquivo
+    this._paintIdx = 0;         // cicla as pinturas geradas pelos quadros da mansão
     this.climbables = []; // alvos do raycaster de latching (superfícies verticais)
     this.colorables = []; // alvos do raycaster de camuflagem
     this.solids = [];     // AABBs (THREE.Box3) para colisão de topo/queda
@@ -134,6 +142,20 @@ export class Level {
   // textures.js por (nome,size,normals,aniso) → um upload por material.
   _mat(name, { normals = true } = {}) {
     return materialMaps(name, { size: this._texSize, normals, aniso: this._aniso });
+  }
+
+  // Textura de imagem de assets/ (ex.: pinturas toon), cacheada por arquivo. sRGB
+  // para albedo; sem RepeatWrapping (arte não-tileável → ClampToEdge padrão). O
+  // load é assíncrono: a malha aparece cinza por um frame e recebe a arte ao chegar.
+  _img(file, { srgb = true } = {}) {
+    let tex = this._imgCache.get(file);
+    if (!tex) {
+      tex = _texLoader.load(`assets/${file}?v=3`);
+      tex.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace;
+      tex.anisotropy = this._aniso;
+      this._imgCache.set(file, tex);
+    }
+    return tex;
   }
 
   // Geometria compartilhada por chave (dims quantizadas). Nunca é mutada por-mesh.
@@ -513,10 +535,11 @@ export class Level {
       x + dir.x * 0.05, y, z + dir.z * 0.05, {
         rot, map: gi.map, roughness: gi.roughness, metalness: gi.metalness, colorable: false,
       });
-    // Tela a óleo.
-    const oil = this._mat('oilPaint', { normals: false });
+    // Tela: pintura toon GERADA (assets/), ciclando entre as 4 telas. Substitui o
+    // óleo procedural. colorable:false → nunca é alvo de camuflagem.
+    const tex = this._img(PAINTINGS[this._paintIdx++ % PAINTINGS.length]);
     this._deco(new THREE.PlaneGeometry(w, h), 0xffffff, x + dir.x * 0.1, y, z + dir.z * 0.1, {
-      rot, map: oil.map, roughness: oil.roughness, colorable: false,
+      rot, map: tex, roughness: 0.7, colorable: false,
     });
   }
 

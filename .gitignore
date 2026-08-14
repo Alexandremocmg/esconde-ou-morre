@@ -8,3 +8,6 @@ Thumbs.db
 # Dependências / build (projeto é estático puro; nada disto é versionado)
 node_modules/
 dist/
+
+# Área de trabalho de testes/diagnóstico (screenshots, harnesses, backups GLB)
+scratchpad/

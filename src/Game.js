@@ -7,6 +7,7 @@ import { Joystick } from './Joystick.js?v=3';
 import { Effects } from './Effects.js?v=3';
 import { Audio } from './Audio.js?v=3';
 import { ColorPicker } from './ColorPicker.js?v=3';
+import { initTuner } from './Tuner.js?v=3';
 
 // Partida (Fase 4): objetivo = sobreviver ao Caçador até o tempo acabar.
 const BASE_SURVIVE = 60;      // s de sobrevivência no estágio 1
@@ -48,15 +49,20 @@ export class Game {
 
     // Cena — ambiente CLARO e legível (party game), não mais penumbra de terror.
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0xeaf0f5);
-    // Fog claro e distante: só suaviza o horizonte, sem fechar a cena. A leitura
-    // clara é a assinatura do look toon (ao contrário da penumbra anterior).
-    this.scene.fog = new THREE.Fog(0xeaf0f5, 40, 120);
+    // Fundo: céu toon GERADO (assets/sky.jpg) — preenche a tela atrás da geometria.
+    // Único asset externo além dos quadros; segue offline (servido localmente).
+    const sky = new THREE.TextureLoader().load('assets/sky.jpg?v=3');
+    sky.colorSpace = THREE.SRGBColorSpace;
+    this.scene.background = sky;
+    // Fog claro e distante casado ao tom do céu: suaviza o horizonte onde a
+    // geometria some, sem descolar da arte do fundo. Leitura clara = assinatura toon.
+    this.scene.fog = new THREE.Fog(0xe3e9ee, 40, 120);
 
     // Câmera (proporção landscape de celular; ajustada no resize)
     this.camera = new THREE.PerspectiveCamera(60, 16 / 9, 0.1, 200);
 
     this._addLights();
+    this._addEnvironment();
 
     // Estágio atual (persiste entre reloads para permitir progressão).
     this.stage = Math.max(1, parseInt(sessionStorage.getItem('eom-stage') || '1', 10) || 1);
@@ -108,6 +114,10 @@ export class Game {
     this.colorPicker = new ColorPicker({ onChange: (c) => this.player.setCamouflage(c) });
     this._setupControls();
 
+    // Painel de ajuste ao vivo do boneco (⚙ no canto): cadência, poses e clipe de
+    // corrida. Os valores valem no mesmo quadro e ficam salvos no navegador.
+    initTuner({ onClip: (id) => this.player.model && this.player.model.setClip(id) });
+
     // Oclusão da câmera: blocos entre a câmera e o jogador desvanecem para não
     // esconder o personagem (ex.: grudado na face traseira de um bloco).
     this._occRay = new THREE.Raycaster();
@@ -148,6 +158,24 @@ export class Game {
     window.addEventListener('resize', this._resize);
     if (screen.orientation) {
       screen.orientation.addEventListener('change', this._resize);
+    }
+  }
+
+  // Ambiente (IBL) só para o BONECO: o modelo GLB usa MeshPhysicalMaterial, e
+  // clearcoat/roughness só "acendem" com um environment map — sem ele a cerâmica
+  // lê como plástico cinza chapado. O resto do cenário usa MeshToonMaterial, que
+  // ignora envMap, então o look cel do jogo não muda. Import dinâmico: se o addon
+  // não vier do CDN, o jogo segue sem ambiente em vez de travar.
+  async _addEnvironment() {
+    try {
+      const { RoomEnvironment } = await import('three/addons/environments/RoomEnvironment.js');
+      const pmrem = new THREE.PMREMGenerator(this.renderer);
+      const env = pmrem.fromScene(new RoomEnvironment(), 0.04);
+      this.scene.environment = env.texture;
+      this.scene.environmentIntensity = 0.55; // sutil: realça o verniz sem lavar a cor
+      pmrem.dispose();
+    } catch (e) {
+      console.warn('[Game] ambiente IBL indisponível:', e && e.message);
     }
   }
 

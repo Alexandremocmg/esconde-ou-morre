@@ -595,3 +595,48 @@ body {
   border-color: rgba(159, 232, 255, 0.75);
   color: #eaffff;
 }
+
+/* ── Painel de AJUSTE do boneco (⚙) ─────────────────────────────────────────
+   Ferramenta de calibragem em jogo: cadência, poses e clipe de corrida. Fica
+   discreto no canto inferior esquerdo para não competir com o HUD. */
+#tune-btn {
+  position: absolute; left: 10px; bottom: 10px; z-index: 30;
+  width: 34px; height: 34px; border-radius: 50%;
+  border: 1px solid rgba(255,255,255,0.25);
+  background: rgba(20,24,32,0.55); color: #e8ecf2;
+  font-size: 16px; line-height: 1; cursor: pointer;
+  backdrop-filter: blur(4px);
+}
+#tune-panel {
+  position: absolute; left: 10px; bottom: 52px; z-index: 30;
+  width: min(300px, 78vw); padding: 10px 12px;
+  border-radius: 12px; border: 1px solid rgba(255,255,255,0.16);
+  background: rgba(16,20,28,0.88); color: #e8ecf2;
+  font-size: 12px; backdrop-filter: blur(8px);
+  max-height: 70vh; overflow-y: auto;
+}
+#tune-panel.hidden { display: none; }
+.tune-head { margin-bottom: 8px; opacity: 0.9; }
+.tune-clip { display: flex; gap: 6px; margin-bottom: 10px; }
+.tune-clip button {
+  flex: 1; padding: 6px 4px; border-radius: 8px; cursor: pointer;
+  border: 1px solid rgba(255,255,255,0.18);
+  background: rgba(255,255,255,0.06); color: #e8ecf2; font-size: 12px;
+}
+.tune-clip button.on { background: var(--accent); color: #0b0e13; border-color: var(--accent); }
+.tune-row { display: grid; grid-template-columns: 1fr auto; gap: 2px 6px; margin-bottom: 9px; }
+.tune-row span { opacity: 0.85; }
+.tune-row i { font-style: normal; opacity: 0.7; font-variant-numeric: tabular-nums; }
+.tune-row input { grid-column: 1 / -1; width: 100%; accent-color: var(--accent); }
+.tune-foot { display: flex; gap: 6px; margin-top: 4px; }
+.tune-foot button {
+  flex: 1; padding: 6px; border-radius: 8px; cursor: pointer;
+  border: 1px solid rgba(255,255,255,0.18);
+  background: rgba(255,255,255,0.06); color: #e8ecf2; font-size: 12px;
+}
+.tune-out {
+  width: 100%; margin-top: 8px; height: 118px; resize: none;
+  border-radius: 8px; border: 1px solid rgba(255,255,255,0.16);
+  background: rgba(0,0,0,0.35); color: #cfe3ff; font-size: 11px; padding: 6px;
+}
+.tune-out.hidden { display: none; }

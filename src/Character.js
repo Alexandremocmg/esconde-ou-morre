@@ -102,7 +102,10 @@ export function buildBody(materials, height = 1, {
     return [tops, seconds];
   };
 
-  let headR, headY, legs, arms, shins = null, forearms = null;
+  // torsoMesh é devolvido para quem precisa fixar algo NO PEITO (o emblema do
+  // jogador): cada forma tem torso próprio, então a âncora vem do bounding box
+  // da malha, não de constantes duplicadas aqui.
+  let headR, headY, legs, arms, shins = null, forearms = null, torsoMesh = null;
 
   if (kind === 'mannequin') {
     // Pictograma MACIO como o modelo original do Meccha: cabeça-bola grande + torso
@@ -112,7 +115,7 @@ export function buildBody(materials, height = 1, {
     const head = mk(new THREE.SphereGeometry(headR, 24, 18));
     head.position.y = headY; upper.add(head);                       // cabeça-bola
     const torso = mk(new THREE.CapsuleGeometry(0.19 * H, 0.24 * H, 8, 18));
-    torso.position.y = 0.02 * H; upper.add(torso);                  // torso ovoide único
+    torso.position.y = 0.02 * H; upper.add(torso); torsoMesh = torso; // torso ovoide único
     [legs, shins] = limb2(matL, { x: 0.10 * H, topY: -0.06 * H, endY: -0.5 * H, r: 0.075 * H, parent: 'g' });
     [arms, forearms] = limb2(matU, { x: 0.19 * H, topY: 0.16 * H, endY: -0.12 * H, r: 0.06 * H, parent: 'upper', restZ: -0.12 });
   } else if (kind === 'blob') {
@@ -120,7 +123,7 @@ export function buildBody(materials, height = 1, {
     const blob = mk(new THREE.SphereGeometry(R, 24, 18));
     blob.position.y = -0.08 * H;
     blob.scale.set(1.06, 0.92, 1.0); // achatado, mais largo (gelatinoso)
-    upper.add(blob);
+    upper.add(blob); torsoMesh = blob;
     headR = 0.30 * H; headY = 0.14 * H; // olhos no alto-frente da massa
     legs = limbPair(new THREE.SphereGeometry(0.10 * H, 12, 10), matL,
       { y: -0.40 * H, x: 0.14 * H, hang: -0.02 * H, parent: 'g' });
@@ -133,7 +136,7 @@ export function buildBody(materials, height = 1, {
     upper.add(head);
     const torso = mk(new THREE.BoxGeometry(0.5 * H, 0.5 * H, 0.45 * H));
     torso.position.y = -0.08 * H;
-    upper.add(torso);
+    upper.add(torso); torsoMesh = torso;
     headR = 0.20 * H; headY = hY;
     legs = limbPair(new THREE.BoxGeometry(0.15 * H, 0.18 * H, 0.15 * H), matL,
       { y: -0.33 * H, x: 0.13 * H, hang: -0.09 * H, parent: 'g' });
@@ -147,12 +150,12 @@ export function buildBody(materials, height = 1, {
     upper.add(head);
     const torso = mk(new THREE.CapsuleGeometry(0.26 * H, 0.18 * H, 8, 20));
     torso.position.y = -0.02 * H;
-    upper.add(torso);
+    upper.add(torso); torsoMesh = torso;
     [legs, shins] = limb2(matL, { x: 0.12 * H, topY: -0.02 * H, endY: -0.5 * H, r: 0.09 * H, parent: 'g' });
     [arms, forearms] = limb2(matU, { x: 0.26 * H, topY: 0.16 * H, endY: -0.18 * H, r: 0.075 * H, parent: 'upper', restZ: -0.18 });
   }
 
-  return { group: g, headR, headY, rig: { upper, legs, arms, height: H, shins, forearms } };
+  return { group: g, headR, headY, torso: torsoMesh, rig: { upper, legs, arms, height: H, shins, forearms } };
 }
 
 // Alias legado: o Caçador (e o padrão) usam o art toy.
