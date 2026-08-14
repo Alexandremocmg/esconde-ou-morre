@@ -131,6 +131,8 @@ export class Player {
     this.model = null;     // modelo GLB, quando carregar
     this._animSpeed = 0;   // velocidade SUAVIZADA que dirige a animação do GLB
     this._idleT = 1;       // 0 = correndo, 1 = parado (pose de pé)
+    this._phase = 0;       // fase 0..1 do ciclo de passada (compartilhada pelos clipes)
+    this._locoBlend = 1;   // 0 = andando, 1 = correndo (suavizado)
 
     // Caminhada procedural: pernas/braços balançam e o corpo bobeia/inclina,
     // sincronizados com a distância percorrida (ver Gait em Character.js).
@@ -358,16 +360,43 @@ export class Player {
       this._animSpeed += (rawSpeed - this._animSpeed) * Math.min(1, 6 * dt);
       const moving = this._animSpeed > 0.15;
       if (m.mixer) {
-        const cycle = m.walk ? m.walk.getClip().duration : 0;
-        const step = (moving && m.stride > 1e-4 && cycle > 0)
-          ? (this._animSpeed * dt / (m.stride * TUNE.strideGain)) * cycle // velocidade suave → tempo de animação
-          : 0;
+        // MISTURA andar↔correr por velocidade. O peso vem de uma rampa entre duas
+        // velocidades (painel), suavizada — a leitura natural vem de o boneco
+        // PASSAR pelo andar ao acelerar/frear, em vez de saltar direto ao sprint.
+        const runName = TUNE.clip === 'walk' ? 'run1' : TUNE.clip;
+        let target;
+        if (TUNE.clip === 'walk') {
+          target = 0;                       // "Andar" escolhido: sempre andar
+        } else if (TUNE.mix && m.setLocomotion && m.strides.walk) {
+          const lo = TUNE.walkAt, hi = Math.max(TUNE.walkAt + 0.5, TUNE.runAt);
+          target = THREE.MathUtils.clamp((this._animSpeed - lo) / (hi - lo), 0, 1);
+        } else {
+          target = 1;                       // clipe único de corrida
+        }
+        this._locoBlend += (target - this._locoBlend) * Math.min(1, TUNE.mixRate * dt);
+
+        // Passada combinada: interpola a dos dois clipes pelo mesmo peso, senão a
+        // cadência daria um salto no meio da mistura e o pé patinaria.
+        const sWalk = m.strides.walk || m.stride;
+        const sRun = m.strides[runName] || m.stride;
+        const stride = THREE.MathUtils.lerp(sWalk, sRun, this._locoBlend) * TUNE.strideGain;
+
+        if (moving && stride > 1e-4) this._phase = (this._phase + dist / stride) % 1;
+        if (TUNE.mix && m.setLocomotion) {
+          // UMA fase para os dois clipes: com tempos independentes os pés ficam
+          // fora de sincronia e a mistura vira "nadando".
+          m.setLocomotion(this._phase, this._locoBlend, runName);
+        } else if (m.walk) {
+          m.walk.enabled = true;
+          m.walk.setEffectiveWeight(1);
+          m.walk.time = this._phase * m.walk.getClip().duration;
+        }
         // NUNCA pausar a ação: pausada, o mixer para de REESCREVER a pose, e o
         // `applyPose` abaixo passaria a misturar sobre o próprio resultado do
         // quadro anterior — acumulando e fazendo a transição "saltar" (parecia
-        // remendo). Com update(0) a pose do clipe é reaplicada sem avançar.
+        // remendo). Como o tempo é escrito à mão, o update é só para aplicar.
         if (m.walk) m.walk.paused = false;
-        m.mixer.update(step);
+        m.mixer.update(0);
       }
       // PARADO: volta à pose de pé (senão congela no meio da passada, virando
       // estátua correndo). CORRENDO: dobra do tronco domada — o sprint original

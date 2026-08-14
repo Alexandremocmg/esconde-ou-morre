@@ -136,6 +136,36 @@ function _prepare(gltf, height, glossy, extraClips = {}) {
   for (const n of names) actions[n].enabled = (actions[n] === walk);
   let stride = strides[names[0]] || 0;
 
+  // LOCOMOÇÃO MISTURADA (andar ↔ correr) por peso, no espírito do exemplo
+  // `webgl_animation_skinning_blending` do three.js — porém adaptada ao nosso
+  // avanço por DISTÂNCIA.
+  //
+  // A adaptação que o exemplo não cobre: lá as ações avançam pelo relógio, e cada
+  // clipe tem duração própria. Aqui isso faria os dois clipes rodarem em ritmos
+  // diferentes, e misturar pés fora de fase produz aquele andar "nadando". Por
+  // isso mandamos UMA fase normalizada (0..1) e escrevemos `action.time` nos dois
+  // — os contatos do pé ficam alinhados e a mistura fica limpa.
+  //
+  // Os pesos SEMPRE somam 1: o mixer precisa continuar reescrevendo a pose todo
+  // quadro (ver o alerta sobre pausar/acumular). Ficar parado é trabalho do
+  // `applyPose(idle)`, que mistura com a pose de repouso.
+  const setLocomotion = (phase01, blend, runName) => {
+    const wRun = Math.min(1, Math.max(0, blend));
+    for (const n of names) {
+      const a = actions[n];
+      const w = n === 'walk' ? 1 - wRun : (n === runName ? wRun : 0);
+      a.enabled = w > 0.0005;
+      a.setEffectiveWeight(w);
+      if (a.enabled) {
+        // Peso NÃO basta: uma ação só é avaliada pelo mixer se estiver TOCANDO.
+        // Sem isto, o clipe de andar não contribuía nada e o "andar puro" saía
+        // como a pose de repouso (boneco deslizando em pé).
+        if (!a.isRunning()) a.play();
+        a.time = phase01 * a.getClip().duration;
+      }
+    }
+  };
+
   // Troca o clipe de locomoção em tempo real (painel de ajustes).
   const setClip = (name) => {
     if (!actions[name] || actions[name] === walk) return;
@@ -197,7 +227,7 @@ function _prepare(gltf, height, glossy, extraClips = {}) {
     }
   };
 
-  const api = { group, materials, mixer, walk, stride, actions, strides, setClip, applyPose,
+  const api = { group, materials, mixer, walk, stride, actions, strides, setClip, setLocomotion, applyPose,
     clips: gltf.animations || [], height };
   return api;
 }

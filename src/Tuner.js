@@ -17,6 +17,10 @@ export const TUNE = {
   idleRate: 3.5,     // suavidade da transição correndo ↔ parado (menor = mais lento)
   breath: 0.006,     // amplitude da respiração parado
   crouch: 0.5,       // quanto encolhe ao agachar
+  mix: true,         // misturar andar↔correr por velocidade (natural) ou usar 1 clipe
+  walkAt: 1.8,       // velocidade em que a mistura é 100% ANDAR
+  runAt: 6.0,        // velocidade em que a mistura é 100% CORRER
+  mixRate: 3.0,      // suavidade da mistura (menor = troca mais gradual)
 };
 
 const SPEC = [
@@ -26,6 +30,9 @@ const SPEC = [
   { k: 'idleRate', label: 'Suavidade parar', min: 1, max: 10, step: 0.25 },
   { k: 'breath', label: 'Respiração', min: 0, max: 0.02, step: 0.001 },
   { k: 'crouch', label: 'Agachar', min: 0, max: 1, step: 0.05 },
+  { k: 'walkAt', label: 'Vel. p/ andar', min: 0.2, max: 5, step: 0.1 },
+  { k: 'runAt', label: 'Vel. p/ correr', min: 1, max: 9, step: 0.1 },
+  { k: 'mixRate', label: 'Suavidade mistura', min: 0.5, max: 10, step: 0.25 },
 ];
 
 function load() {
@@ -75,6 +82,21 @@ export function initTuner({ onClip } = {}) {
   }
   panel.appendChild(clipRow);
 
+  // Mistura andar↔correr: com ela ligada, os botões acima escolhem só o clipe de
+  // CORRIDA (o andar entra sozinho nas velocidades baixas).
+  const mixRow = document.createElement('div');
+  mixRow.className = 'tune-clip';
+  const mixBtn = document.createElement('button');
+  mixBtn.type = 'button';
+  const paintMix = () => {
+    mixBtn.textContent = TUNE.mix ? 'Mistura: LIGADA' : 'Mistura: desligada';
+    mixBtn.classList.toggle('on', TUNE.mix);
+  };
+  mixBtn.addEventListener('click', () => { TUNE.mix = !TUNE.mix; save(); paintMix(); });
+  paintMix();
+  mixRow.appendChild(mixBtn);
+  panel.appendChild(mixRow);
+
   const rows = {};
   for (const s of SPEC) {
     const row = document.createElement('label');
@@ -101,10 +123,12 @@ export function initTuner({ onClip } = {}) {
   const reset = document.createElement('button');
   reset.type = 'button'; reset.textContent = 'Padrão';
   reset.addEventListener('click', () => {
-    const d = { clip: 'run1', strideGain: 2.0, headUp: 0.5, armDrop: 0.32, idleRate: 3.5, breath: 0.006, crouch: 0.5 };
+    const d = { clip: 'run1', strideGain: 2.0, headUp: 0.5, armDrop: 0.32, idleRate: 3.5,
+      breath: 0.006, crouch: 0.5, mix: true, walkAt: 1.8, runAt: 6.0, mixRate: 3.0 };
     Object.assign(TUNE, d); save();
     for (const s of SPEC) { rows[s.k].input.value = TUNE[s.k]; rows[s.k].val.textContent = (+TUNE[s.k]).toFixed(2); }
     for (const el of clipRow.children) el.classList.toggle('on', el.textContent === 'RunFast');
+    paintMix();
     onClip && onClip(TUNE.clip);
   });
   // Mostra os números para o usuário poder ditar os valores finais.

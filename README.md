@@ -77,7 +77,7 @@ assets/           # arte gerada, servida localmente: boneco GLB + clipes, quadro
 tools/
   extract-anim.py # extrai só a animação de um GLB (2,5 MB → ~30 KB)
 docs/             # planos: PLANO_BONECO_GLB (personagem), PLANO_TOON, PLANO_MANSAO, FASE3..6
-.claude/skills/   # skills do projeto (personagem-glb, verificacao-visual, assets-higgsfield)
+.claude/skills/   # skills: personagem-glb, locomocao-natural, verificacao-visual, assets-higgsfield
 ```
 
 ## Como jogar
@@ -97,7 +97,8 @@ docs/             # planos: PLANO_BONECO_GLB (personagem), PLANO_TOON, PLANO_MAN
   estágios mais altos.
 
 - **⚙ Ajustes (canto inferior esquerdo):** painel de calibragem do boneco — clipe de
-  locomoção (Andar / RunFast / Run_02), cadência da passada, cabeça erguida, braços
+  locomoção (Andar / RunFast / Run_02), **mistura andar↔correr por velocidade**
+  (com as velocidades de transição), cadência da passada, cabeça erguida, braços
   parado, suavidade ao parar, respiração e profundidade do agachar. Os valores valem
   no mesmo quadro e ficam salvos no navegador; **"Ver valores"** mostra o JSON para
   fixar como padrão. Se escolher **Andar**, suba a **Cadência para ~4,5** (a passada

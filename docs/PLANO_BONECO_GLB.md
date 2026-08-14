@@ -63,6 +63,23 @@ segura o tronco. Só pescoço/cabeça é ajustado, para ele olhar à frente.
 transição) precisou de várias tentativas visuais. Calibrar jogando é ordens de
 grandeza mais rápido que uma rodada de código por número.
 
+## 3b. Locomoção natural (mistura andar↔correr)
+
+Baseado no exemplo `webgl_animation_skinning_blending` do three.js, adaptado ao
+avanço por distância. Detalhe e armadilhas na skill
+[`locomocao-natural`](../.claude/skills/locomocao-natural/SKILL.md).
+
+- Andar e correr tocam JUNTOS, com pesos somando 1, definidos por uma rampa entre
+  duas velocidades (`walkAt`/`runAt` no painel) e suavizados.
+- **Uma fase normalizada única** alimenta `action.time` dos dois clipes. Sem isso
+  cada um roda no seu ritmo e a mistura vira "nadando"; com isso o meio da rampa
+  vira um trote legítimo.
+- A passada usada para avançar a fase é interpolada entre as dos dois clipes —
+  senão a cadência salta no meio da mistura.
+- Ficar parado continua sendo `applyPose(idle)` misturando com a pose de repouso:
+  não há clipe de idle, e os pesos de locomoção precisam continuar somando 1 para
+  o mixer nunca parar de reescrever a pose.
+
 ## 4. Impacto na mecânica (regressões conhecidas)
 
 - **Camuflagem de zona única.** O GLB tem uma malha e um material, então as duas
