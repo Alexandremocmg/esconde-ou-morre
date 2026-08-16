@@ -584,6 +584,11 @@ export class Game {
     if (this._gameoverEl) this._gameoverEl.classList.remove('show');
     if (this._victoryEl) this._victoryEl.classList.remove('show');
 
+    // Reset camera orientation and distance
+    if (this.follow && this.follow.reset) {
+      this.follow.reset();
+    }
+
     // Reset player position and state in memory
     if (this.player && this.player.reset) {
       this.player.reset();
