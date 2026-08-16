@@ -92,9 +92,8 @@ export class Player {
     };
     this.zones = [makeZone('upper', 0.12 * H), makeZone('lower', -0.30 * H)];
 
-    // Boneco branco na forma escolhida no menu (Fase 4): 'toy' | 'blob' | 'cube'.
-    // A colisão/latch NÃO muda com a forma (usa a cápsula lógica); só o visual.
-    const kind = sessionStorage.getItem('eom-body') || 'toy';
+    let kind = 'toy';
+    try { kind = sessionStorage.getItem('eom-body') || 'toy'; } catch (_) {}
     const toy = buildBody({ upper: this.zones[0].mat, lower: this.zones[1].mat }, H, { kind });
     this.toy = toy;
     this.animInstance = null;

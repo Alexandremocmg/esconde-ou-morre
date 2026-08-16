@@ -60,7 +60,14 @@ export class FollowCamera {
   }
 
   update(dt, player, occluders) {
+    if (isNaN(this.yaw)) this.yaw = 0;
+    if (isNaN(this.pitch)) this.pitch = 0;
+    if (isNaN(this.distance)) this.distance = DIST;
+
     const pos = player.position;
+    if (isNaN(pos.x) || isNaN(pos.y) || isNaN(pos.z)) {
+      pos.set(0, 0.5, 6);
+    }
 
     if (player.state === 'latched') {
       // "Up" da tela = subida na parede; câmera afastada para fora da parede.

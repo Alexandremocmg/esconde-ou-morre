@@ -277,22 +277,32 @@ export class Game {
     const hits = this._occRay.intersectObjects(this.level.climbables, false);
 
     const nowFaded = new Set();
-    for (const h of hits) nowFaded.add(h.object.material);
+    for (const h of hits) {
+      if (!h.object || !h.object.material) continue;
+      const mats = Array.isArray(h.object.material) ? h.object.material : [h.object.material];
+      for (const m of mats) if (m) nowFaded.add(m);
+    }
+
     for (const mat of nowFaded) {
       mat.transparent = true;
       mat.depthWrite = false;               // deixa o jogador aparecer através
-      mat.opacity += (FADE - mat.opacity) * k;
+      const curOpacity = Number.isFinite(mat.opacity) ? mat.opacity : 1.0;
+      mat.opacity = THREE.MathUtils.clamp(curOpacity + (FADE - curOpacity) * k, FADE, 1.0);
       this._occFaded.add(mat);
     }
+
     // Restaura os que deixaram de ocluir (delete-durante-iteração é seguro em Set).
-    for (const mat of this._occFaded) {
+    for (const mat of Array.from(this._occFaded)) {
       if (nowFaded.has(mat)) continue;
-      mat.opacity += (1 - mat.opacity) * k;
-      if (mat.opacity > 0.985) {
+      const curOpacity = Number.isFinite(mat.opacity) ? mat.opacity : FADE;
+      const nextOpacity = curOpacity + (1 - curOpacity) * k;
+      if (nextOpacity > 0.985) {
         mat.opacity = 1;
         mat.transparent = false;
         mat.depthWrite = true;
         this._occFaded.delete(mat);
+      } else {
+        mat.opacity = THREE.MathUtils.clamp(nextOpacity, FADE, 1.0);
       }
     }
   }

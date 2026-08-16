@@ -199,9 +199,15 @@ class AnimationManager {
       customMaterials.push(toonMat);
 
       if (outlineMat) {
-        const outlineMesh = new THREE.Mesh(child.geometry, outlineMat);
+        let outlineMesh;
+        if (child.isSkinnedMesh) {
+          outlineMesh = new THREE.SkinnedMesh(child.geometry, outlineMat);
+          outlineMesh.bind(child.skeleton, child.bindMatrix);
+        } else {
+          outlineMesh = new THREE.Mesh(child.geometry, outlineMat);
+        }
         outlineMesh.userData.isOutline = true;
-        outlineMesh.scale.setScalar(1.06);
+        outlineMesh.scale.setScalar(1.04);
         child.add(outlineMesh);
       }
     }
