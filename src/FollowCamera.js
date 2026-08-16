@@ -28,9 +28,9 @@ export class FollowCamera {
     this._camDir = new THREE.Vector3();
 
     // Olhar controlável (arrasto na metade direita): deslocamentos de yaw/pitch
-    // aplicados sobre a câmera de acompanhamento no chão (ver update).
     this.yaw = 0;
     this.pitch = 0;
+    this.distance = DIST; // 1.8m a 7.5m (ajustável por pinch)
 
     camera.position.set(0, HEIGHT, 6 + DIST);
     camera.up.copy(WORLD_UP);
@@ -43,6 +43,11 @@ export class FollowCamera {
     this.pitch = THREE.MathUtils.clamp(this.pitch - dy * LOOK_SENS, PITCH_MIN, PITCH_MAX);
   }
 
+  // Zoom por gesto de pinça (pinch multitouch)
+  addZoom(delta) {
+    this.distance = THREE.MathUtils.clamp(this.distance + delta, 1.8, 7.5);
+  }
+
   update(dt, player, occluders) {
     const pos = player.position;
 
@@ -50,12 +55,9 @@ export class FollowCamera {
       // "Up" da tela = subida na parede; câmera afastada para fora da parede.
       this._targetUp.copy(player.climbUp);
       const outward = this._tmp.copy(player.wallNormal);
-      this._back.copy(outward).multiplyScalar(DIST)
+      this._back.copy(outward).multiplyScalar(this.distance)
         .addScaledVector(this._targetUp, -HEIGHT * 0.35);
     } else {
-      // No chão: up do mundo, câmera atrás da direção que o jogador encara.
-      // O yaw volta devagar a ficar atrás do jogador quando ele anda (a câmera
-      // "reencontra" as costas do personagem); parado, o olhar do usuário fica.
       if (this._prevXZ) {
         const moved = Math.hypot(pos.x - this._prevXZ.x, pos.z - this._prevXZ.z);
         if (moved > 0.005) this.yaw -= this.yaw * Math.min(1, YAW_RECENTER * dt);
@@ -65,9 +67,9 @@ export class FollowCamera {
       facing.setY(0);
       if (facing.lengthSq() < 1e-4) facing.set(0, 0, 1);
       facing.normalize();
-      this._back.copy(facing).multiplyScalar(-DIST);
+      this._back.copy(facing).multiplyScalar(-this.distance);
       if (this.yaw !== 0) this._back.applyAxisAngle(WORLD_UP, this.yaw);   // olhar horizontal
-      this._back.addScaledVector(WORLD_UP, HEIGHT + this.pitch * DIST);    // olhar vertical
+      this._back.addScaledVector(WORLD_UP, HEIGHT + this.pitch * this.distance);    // olhar vertical
     }
     if (!this._prevXZ) this._prevXZ = { x: pos.x, z: pos.z };
     else { this._prevXZ.x = pos.x; this._prevXZ.z = pos.z; }

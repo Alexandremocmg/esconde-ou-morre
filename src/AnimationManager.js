@@ -11,6 +11,7 @@ const ANIMATION_FILES = {
   hide: 'public/animation/Sleeping Idle.fbx',
   prone: 'public/animation/Laying Sleeping.fbx',
   climb: 'public/animation/Climbing Up Wall.fbx',
+  jump: 'public/animation/Jump.fbx',
 };
 
 class AnimationManager {

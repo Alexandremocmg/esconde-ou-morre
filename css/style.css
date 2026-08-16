@@ -235,57 +235,188 @@ body {
 }
 
 /* ---------- Botões de ação (coluna à direita, acima da área de olhar) ---------- */
+/* ---------- Botões de ação mobile em Arco Ergonômico Glassmorphism ---------- */
 #actions {
   position: absolute;
-  right: max(10px, env(safe-area-inset-right));
-  top: 50%;
-  transform: translateY(-50%);
+  right: max(16px, env(safe-area-inset-right));
+  bottom: max(16px, env(safe-area-inset-bottom));
+  width: 220px;
+  height: 220px;
   z-index: 7;
-  display: flex;
-  flex-direction: column;
-  gap: 9px; /* 5 botões cabem na coluna (latch/paint/cor/agachar/deitar) */
-  pointer-events: none; /* só os botões capturam toque; o resto vaza p/ o look-zone */
+  pointer-events: none; /* só os botões capturam toque */
 }
-/* Botões "candy" de party game: redondos, coloridos por ação, com anel branco. */
-#actions button {
-  --accent: 255, 255, 255;
+
+.glass-btn {
+  position: absolute;
   pointer-events: auto;
   -webkit-tap-highlight-color: transparent;
   touch-action: none;
   user-select: none;
-  width: 62px; height: 62px;
   border-radius: 50%;
-  border: 3px solid rgba(255, 255, 255, 0.9);
-  background: rgba(var(--accent), 0.9);
+  background: rgba(255, 255, 255, 0.16);
+  border: 1.5px solid rgba(255, 255, 255, 0.42);
+  -webkit-backdrop-filter: blur(8px) saturate(180%);
+  backdrop-filter: blur(8px) saturate(180%);
+  color: #ffffff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font: inherit;
+  cursor: pointer;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28), inset 0 0 10px rgba(255, 255, 255, 0.15);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+  transition: transform 0.12s cubic-bezier(0.175, 0.885, 0.32, 1.275),
+              background 0.15s ease,
+              border-color 0.15s ease,
+              opacity 0.2s ease;
+}
+
+.glass-btn .ic { font-size: 24px; line-height: 1; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.4)); }
+.glass-btn .lbl { font-size: 10px; font-weight: 700; letter-spacing: 0.03em; opacity: 0.95; margin-top: 2px; }
+
+.glass-btn:active, .glass-btn.active {
+  transform: scale(0.93) !important;
+  background: rgba(255, 255, 255, 0.32);
+  border-color: rgba(255, 255, 255, 0.85);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3), inset 0 0 16px rgba(255, 255, 255, 0.45);
+}
+
+/* Posições no Arco Ergonômico */
+.action-jump {
+  width: 68px; height: 68px;
+  right: 10px; bottom: 10px;
+  background: rgba(46, 204, 113, 0.22);
+  border-color: rgba(46, 204, 113, 0.55);
+}
+.action-climb {
+  width: 58px; height: 58px;
+  right: 85px; bottom: 25px;
+  opacity: 0.45;
+  background: rgba(230, 126, 34, 0.2);
+  border-color: rgba(230, 126, 34, 0.5);
+}
+.action-climb.near {
+  opacity: 1;
+  transform: scale(1.08);
+  border-color: #f39c12;
+  box-shadow: 0 0 20px rgba(243, 156, 18, 0.6);
+}
+.action-pose {
+  width: 68px; height: 68px;
+  right: 15px; bottom: 95px;
+  background: rgba(155, 89, 182, 0.22);
+  border-color: rgba(155, 89, 182, 0.55);
+}
+.action-paint {
+  width: 72px; height: 72px;
+  right: 90px; bottom: 110px;
+  background: rgba(231, 76, 60, 0.25);
+  border-color: rgba(231, 76, 60, 0.6);
+}
+
+/* ---------- Menus Radiais Glassmorphic (Poses & Pintura) ---------- */
+.radial-menu {
+  position: absolute;
+  right: 110px;
+  bottom: 110px;
+  width: 240px;
+  height: 240px;
+  margin-right: -120px;
+  margin-bottom: -120px;
+  z-index: 15;
+  pointer-events: auto;
+  transition: opacity 0.2s ease, transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+.radial-menu.hidden {
+  opacity: 0;
+  pointer-events: none;
+  transform: scale(0.7);
+}
+.radial-center {
+  position: absolute;
+  left: 50%; top: 50%;
+  transform: translate(-50%, -50%);
+  width: 70px; height: 70px;
+  border-radius: 50%;
+  background: rgba(15, 23, 42, 0.85);
+  border: 1.5px solid rgba(255, 255, 255, 0.35);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 25px rgba(0, 0, 0, 0.5);
+}
+.radial-title {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+}
+.radial-item {
+  position: absolute;
+  left: 50%; top: 50%;
+  width: 52px; height: 52px;
+  margin-left: -26px; margin-top: -26px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.18);
+  border: 1.5px solid rgba(255, 255, 255, 0.4);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
   color: #fff;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 2px;
-  font: inherit;
   cursor: pointer;
-  box-shadow: 0 4px 0 rgba(0, 0, 0, 0.18), 0 6px 14px rgba(0, 0, 0, 0.22);
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
-  transition: filter 0.12s ease, transform 0.08s ease, box-shadow 0.08s ease;
+  /* Posicionamento radial em anel */
+  --angle: calc(var(--i) * 60deg);
+  --r: 92px;
+  transform: translate(calc(cos(var(--angle)) * var(--r)), calc(sin(var(--angle)) * var(--r)));
+  transition: transform 0.15s ease, background 0.15s ease;
 }
-#actions button .ic { font-size: 22px; line-height: 1; }
-#actions button .lbl { font-size: 10px; font-weight: 700; letter-spacing: 0.02em; opacity: 0.95; }
-#actions button:active {
-  transform: translateY(3px);
-  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.18), 0 2px 6px rgba(0, 0, 0, 0.22);
-}
-/* Cor por ação (party). */
-#btn-latch   { --accent: 63, 111, 214; }   /* azul */
-#btn-paint   { --accent: 232, 93, 108; }   /* coral */
-#btn-palette { --accent: 160, 92, 224; }   /* roxo */
-#btn-crouch  { --accent: 99, 201, 139; }   /* verde */
-#btn-prone   { --accent: 224, 130, 90; }   /* terracota (deitar/tapete) */
-/* Estado ativo: grudado/agachado ficam realçados (mais claro + anel destacado). */
-#actions button.on {
-  filter: brightness(1.25) saturate(1.15);
+.radial-item:active, .radial-item.on {
+  background: rgba(255, 255, 255, 0.4);
   border-color: #fff;
+  transform: translate(calc(cos(var(--angle)) * var(--r)), calc(sin(var(--angle)) * var(--r))) scale(1.15);
 }
+.radial-item .r-ic { font-size: 18px; line-height: 1; }
+.radial-item .r-label { font-size: 8px; font-weight: 700; margin-top: 1px; }
+
+/* Menu de Pintura Avançada */
+.paint-menu {
+  width: 220px; height: 160px;
+  margin-right: -110px; margin-bottom: -80px;
+  border-radius: 20px;
+  background: rgba(15, 23, 42, 0.85);
+  border: 1.5px solid rgba(255, 255, 255, 0.35);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+.paint-history-ring { display: flex; flex-direction: column; gap: 4px; }
+.p-hist-label { font-size: 10px; font-weight: 700; color: var(--ui-dim); text-transform: uppercase; letter-spacing: 0.05em; }
+.p-chips { display: flex; gap: 8px; justify-content: center; }
+.p-chip {
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.6);
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  transition: transform 0.1s ease, border-color 0.1s ease;
+}
+.p-chip:active { transform: scale(1.15); border-color: #fff; }
+.paint-finish-toggle { display: flex; gap: 6px; background: rgba(255, 255, 255, 0.1); padding: 3px; border-radius: 10px; }
+.finish-btn {
+  flex: 1; border: none; background: transparent; color: var(--ui-dim);
+  font-size: 11px; font-weight: 700; padding: 6px 0; border-radius: 8px; cursor: pointer;
+}
+.finish-btn.active { background: rgba(255, 255, 255, 0.25); color: #fff; }
 
 /* ---------- Overlays ---------- */
 #start-overlay, #rotate-overlay {

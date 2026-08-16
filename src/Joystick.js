@@ -34,6 +34,7 @@ export class Joystick {
     this.base.style.top = `${e.clientY}px`;
     this.base.classList.add('active');
     this._moveKnob(0, 0);
+    if (navigator.vibrate) try { navigator.vibrate(10); } catch (_) {}
   };
 
   _onMove = (e) => {

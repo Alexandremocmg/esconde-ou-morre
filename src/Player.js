@@ -162,10 +162,96 @@ export class Player {
     return this._tangentUp(this.wallNormal, this._axY);
   }
 
-  // Aplica uma cor SÓLIDA em TODAS as zonas e limpa as estampas (P2): usado pela
-  // roda de cor (5b), onde o jogador escolhe um tom puro único para o corpo inteiro.
+  // Aplica uma cor SÓLIDA em TODAS as zonas e limpa as estampas (P2)
   setCamouflage(color) {
     for (const z of this.zones) { z.target.copy(color); this._clearZone(z); }
+    if (color && color.getHexString) this._saveColorHistory(color.getHexString());
+  }
+
+  // Amostragem Rápida (Quick Match): amostra a cor da superfície em frente ou abaixo
+  sampleQuickMatch(camera) {
+    let sampledColor = null;
+    if (camera) {
+      this._raycaster.setFromCamera({ x: 0, y: 0 }, camera);
+      this._raycaster.far = 15;
+      const hits = this._raycaster.intersectObjects(this.level.colorables, false);
+      if (hits.length > 0 && hits[0].object.material) {
+        sampledColor = hits[0].object.material.color;
+      }
+    }
+
+    if (!sampledColor) {
+      const floor = this._surfaceBelowColor();
+      if (floor) sampledColor = floor;
+    }
+
+    if (sampledColor) {
+      this.setCamouflage(sampledColor);
+      if (navigator.vibrate) try { navigator.vibrate(15); } catch (_) {}
+      return true;
+    }
+    return false;
+  }
+
+  _saveColorHistory(hexStr) {
+    try {
+      let hist = JSON.parse(sessionStorage.getItem('eom-color-history') || '[]');
+      const fullHex = '#' + hexStr.toLowerCase();
+      hist = hist.filter(c => c !== fullHex);
+      hist.unshift(fullHex);
+      if (hist.length > 4) hist = hist.slice(0, 4);
+      sessionStorage.setItem('eom-color-history', JSON.stringify(hist));
+      this._updateUIHistoryChips(hist);
+    } catch (_) {}
+  }
+
+  _updateUIHistoryChips(hist) {
+    const container = document.getElementById('paint-history-chips');
+    if (!container) return;
+    const chips = container.querySelectorAll('.p-chip');
+    hist.forEach((colorHex, idx) => {
+      if (chips[idx]) {
+        chips[idx].style.background = colorHex;
+        chips[idx].dataset.color = colorHex;
+      }
+    });
+  }
+
+  setFinish(finish) {
+    const isGloss = finish === 'gloss';
+    for (const z of this.zones) {
+      z.mat.roughness = isGloss ? 0.2 : 0.85;
+      z.mat.metalness = isGloss ? 0.25 : 0.0;
+    }
+  }
+
+  setPose(poseName) {
+    this.statue = (poseName === 'lock');
+    if (this.statue) {
+      this.prone = false;
+      this.crouched = false;
+      if (navigator.vibrate) try { navigator.vibrate(20); } catch (_) {}
+      return;
+    }
+
+    if (poseName === 'prone') {
+      this.prone = true;
+      this.crouched = false;
+    } else if (poseName === 'crouch') {
+      this.crouched = true;
+      this.prone = false;
+    } else if (poseName === 'hide' || poseName === 'climb') {
+      this.prone = false;
+      this.crouched = false;
+    } else {
+      this.prone = false;
+      this.crouched = false;
+    }
+
+    if (this.animInstance && this.animInstance.actions[poseName]) {
+      this.animInstance.playAnimation(poseName);
+    }
+    if (navigator.vibrate) try { navigator.vibrate(12); } catch (_) {}
   }
 
   // Pinta a pele de UMA zona de branco (mapa branco × color = cor sólida).
@@ -287,7 +373,9 @@ export class Player {
 
     if (this.animInstance) {
       const moving = dist > 1e-3;
-      if (this.state === 'latched') {
+      if (this.isJumping || this.velocity.y > 0.5) {
+        this.animInstance.playAnimation('jump');
+      } else if (this.state === 'latched') {
         this.animInstance.playAnimation(moving ? 'climb' : 'hide');
       } else if (this.prone) {
         this.animInstance.playAnimation('prone');
@@ -456,6 +544,7 @@ export class Player {
     if (feet <= supportTop) {
       this.position.y = supportTop + HALF_EXTENT;
       this.velocity.y = 0;
+      this.isJumping = false;
     }
   }
 
@@ -513,6 +602,31 @@ export class Player {
   }
 
   // ---------------------------------------------------------- AÇÕES (botões)
+  // Pular: executa salto físico com velocidade vertical + animação Jump.fbx
+  jump() {
+    if (this.state === 'latched') {
+      this._release();
+      this.velocity.y = 5.5;
+      this.isJumping = true;
+      if (this.animInstance && this.animInstance.actions['jump']) {
+        this.animInstance.playAnimation('jump');
+      }
+      return;
+    }
+
+    const feet = this.position.y - HALF_EXTENT;
+    const supportTop = this._supportTopBelow(this.position.x, this.position.z, feet + 0.1);
+    if (feet <= supportTop + 0.1 && this.velocity.y <= 0.1) {
+      this.velocity.y = 6.2;
+      this.isJumping = true;
+      this.prone = false;
+      this.statue = false;
+      if (this.animInstance && this.animInstance.actions['jump']) {
+        this.animInstance.playAnimation('jump');
+      }
+      if (navigator.vibrate) try { navigator.vibrate(15); } catch (_) {}
+    }
+  }
   // Grudar/soltar manual (botão). No chão: gruda na superfície que o boneco
   // ENCARA (não mais ao andar de encontro). Grudado: solta.
   toggleLatch(camera) {

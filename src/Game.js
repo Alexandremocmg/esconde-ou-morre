@@ -102,14 +102,13 @@ export class Game {
     this._spotted = false; // borda de subida da detecção (para som + UI de alerta)
     this._wasCamo = false;  // borda de subida da camuflagem (stinger de sucesso)
 
-    // Controles de ação (botões) + olhar (arrasto na metade direita da tela).
-    this._btnLatch = document.getElementById('btn-latch');
+    // Controles em arco Glassmorphism + menus radiais
+    this._btnJump = document.getElementById('btn-jump');
+    this._btnClimb = document.getElementById('btn-climb');
+    this._btnPose = document.getElementById('btn-pose');
     this._btnPaint = document.getElementById('btn-paint');
-    this._btnPalette = document.getElementById('btn-palette');
-    this._btnCrouch = document.getElementById('btn-crouch');
-    this._btnProne = document.getElementById('btn-prone');
-    // Roda de cor (Fase 5b): ajuste fino do disfarce sobre o conta-gotas.
-    this.colorPicker = new ColorPicker({ onChange: (c) => this.player.setCamouflage(c) });
+    this._radialPoseMenu = document.getElementById('radial-pose-menu');
+    this._radialPaintMenu = document.getElementById('radial-paint-menu');
     this._setupControls();
 
     // Oclusão da câmera: blocos entre a câmera e o jogador desvanecem para não
@@ -368,19 +367,17 @@ export class Game {
   _updateHud() {
     const camo = this.player.isCamouflaged();
     const latched = this.player.state === 'latched';
-    this._badge.textContent = camo ? 'CAMUFLADO' : (latched ? 'PAREDE' : (this.player.crouched ? 'AGACHADO' : 'CHÃO'));
+    this._badge.textContent = camo ? 'CAMUFLADO' : (latched ? 'PAREDE' : (this.player.statue ? 'ESTÁTUA' : (this.player.crouched ? 'AGACHADO' : 'CHÃO')));
     this._badge.classList.toggle('latched', latched && !camo);
     this._badge.classList.toggle('camo', camo);
     this._chip.style.background = `#${this.player.material.color.getHexString()}`;
 
-    // Botões: rótulo/realce de Grudar↔Soltar e destaque do Agachar ativo.
-    if (this._btnLatch) {
-      this._btnLatch.classList.toggle('on', latched);
-      const lbl = this._btnLatch.querySelector('.lbl');
-      if (lbl) lbl.textContent = latched ? 'Soltar' : 'Grudar';
+    // Botão Escalar: destaca quando próximo a uma parede/superfície
+    if (this._btnClimb) {
+      const nearWall = latched || (this.player.object.position.y > 0.5) || (this.player.statue);
+      this._btnClimb.classList.toggle('near', nearWall);
+      this._btnClimb.classList.toggle('active', latched);
     }
-    if (this._btnCrouch) this._btnCrouch.classList.toggle('on', this.player.crouched);
-    if (this._btnProne) this._btnProne.classList.toggle('on', this.player.prone);
 
     // Placar: tempo decorrido (limitado à meta) e tempo camuflado
     const shown = Math.min(this.elapsed, this.surviveTime);
@@ -392,8 +389,157 @@ export class Game {
     }
   }
 
+  _setupControls() {
+    const lookZone = document.getElementById('look-zone');
+    let activePointers = new Map();
+    let prevPinchDist = 0;
+
+    if (lookZone) {
+      lookZone.addEventListener('pointerdown', (e) => {
+        activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        if (activePointers.size === 2) {
+          const pts = Array.from(activePointers.values());
+          prevPinchDist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+        }
+      });
+
+      window.addEventListener('pointermove', (e) => {
+        if (!activePointers.has(e.pointerId)) return;
+        const prev = activePointers.get(e.pointerId);
+        const dx = e.clientX - prev.x;
+        const dy = e.clientY - prev.y;
+        activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+        if (activePointers.size === 1 && this.follow) {
+          this.follow.addLook(dx, dy);
+        } else if (activePointers.size === 2 && this.follow) {
+          const pts = Array.from(activePointers.values());
+          const currDist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+          if (prevPinchDist > 0) {
+            const zoomDelta = (prevPinchDist - currDist) * 0.015;
+            this.follow.addZoom(zoomDelta);
+          }
+          prevPinchDist = currDist;
+        }
+      });
+
+      const clearPointer = (e) => {
+        activePointers.delete(e.pointerId);
+        if (activePointers.size < 2) prevPinchDist = 0;
+      };
+      window.addEventListener('pointerup', clearPointer);
+      window.addEventListener('pointercancel', clearPointer);
+    }
+
+    // Botões e Menus Radiais
+    const setupLongPress = (btn, onTap, onHold) => {
+      let timer = null;
+      let held = false;
+
+      btn.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        held = false;
+        btn.classList.add('active');
+        if (navigator.vibrate) try { navigator.vibrate(8); } catch (_) {}
+        timer = setTimeout(() => {
+          held = true;
+          onHold();
+        }, 250);
+      });
+
+      const cancel = (e) => {
+        btn.classList.remove('active');
+        if (timer) { clearTimeout(timer); timer = null; }
+        if (!held) {
+          onTap();
+        }
+      };
+
+      btn.addEventListener('pointerup', cancel);
+      btn.addEventListener('pointercancel', (e) => {
+        btn.classList.remove('active');
+        if (timer) { clearTimeout(timer); timer = null; }
+      });
+    };
+
+    if (this._btnJump) {
+      this._btnJump.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        this.player.jump();
+        if (navigator.vibrate) try { navigator.vibrate(12); } catch (_) {}
+      });
+    }
+
+    if (this._btnClimb) {
+      this._btnClimb.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        this.player.toggleLatch();
+        if (navigator.vibrate) try { navigator.vibrate(12); } catch (_) {}
+      });
+    }
+
+    if (this._btnPaint) {
+      setupLongPress(
+        this._btnPaint,
+        () => {
+          this.player.sampleQuickMatch(this.camera);
+        },
+        () => {
+          if (this._radialPaintMenu) this._radialPaintMenu.classList.toggle('hidden');
+          if (navigator.vibrate) try { navigator.vibrate(18); } catch (_) {}
+        }
+      );
+    }
+
+    if (this._btnPose) {
+      setupLongPress(
+        this._btnPose,
+        () => {
+          this.player.setPose('lock');
+        },
+        () => {
+          if (this._radialPoseMenu) this._radialPoseMenu.classList.toggle('hidden');
+          if (navigator.vibrate) try { navigator.vibrate(18); } catch (_) {}
+        }
+      );
+    }
+
+    // Handlers do Menu Radial de Poses
+    if (this._radialPoseMenu) {
+      const items = this._radialPoseMenu.querySelectorAll('.radial-item');
+      items.forEach((item) => {
+        item.addEventListener('click', () => {
+          const pose = item.dataset.pose;
+          this.player.setPose(pose);
+          this._radialPoseMenu.classList.add('hidden');
+        });
+      });
+    }
+
+    // Handlers do Menu Radial de Pintura Avançada
+    if (this._radialPaintMenu) {
+      const chips = this._radialPaintMenu.querySelectorAll('.p-chip');
+      chips.forEach((chip) => {
+        chip.addEventListener('click', () => {
+          const colorHex = chip.dataset.color || '#eef0f2';
+          this.player.setCamouflage(new THREE.Color(colorHex));
+          this._radialPaintMenu.classList.add('hidden');
+        });
+      });
+
+      const finishBtns = this._radialPaintMenu.querySelectorAll('.finish-btn');
+      finishBtns.forEach((btn) => {
+        btn.addEventListener('click', () => {
+          finishBtns.forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          this.player.setFinish(btn.dataset.finish);
+        });
+      });
+    }
+  }
+
   _gameOver() {
-    if (this.won || this.over) return; // já venceu / já acabou neste frame
+    if (this.won || this.over) return;
     this.over = true;
     this._clearVignette();
     this.audio.caught();
