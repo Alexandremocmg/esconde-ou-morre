@@ -7,6 +7,7 @@ import { Joystick } from './Joystick.js';
 import { Effects } from './Effects.js';
 import { Audio } from './Audio.js';
 import { ColorPicker } from './ColorPicker.js';
+import { animationManager } from './AnimationManager.js';
 
 // Partida (Fase 4): objetivo = sobreviver ao Caçador até o tempo acabar.
 const BASE_SURVIVE = 60;      // s de sobrevivência no estágio 1
@@ -29,6 +30,9 @@ function fmtTime(sec) {
 export class Game {
   constructor(canvas) {
     this.canvas = canvas;
+
+    // Inicia o carregamento em segundo plano das animações FBX
+    animationManager.loadAll();
 
     // Detecção de GPU mobile: ponteiro grosso (touch) OU tela curta. Usada para
     // limitar pixel ratio e resolução de sombra — evita a queda de FPS relatada

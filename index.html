@@ -116,7 +116,12 @@
         <button type="button" data-kind="cube"><span class="bp-ic">🧊</span>Cubo</button>
       </div>
 
-      <button id="start-btn">JOGAR</button>
+      <div id="loader-box" class="loader-box">
+        <div class="loader-bar"><i id="loader-fill"></i></div>
+        <span id="loader-status">Carregando modelos 3D... 0%</span>
+      </div>
+
+      <button id="start-btn" disabled>Carregando 3D...</button>
       <small>Melhor em tela cheia, na horizontal. Ative o som do aparelho.</small>
     </div>
   </div>

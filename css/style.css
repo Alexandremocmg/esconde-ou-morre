@@ -467,6 +467,45 @@ body {
   .how li { font-size: 12px; line-height: 1.3; }
   #start-btn { padding: 11px 24px; }
 
+/* Barra de carregamento inicial 3D */
+.loader-box {
+  width: 100%;
+  max-width: 320px;
+  margin: 10px auto 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.loader-bar {
+  width: 100%;
+  height: 8px;
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+#loader-fill {
+  display: block;
+  height: 100%;
+  width: 0%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #ffca3a, #ff595e);
+  transition: width 0.2s ease;
+}
+#loader-status {
+  font-size: 11px;
+  color: var(--ui-dim);
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}
+#start-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
   .go-panel h2 { font-size: 32px; }
   .win-panel h2 { font-size: 26px; }
   .go-panel p, .win-panel p { margin: 6px 0 14px; font-size: 13px; }

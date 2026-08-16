@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { buildHumanoid, Gait } from './Character.js';
 import { toonGradient } from './textures.js';
+import { animationManager } from './AnimationManager.js';
 
 // Parâmetros do Caçador
 const BODY_R = 0.6;
@@ -112,8 +113,22 @@ export class Seeker {
     const bodyMat = new THREE.MeshToonMaterial({
       color: bodyColor, gradientMap: toonGradient(),
     });
+    this.bodyMat = bodyMat;
     const toy = buildHumanoid(bodyMat, BODY_H, { outline: true }); // contorno cel (Fase 3a): ameaça "salta"
+    this.toy = toy;
+    this.animInstance = null;
     this.bodyGroup.add(toy.group);
+
+    if (animationManager.isLoaded) {
+      const inst = animationManager.createInstance(bodyMat, BODY_H, { outline: true });
+      if (inst) {
+        toy.group.visible = false;
+        this.bodyGroup.add(inst.group);
+        this.animInstance = inst;
+      }
+    } else {
+      this._checkAnimInstance();
+    }
 
     // Caminhada procedural (mesmo Gait do jogador): pernas/braços balançam e o
     // tronco bobeia — substitui o antigo "flutuar de drone". Fase inicial aleatória
@@ -203,8 +218,28 @@ export class Seeker {
     // Caminhada: fase avança pela distância horizontal percorrida neste frame.
     const dx = this.group.position.x - this._prevPos.x;
     const dz = this.group.position.z - this._prevPos.z;
+    const dist = Math.hypot(dx, dz);
     this._prevPos.copy(this.group.position);
-    this.gait.update(dt, Math.hypot(dx, dz));
+
+    if (this.animInstance) {
+      const moving = dist > 1e-3;
+      this.animInstance.playAnimation(moving ? 'run' : 'idle');
+      this.animInstance.update(dt);
+    } else {
+      this.gait.update(dt, dist);
+    }
+  }
+
+  _checkAnimInstance() {
+    if (this.animInstance || !animationManager.isLoaded) return;
+    const inst = animationManager.createInstance(this.bodyMat, BODY_H, { outline: true });
+    if (inst) {
+      if (this.toy && this.toy.group) {
+        this.bodyGroup.remove(this.toy.group);
+      }
+      this.bodyGroup.add(inst.group);
+      this.animInstance = inst;
+    }
   }
 
   // ------------------------------------------------------------------- VISION

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { buildBody, Gait } from './Character.js';
 import { toonGradient } from './textures.js';
+import { animationManager } from './AnimationManager.js';
 
 const WORLD_UP = new THREE.Vector3(0, 1, 0);
 const DOWN = new THREE.Vector3(0, -1, 0); // amostra/checagem do chão na pose deitada (P3c)
@@ -95,7 +96,22 @@ export class Player {
     // A colisão/latch NÃO muda com a forma (usa a cápsula lógica); só o visual.
     const kind = sessionStorage.getItem('eom-body') || 'toy';
     const toy = buildBody({ upper: this.zones[0].mat, lower: this.zones[1].mat }, H, { kind });
+    this.toy = toy;
+    this.animInstance = null;
+    this.playerHeight = H;
+
     this.object.add(toy.group);
+
+    if (animationManager.isLoaded) {
+      const inst = animationManager.createInstance({ upper: this.zones[0].mat, lower: this.zones[1].mat }, H);
+      if (inst) {
+        toy.group.visible = false;
+        this.object.add(inst.group);
+        this.animInstance = inst;
+      }
+    } else {
+      this._checkAnimInstance();
+    }
 
     // Caminhada procedural: pernas/braços balançam e o corpo bobeia/inclina,
     // sincronizados com a distância percorrida (ver Gait em Character.js).
@@ -220,7 +236,21 @@ export class Player {
     return this.object.localToWorld(out.set(0, z.y, 0));
   }
 
+  _checkAnimInstance() {
+    if (this.animInstance || !animationManager.isLoaded) return;
+    const inst = animationManager.createInstance({ upper: this.zones[0].mat, lower: this.zones[1].mat }, this.playerHeight);
+    if (inst) {
+      if (this.toy && this.toy.group) {
+        this.object.remove(this.toy.group);
+      }
+      this.object.add(inst.group);
+      this.animInstance = inst;
+    }
+  }
+
   update(dt, joy, camera) {
+    this._checkAnimInstance();
+
     if (this.prone) this._updateProne(dt, joy);
     else if (this.state === 'grounded') this._updateGrounded(dt, joy, camera);
     else this._updateLatched(dt, joy);
@@ -254,13 +284,27 @@ export class Player {
     let dist = this.object.position.distanceTo(this._prevPos);
     dist = Math.min(dist, MOVE_SPEED * dt * 1.6);
     this._prevPos.copy(this.object.position);
-    this.gait.update(dt, dist);
 
-    // Agachar: pose HUMANOIDE (dobra pernas + afunda/inclina o tronco), aplicada
-    // pelo Gait sobre o rig — bem mais orgânica que comprimir a malha. É só visual:
-    // a cápsula de colisão/latch não muda (evita regressão de degrau/pin).
-    this._crouchT += ((this.crouched ? 1 : 0) - this._crouchT) * Math.min(1, 10 * dt);
-    this.gait.crouch = this._crouchT;
+    if (this.animInstance) {
+      const moving = dist > 1e-3;
+      if (this.state === 'latched') {
+        this.animInstance.playAnimation(moving ? 'climb' : 'hide');
+      } else if (this.prone) {
+        this.animInstance.playAnimation('prone');
+      } else if (this.crouched) {
+        this.animInstance.playAnimation('crouch');
+      } else if (moving) {
+        this.animInstance.playAnimation('run');
+      } else {
+        this.animInstance.playAnimation('idle');
+      }
+      this.animInstance.setColor(this.zones[0].mat.color);
+      this.animInstance.update(dt);
+    } else {
+      this.gait.update(dt, dist);
+      this._crouchT += ((this.crouched ? 1 : 0) - this._crouchT) * Math.min(1, 10 * dt);
+      this.gait.crouch = this._crouchT;
+    }
   }
 
   // Articulação da face: as pupilas deslizam na direção do joystick, dando vida
