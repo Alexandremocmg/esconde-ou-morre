@@ -124,6 +124,11 @@ export class Seeker {
         toy.group.visible = false;
         this.bodyGroup.add(inst.group);
         this.animInstance = inst;
+        // A arma de água foi criada no rig do toy (agora oculto) — move para o grupo animado
+        if (this._blasterGroup) {
+          inst.group.add(this._blasterGroup);
+          this._blasterGroup.position.set(0.32, BODY_H * 0.35, 0.28);
+        }
       }
     } else {
       this._checkAnimInstance();
@@ -172,6 +177,7 @@ export class Seeker {
 
     blasterGroup.position.set(0.32, toy.headY * 0.4, 0.28);
     toy.rig.upper.add(blasterGroup);
+    this._blasterGroup = blasterGroup; // guardado para transferir ao animInstance
 
     // Cone de visão (visual/debug), apontando +Z a partir dos olhos
     const coneR = Math.tan(VISION_HALF_ANGLE) * VISION_RANGE;
@@ -280,6 +286,11 @@ export class Seeker {
       }
       this.bodyGroup.add(inst.group);
       this.animInstance = inst;
+      // Transfere a arma de água para o grupo animado (toy ficou removido)
+      if (this._blasterGroup) {
+        inst.group.add(this._blasterGroup);
+        this._blasterGroup.position.set(0.32, BODY_H * 0.35, 0.28);
+      }
     }
   }
 

@@ -163,8 +163,9 @@ class AnimationManager {
     const scale = height / modelHeight;
     clone.scale.setScalar(scale);
 
-    // Posição vertical (alinhado no chão)
-    clone.position.y = 0;
+    // Alinha os PÉS do modelo exatamente em Y=0 compensando bbox.min.y após a escala.
+    // Sem isso, modelos FBX cujo bind-pose tem o Hips acima de Y=0 ficam flutuando.
+    clone.position.y = -bbox.min.y * scale;
 
     const matU = materials.isMaterial ? materials : materials.upper;
 
