@@ -101,6 +101,18 @@ class AnimationManager {
     return geom;
   }
 
+  // Libera a malha de um FBX do qual só queríamos o clipe de animação.
+  // Sem isto, cada arquivo extra segura ~26MB de atributos até o GC rodar.
+  _disposeMeshes(root) {
+    if (!root) return;
+    root.traverse((o) => {
+      if (!o.isMesh) return;
+      if (o.geometry) o.geometry.dispose();
+      const mats = Array.isArray(o.material) ? o.material : [o.material];
+      for (const m of mats) if (m && m.dispose) m.dispose();
+    });
+  }
+
   // Carrega todos os arquivos FBX e envia progresso para a tela de carregamento
   async loadAll(onProgress) {
     if (this.loadPromise) {
@@ -115,29 +127,35 @@ class AnimationManager {
       const total = entries.length;
       let loadedCount = 0;
 
-      await Promise.all(
-        entries.map(async ([key, url]) => {
-          try {
-            const fbx = await this.loader.loadAsync(url);
-            if (!this.baseModel) {
-              // this.baseModel = fbx;
-              this.baseModel = fbx;
-            }
+      // SEQUENCIAL, não Promise.all. Todo FBX do Mixamo traz uma cópia COMPLETA
+      // da malha (613k vértices, ~26MB de atributos, ~198MB de heap durante o
+      // parse) além do clipe. Baixando os 7 em paralelo o pico chegava a ~1.4GB
+      // e o navegador do celular matava a aba — a barra travava antes de 100%,
+      // independente da velocidade da rede. Em série o pico fica no custo de UM
+      // arquivo por vez, e cada await dá folga ao coletor de lixo.
+      for (const [key, url] of entries) {
+        try {
+          const fbx = await this.loader.loadAsync(url);
 
-            if (fbx.animations && fbx.animations.length > 0) {
-              const clip = this._sanitizeClip(fbx.animations[0], key);
-              clip.name = key;
-              this.clips[key] = clip;
-            }
-          } catch (err) {
-            console.warn(`⚠️ Falha ao carregar FBX ${key}:`, err);
-          } finally {
-            loadedCount++;
-            const pct = Math.round((loadedCount / total) * 100);
-            if (onProgress) onProgress(pct, key);
+          if (fbx.animations && fbx.animations.length > 0) {
+            const clip = this._sanitizeClip(fbx.animations[0], key);
+            clip.name = key;
+            this.clips[key] = clip;
           }
-        })
-      );
+
+          // O primeiro arquivo doa a malha do personagem; dos demais só
+          // interessa o clipe — a malha repetida é liberada na hora para não
+          // segurar ~26MB × 6 até o GC decidir passar.
+          if (!this.baseModel) this.baseModel = fbx;
+          else this._disposeMeshes(fbx);
+        } catch (err) {
+          console.warn(`⚠️ Falha ao carregar FBX ${key}:`, err);
+        } finally {
+          loadedCount++;
+          const pct = Math.round((loadedCount / total) * 100);
+          if (onProgress) onProgress(pct, key);
+        }
+      }
 
       this.isLoaded = true;
       console.log('🎉 AnimationManager: Pré-carregamento concluído 100%!', Object.keys(this.clips));
