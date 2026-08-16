@@ -67,17 +67,20 @@ class AnimationManager {
 
     // updateMatrixWorld ANTES de medir: sem isto as matrizes ainda não foram
     // compostas e o Box3 devolve uma altura errada (0,28 em vez de 1,0), o que
-    // inflava a escala em ~3,2×.
+    // inflava a escala em ~3,2×. Aqui o Box3 serve só para o TAMANHO — a bind
+    // pose tem a altura natural do modelo, que é o que queremos escalar.
     clone.updateMatrixWorld(true);
     const bbox = new THREE.Box3().setFromObject(clone);
     const modelHeight = bbox.max.y - bbox.min.y || 1;
     const scale = height / modelHeight;
     clone.scale.setScalar(scale);
 
-    // O GLB vem CENTRADO na origem (bbox de −0,5 a +0,5); os chamadores
-    // (Player/Seeker) esperam os pés em y=0 local e aplicam o próprio offset.
-    // Sem esta linha o personagem afunda meio corpo no chão.
-    clone.position.y = -bbox.min.y * scale;
+    // NÃO deslocar pela bbox: ela é da BIND POSE (centrada na origem no GLB),
+    // enquanto quem manda na altura é a POSE ANIMADA, que já apoia os pés em
+    // y=0. Compensar pela bind pose fazia o personagem correr flutuando
+    // exatamente GROUND_Y acima do piso. Quem ajusta o resto é o chamador
+    // (Player: -GROUND_Y; Seeker: -EYE_Y). Conferir sempre pelos OSSOS dos pés.
+    clone.position.y = 0;
 
     // A bounding sphere de um SkinnedMesh é calculada na bind pose e nunca
     // recalculada: com culling ligado o personagem some em certos ângulos.

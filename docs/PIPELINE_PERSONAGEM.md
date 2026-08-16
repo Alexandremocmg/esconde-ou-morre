@@ -82,10 +82,27 @@ pose*, e se for chamado antes de `updateMatrixWorld(true)` devolve altura errada
 Para medir a pose animada, percorra os **ossos** com `getWorldPosition`. Teste de
 sanidade: numa corrida o topo tem que **variar** entre quadros.
 
-**O GLB vem centrado na origem** (bbox de −0,5 a +0,5), enquanto o FBX tinha os
-pés em y=0. `createInstance` compensa com
-`clone.position.y = -bbox.min.y * scale`; sem isso o personagem afunda meio corpo
-no chão.
+**Não alinhe a altura pela bbox.** O GLB vem com a *bind pose* centrada na origem
+(bbox de −0,5 a +0,5), o que dá vontade de compensar com
+`clone.position.y = -bbox.min.y * scale`. **É errado**: quem manda na altura é a
+*pose animada*, que já apoia os pés em y=0. Com a compensação o personagem corre
+flutuando exatamente `GROUND_Y` (0,45 m) acima do piso. A bbox serve só para
+medir o **tamanho** do modelo (a bind pose tem a altura natural); o
+posicionamento fica com `clone.position.y = 0` e o offset do chamador
+(`Player`: `-GROUND_Y`; `Seeker`: `-EYE_Y`).
+
+Esse bug passou por uma verificação minha justamente porque conferi os pés com
+`Box3`, que reportava `min_y = 0` (bind pose) enquanto os ossos dos pés estavam
+em 0,45. **Confira altura de personagem sempre pelos ossos:**
+
+```js
+const pes = [];
+inst.group.traverse(o => { if (o.isBone && /Foot|Toe/i.test(o.name)) pes.push(o); });
+const wp = new THREE.Vector3();
+let chao = Infinity;
+for (const b of pes) { b.getWorldPosition(wp); chao = Math.min(chao, wp.y); }
+// parado: ~0,00 · correndo: oscila (o pé levanta na passada)
+```
 
 **Frustum culling some com o personagem.** A bounding sphere de um `SkinnedMesh`
 é calculada uma vez na bind pose e nunca recalculada, então em certos ângulos o
