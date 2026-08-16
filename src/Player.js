@@ -148,7 +148,27 @@ export class Player {
     this._axX = new THREE.Vector3();
     this._axY = new THREE.Vector3();
     this._axZ = new THREE.Vector3();
-    this._tmpV = new THREE.Vector3(); // âncora de zona (P1)
+  }
+
+  reset() {
+    this.state = 'grounded';
+    this.prone = false;
+    this.crouched = false;
+    this.statue = false;
+    this.isJumping = false;
+    this.latchedObject = null;
+    this.object.position.set(0, GROUND_Y, 6);
+    this.object.rotation.set(0, 0, 0);
+    this.velocity.set(0, 0, 0);
+    this._camo = false;
+    this._eyeHide = 0;
+    this._glow = 0;
+    const BASE = 0xeef0f2;
+    for (const z of this.zones) {
+      z.mat.color.setHex(BASE);
+      z.target.setHex(BASE);
+      this._clearZone(z);
+    }
   }
 
   get position() { return this.object.position; }

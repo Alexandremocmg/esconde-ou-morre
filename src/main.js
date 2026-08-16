@@ -60,6 +60,10 @@ async function enterImmersive() {
 startBtn.addEventListener('click', async () => {
   if (startBtn.disabled) return;
   overlay.classList.add('hidden');
-  boot();
+  if (game) {
+    game.restartInPlace(false, false);
+  } else {
+    boot();
+  }
   await enterImmersive();
 });

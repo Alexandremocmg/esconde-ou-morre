@@ -83,6 +83,9 @@ export class Seeker {
     // Rota de patrulha (permite instanciar Caçadores com rotas alternadas).
     this.waypoints = opts.waypoints || WAYPOINTS;
     const bodyColor = opts.color != null ? opts.color : 0xd21f1f;
+    this._bodyColor = bodyColor;
+    const startY = opts.startY != null ? opts.startY : EYE_Y;
+    this._startY = startY;
 
     this.state = 'patrol'; // 'patrol' | 'chase' | 'caught'
     this.yaw = 0;
@@ -95,10 +98,6 @@ export class Seeker {
     this._avoidBias = 1;        // lado preferido ao desviar (evita jitter esquerda/direita)
 
     this.group = new THREE.Group();
-    // startY = altura inicial dos olhos (andar em que este Caçador nasce). O 2º
-    // Caçador do estágio 3 nasce no mezanino (startY ~ laje+EYE_Y); depois a sonda
-    // de chão mantém o Y a cada frame.
-    const startY = opts.startY != null ? opts.startY : EYE_Y;
     this.group.position.set(this.waypoints[0].x, startY, this.waypoints[0].z);
 
     // Grupo visual interno: recebe o bobbing (flutuação) SEM mover a origem da
@@ -170,7 +169,20 @@ export class Seeker {
     this._avoidL = new THREE.Vector3();
     this._avoidR = new THREE.Vector3();
     this._probe = new THREE.Raycaster();     // sonda de chão (vertical) p/ o Y por andar
-    this._probeOrig = new THREE.Vector3();
+  }
+
+  reset() {
+    this.state = 'patrol';
+    this.wpIndex = 0;
+    this.loseTimer = 0;
+    this.chaseRamp = 0;
+    this.validTarget = false;
+    const startY = this._startY != null ? this._startY : EYE_Y;
+    if (this.waypoints && this.waypoints.length > 0) {
+      this.group.position.set(this.waypoints[0].x, startY, this.waypoints[0].z);
+    }
+    this.yaw = 0;
+    this.group.rotation.set(0, 0, 0);
   }
 
   update(dt) {

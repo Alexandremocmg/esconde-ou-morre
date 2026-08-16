@@ -134,17 +134,16 @@ export class Game {
     if (this._elStage) this._elStage.textContent = String(this.stage);
     if (this._elGoal) this._elGoal.textContent = fmtTime(this.surviveTime);
 
-    // Botões da tela de vitória
+    // Botões da tela de Game Over e Vitória (Recomeço instantâneo sem recarregar 3D)
+    const goRestart = document.getElementById('go-restart');
+    const goMenu = document.getElementById('go-menu');
     const nextBtn = document.getElementById('win-next');
     const restartBtn = document.getElementById('win-restart');
-    if (nextBtn) nextBtn.addEventListener('click', () => {
-      sessionStorage.setItem('eom-stage', String(this.stage + 1));
-      location.reload();
-    });
-    if (restartBtn) restartBtn.addEventListener('click', () => {
-      sessionStorage.setItem('eom-stage', '1');
-      location.reload();
-    });
+
+    if (goRestart) goRestart.addEventListener('click', () => this.restartInPlace(false, false));
+    if (goMenu) goMenu.addEventListener('click', () => this.restartInPlace(false, true));
+    if (nextBtn) nextBtn.addEventListener('click', () => this.restartInPlace(true, false));
+    if (restartBtn) restartBtn.addEventListener('click', () => this.restartInPlace(false, true));
 
     this._clock = new THREE.Clock();
     this._resize();
@@ -562,6 +561,48 @@ export class Game {
       winPct.textContent = `${Math.min(100, pct)}%`;
     }
     if (this._victoryEl) this._victoryEl.classList.add('show');
+  }
+
+  restartInPlace(nextStage = false, backToMenu = false) {
+    if (nextStage) {
+      this.stage++;
+    } else if (backToMenu) {
+      this.stage = 1;
+    }
+    sessionStorage.setItem('eom-stage', String(this.stage));
+
+    if (this._elStage) this._elStage.textContent = String(this.stage);
+
+    this.elapsed = 0;
+    this.camoTime = 0;
+    this.over = false;
+    this.won = false;
+    this._heartTimer = 0;
+    this._lastWinTick = -1;
+
+    this._clearVignette();
+    if (this._gameoverEl) this._gameoverEl.classList.remove('show');
+    if (this._victoryEl) this._victoryEl.classList.remove('show');
+
+    // Reset player position and state in memory
+    if (this.player && this.player.reset) {
+      this.player.reset();
+    }
+
+    // Reset seekers positions and AI state in memory
+    if (this.seekers) {
+      for (const s of this.seekers) {
+        if (s.reset) s.reset();
+      }
+    }
+
+    const menu = document.getElementById('start-overlay');
+    if (menu) {
+      if (backToMenu) menu.classList.remove('hidden');
+      else menu.classList.add('hidden');
+    }
+
+    this._updateHud();
   }
 
   _resize = () => {

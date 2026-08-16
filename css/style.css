@@ -493,16 +493,38 @@ body {
   text-shadow: 0 2px 24px rgba(255, 60, 40, 0.5);
 }
 .go-panel p { color: var(--ui-dim); margin: 8px 0 22px; }
-.go-panel button {
+.go-actions, .win-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+}
+.btn-primary {
   font: inherit;
   font-weight: 700;
-  color: #0b0e13;
-  background: #ff5a4d;
+  color: #ffffff;
+  background: #2ecc71;
   border: none;
-  padding: 12px 26px;
+  padding: 12px 22px;
   border-radius: 12px;
   cursor: pointer;
+  box-shadow: 0 4px 14px rgba(46, 204, 113, 0.4);
+  transition: transform 0.1s ease, filter 0.1s ease;
 }
+.btn-primary:active { transform: scale(0.96); filter: brightness(1.1); }
+
+.btn-ghost {
+  font: inherit;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  padding: 12px 22px;
+  border-radius: 12px;
+  cursor: pointer;
+  backdrop-filter: blur(6px);
+  transition: transform 0.1s ease, background 0.1s ease;
+}
+.btn-ghost:active { transform: scale(0.96); background: rgba(255, 255, 255, 0.25); }
 
 /* ---------- Vitória / Fase Concluída ---------- */
 #victory {
