@@ -578,7 +578,7 @@ export class Game {
     if (this._btnClimb) {
       this._btnClimb.addEventListener('pointerdown', (e) => {
         e.preventDefault();
-        this.player.toggleLatch();
+        this.player.toggleLatch(this.camera);
         if (navigator.vibrate) try { navigator.vibrate(12); } catch (_) {}
       });
     }

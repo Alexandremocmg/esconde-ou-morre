@@ -145,6 +145,7 @@ export class Player {
     // reutilizáveis (evita alocação no loop)
     this._raycaster = new THREE.Raycaster();
     this._tmpDir = new THREE.Vector3();
+    this._tmpV = new THREE.Vector3();
     this._tmpMat = new THREE.Matrix4();
     this._tmpQuat = new THREE.Quaternion();
     this._axX = new THREE.Vector3();
