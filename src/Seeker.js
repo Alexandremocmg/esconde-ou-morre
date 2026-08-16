@@ -102,7 +102,10 @@ export class Seeker {
 
     // Grupo visual interno: recebe o bobbing (flutuação) SEM mover a origem da
     // visão (this.group.position), que a IA mantém em EYE_Y de forma determinística.
+    // position.y = -EYE_Y desloca o modelo visual PARA BAIXO de modo que os pés do
+    // FBX (em y=0 no espaço local) coincidam com o chão quando o grupo lógico está em EYE_Y.
     this.bodyGroup = new THREE.Group();
+    this.bodyGroup.position.y = -EYE_Y;
     this.group.add(this.bodyGroup);
     this._bobPhase = Math.random() * Math.PI * 2; // dessincroniza 2 Caçadores
 

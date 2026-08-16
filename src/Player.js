@@ -105,6 +105,9 @@ export class Player {
       const inst = animationManager.createInstance({ upper: this.zones[0].mat, lower: this.zones[1].mat }, H);
       if (inst) {
         toy.group.visible = false;
+        // Desloca o modelo FBX para baixo de modo que os pés (y=0 no espaço FBX)
+        // coincidam com o chão quando o object do jogador está em GROUND_Y.
+        inst.group.position.y = -GROUND_Y;
         this.object.add(inst.group);
         this.animInstance = inst;
       }
@@ -367,6 +370,9 @@ export class Player {
       if (this.toy && this.toy.group) {
         this.object.remove(this.toy.group);
       }
+      // Desloca o modelo FBX para baixo de modo que os pés (y=0 no espaço FBX)
+      // coincidam com o chão quando o object do jogador está em GROUND_Y.
+      inst.group.position.y = -GROUND_Y;
       this.object.add(inst.group);
       this.animInstance = inst;
     }

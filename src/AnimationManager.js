@@ -163,9 +163,10 @@ class AnimationManager {
     const scale = height / modelHeight;
     clone.scale.setScalar(scale);
 
-    // Alinha os PÉS do modelo exatamente em Y=0 compensando bbox.min.y após a escala.
-    // Sem isso, modelos FBX cujo bind-pose tem o Hips acima de Y=0 ficam flutuando.
-    clone.position.y = -bbox.min.y * scale;
+    // O clone FBX Mixamo tem seus pés aproximadamente em y=0 no espaço local após a
+    // normalização. Quem decide onde os pés tocam o chão é o chamador (Seeker/Player),
+    // que deve deslocar inst.group.position.y para alinhar ao seu sistema de coordenadas.
+    clone.position.y = 0;
 
     const matU = materials.isMaterial ? materials : materials.upper;
 
