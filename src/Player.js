@@ -170,6 +170,21 @@ export class Player {
     }
   }
 
+  // Lava a tinta do corpo do jogador com o jato de água do Caçador.
+  // Retorna a proporção de tinta restante (0..1).
+  washPaint(dt) {
+    const BASE_COLOR = new THREE.Color(0xeef0f2);
+    const speed = Math.min(1, 2.0 * dt);
+    let totalDist = 0;
+    for (const z of this.zones) {
+      z.mat.color.lerp(BASE_COLOR, speed);
+      z.target.lerp(BASE_COLOR, speed);
+      totalDist += z.mat.color.distanceTo(BASE_COLOR);
+    }
+    // Se a distância até o branco original for pequena (<0.08), a tinta foi limpa.
+    return totalDist / 2;
+  }
+
   get position() { return this.object.position; }
 
   // Compat: alguns lugares (HUD, roda de cor) leem a zona primária (upper).

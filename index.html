@@ -36,12 +36,15 @@
   <div id="hud">
     <div id="state-badge">CHÃO</div>
     <div id="color-chip"><span></span>camuflagem</div>
+    <div id="water-ammo-hud" class="water-ammo-badge" title="Munição de Jatos de Água do Caçador">
+      <span class="ammo-ic">💧</span><span id="ammo-count">5</span> / <span id="ammo-max">5</span>
+    </div>
 
-    <!-- Placar da partida: sobrevivência + tempo camuflado -->
+    <!-- Placar da partida: sobrevivência + tempo camuflado (Atraso de 30s anti-cheat) -->
     <div id="timer">
       <div class="t-top">
         <span class="t-stage">FASE <b id="stage-num">1</b></span>
-        <span id="timer-camo" title="Tempo total camuflado">🫥 0:00</span>
+        <span id="timer-camo" title="Tempo total camuflado (Atualizado a cada 30s)">🫥 0:00</span>
       </div>
       <div class="t-bar"><i id="timer-fill"></i></div>
       <div class="t-bottom">
@@ -144,6 +147,23 @@
         <button type="button" data-kind="toy" class="on"><span class="bp-ic">🧍</span>Boneco</button>
         <button type="button" data-kind="blob"><span class="bp-ic">🫧</span>Blob</button>
         <button type="button" data-kind="cube"><span class="bp-ic">🧊</span>Cubo</button>
+      </div>
+
+      <div class="body-label">Regras do Caçador (Munição de Água)</div>
+      <div class="ammo-cfg-panel">
+        <label for="ammo-select">💧 Jatos de Água:
+          <select id="ammo-select">
+            <option value="1">1 Jato (Hardcore)</option>
+            <option value="3">3 Jatos</option>
+            <option value="5" selected>5 Jatos (Padrão)</option>
+            <option value="10">10 Jatos</option>
+            <option value="15">15 Jatos</option>
+            <option value="30">30 Jatos</option>
+          </select>
+        </label>
+        <label class="toggle-lbl">
+          <input type="checkbox" id="infinite-ammo-toggle"> Munição Infinita
+        </label>
       </div>
 
       <div id="loader-box" class="loader-box">

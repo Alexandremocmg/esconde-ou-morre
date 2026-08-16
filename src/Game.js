@@ -92,6 +92,18 @@ export class Game {
     this.seekers = [mkSeeker(0), mkSeeker(1, 0xb01ecb)];
     if (this.stage >= THIRD_SEEKER_STAGE) this.seekers.push(mkSeeker(2, 0xd88a1a));
 
+    // Regras de Munição do Caçador (Meccha Chameleon Spec)
+    const ammoSel = document.getElementById('ammo-select');
+    const ammoOpt = ammoSel ? parseInt(ammoSel.value, 10) : 5;
+    this.maxWaterAmmo = isNaN(ammoOpt) ? 5 : ammoOpt;
+    this.waterAmmo = this.maxWaterAmmo;
+    const infCheck = document.getElementById('infinite-ammo-toggle');
+    this.infiniteAmmo = infCheck ? infCheck.checked : false;
+
+    // Placar com Atraso de 30 Segundos (Anti-Cheat Spec)
+    this.scoreHistory = []; // { t, camoTime }
+    this.delayedCamoTime = 0;
+
     this.follow = new FollowCamera(this.camera);
     this.joystick = new Joystick();
 
@@ -110,6 +122,7 @@ export class Game {
     this._radialPoseMenu = document.getElementById('radial-pose-menu');
     this._radialPaintMenu = document.getElementById('radial-paint-menu');
     this._setupControls();
+    this._updateWaterAmmoHud();
 
     // Oclusão da câmera: blocos entre a câmera e o jogador desvanecem para não
     // esconder o personagem (ex.: grudado na face traseira de um bloco).
@@ -237,7 +250,12 @@ export class Game {
     const dt = Math.min(this._clock.getDelta(), 0.05); // clamp anti-tab-switch
     if (!this.over && !this.won) {
       this.player.update(dt, this.joystick.value, this.camera);
-      for (const s of this.seekers) s.update(dt);
+      for (const s of this.seekers) {
+        s.update(dt);
+        if (s.state === 'chase' && s.validTarget) {
+          this.fireWaterJet(s, dt);
+        }
+      }
 
       // Juice: pulso + clique ao GRUDAR na parede (transição chão → parede).
       if (this._prevState === 'grounded' && this.player.state === 'latched') {
@@ -249,6 +267,12 @@ export class Game {
       // Cronômetro da partida
       this.elapsed += dt;
       if (this.player.isCamouflaged()) this.camoTime += dt;
+
+      // Atraso de 30s no Placar de Tempo Camuflado (Anti-Cheat Spec)
+      this.scoreHistory.push({ t: this.elapsed, camoTime: this.camoTime });
+      while (this.scoreHistory.length > 0 && (this.elapsed - this.scoreHistory[0].t) >= 30) {
+        this.delayedCamoTime = this.scoreHistory.shift().camoTime;
+      }
 
       this._updateFeedback(dt);
 
@@ -373,6 +397,17 @@ export class Game {
     this._spotted = false;
   }
 
+  _updateWaterAmmoHud() {
+    const elCount = document.getElementById('ammo-count');
+    const elMax = document.getElementById('ammo-max');
+    const elBadge = document.getElementById('water-ammo-hud');
+    if (elCount) elCount.textContent = this.infiniteAmmo ? '∞' : String(this.waterAmmo);
+    if (elMax) elMax.textContent = this.infiniteAmmo ? '∞' : String(this.maxWaterAmmo);
+    if (elBadge) {
+      elBadge.classList.toggle('empty', !this.infiniteAmmo && this.waterAmmo <= 0);
+    }
+  }
+
   _updateHud() {
     const camo = this.player.isCamouflaged();
     const latched = this.player.state === 'latched';
@@ -388,13 +423,74 @@ export class Game {
       this._btnClimb.classList.toggle('active', latched);
     }
 
-    // Placar: tempo decorrido (limitado à meta) e tempo camuflado
+    // Placar: tempo decorrido e tempo camuflado (com Atraso de 30s Anti-Cheat)
     const shown = Math.min(this.elapsed, this.surviveTime);
     if (this._elElapsed) this._elElapsed.textContent = fmtTime(shown);
-    if (this._elCamo) this._elCamo.textContent = `🫥 ${fmtTime(this.camoTime)}`;
+    if (this._elCamo) this._elCamo.textContent = `🫥 ${fmtTime(this.delayedCamoTime || 0)}`;
     if (this._elFill) {
       const pct = this.surviveTime > 0 ? (shown / this.surviveTime) * 100 : 0;
       this._elFill.style.width = `${Math.min(100, pct)}%`;
+    }
+  }
+
+  fireWaterJet(seeker, dt) {
+    if (this.over || this.won) return;
+
+    // Cooldown entre rajadas
+    seeker._shotCooldown = (seeker._shotCooldown || 0) - dt;
+    if (seeker._shotCooldown > 0) return;
+    seeker._shotCooldown = 0.25; // 4 disparos por segundo em rajada
+
+    if (!this.infiniteAmmo) {
+      if (this.waterAmmo <= 0) {
+        this.audio.emptyClick();
+        this._updateWaterAmmoHud();
+        this._gameOver("Vitória dos Camaleões! O Caçador ficou sem água.");
+        return;
+      }
+      this.waterAmmo--;
+      this._updateWaterAmmoHud();
+    }
+
+    this.audio.waterBlast();
+
+    // Posição do bocal da arma de água do Caçador
+    const fromPos = seeker.group.position.clone().add(new THREE.Vector3(0, 1.2, 0));
+    const targetPos = this.player.position.clone().add(new THREE.Vector3(0, 0.5, 0));
+
+    // Raycast para verificar impacto
+    const dir = new THREE.Vector3().subVectors(targetPos, fromPos).normalize();
+    const ray = new THREE.Raycaster(fromPos, dir, 0, 15);
+    const hits = ray.intersectObjects([this.player.object, ...this.level.climbables], true);
+
+    let hitPlayer = false;
+    if (hits.length > 0) {
+      let firstObj = hits[0].object;
+      while (firstObj.parent && firstObj !== this.player.object && firstObj.parent !== this.scene) {
+        firstObj = firstObj.parent;
+      }
+      if (firstObj === this.player.object || firstObj.parent === this.player.object) {
+        hitPlayer = true;
+      }
+    } else {
+      hitPlayer = true;
+    }
+
+    this.effects.waterJetBeam(fromPos, targetPos, hitPlayer);
+
+    if (hitPlayer) {
+      this.audio.waterSplash();
+      const remain = this.player.washPaint(dt * 3.0);
+      if (remain < 0.08) {
+        this._gameOver("O Caçador lavou toda a sua tinta com o jato de água!");
+      }
+    } else {
+      this.audio.waterSplash();
+    }
+
+    // Se a munição acabou e não acertou um Camaleão para vencer, Vitória dos Camaleões!
+    if (!this.infiniteAmmo && this.waterAmmo <= 0 && !hitPlayer) {
+      this._gameOver("Vitória dos Camaleões! O Caçador ficou sem água.");
     }
   }
 
@@ -585,14 +681,25 @@ export class Game {
 
     this.elapsed = 0;
     this.camoTime = 0;
+    this.delayedCamoTime = 0;
+    this.scoreHistory = [];
     this.over = false;
     this.won = false;
     this._heartTimer = 0;
     this._lastWinTick = -1;
 
+    // Atualiza configurações de munição do Caçador
+    const ammoSel = document.getElementById('ammo-select');
+    const ammoOpt = ammoSel ? parseInt(ammoSel.value, 10) : 5;
+    this.maxWaterAmmo = isNaN(ammoOpt) ? 5 : ammoOpt;
+    this.waterAmmo = this.maxWaterAmmo;
+    const infCheck = document.getElementById('infinite-ammo-toggle');
+    this.infiniteAmmo = infCheck ? infCheck.checked : false;
+
     this._clearVignette();
     if (this._gameoverEl) this._gameoverEl.classList.remove('show');
     if (this._victoryEl) this._victoryEl.classList.remove('show');
+    this._updateWaterAmmoHud();
 
     // Reset camera orientation and distance
     if (this.follow && this.follow.reset) {

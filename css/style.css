@@ -128,7 +128,65 @@ body {
   width: 14px; height: 14px;
   border-radius: 4px;
   background: #8a8f98;
-  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.25);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.5);
+}
+
+.water-ammo-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 800;
+  color: #59c1e8;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: rgba(14, 30, 48, 0.75);
+  border: 1.5px solid rgba(89, 193, 232, 0.4);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+.water-ammo-badge.empty {
+  color: #ff4a5a;
+  border-color: rgba(255, 74, 90, 0.6);
+  background: rgba(48, 14, 20, 0.85);
+  animation: alertBounce 0.4s ease infinite;
+}
+.water-ammo-badge .ammo-ic {
+  font-size: 15px;
+}
+
+.ammo-cfg-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  margin-bottom: 12px;
+}
+.ammo-cfg-panel label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ui);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ammo-cfg-panel select {
+  background: rgba(0, 0, 0, 0.4);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 12px;
+  outline: none;
+}
+.ammo-cfg-panel .toggle-lbl {
+  cursor: pointer;
 }
 /* Placar da partida (canto superior direito) */
 #timer {

@@ -55,6 +55,12 @@ Vercel, S3, etc.) — publique a raiz do repositório.
   - **Poses (🧍):** *Toque rápido* para congelar no **Modo Estátua/Mimetismo**; *Segurar & Deslizar* para Roda de 6 Poses 3D.
   - **Escalar (🧱):** Botão contextual com brilho ativado ao aproximar-se de superfícies escaláveis.
   - **Pular (🟢):** Salto físico responsivo com animação `Jump.fbx`.
+- **Mecânica do Caçador (Estilo Meccha Chameleon):**
+  - **Arma de Água 3D (Water Blaster):** Caçador equipado com arma 3D que dispara jatos de água com feixe de partículas e som de pressão.
+  - **Munição Contada (`💧 5/5` Padrão):** O Caçador inicia com 5 jatos de água (configurável de 1 a 30 no menu, com toggle de munição infinita). Cada disparo no vazio perde 1 jato. Se os jatos chegarem a 0 e restarem Camaleões vivos, dispara **Vitória dos Camaleões**!
+  - **Remoção de Tinta (`washPaint`):** O jato de água desbota a tinta do jogador de volta ao branco original em ~1.5s de contato, forçando o movimento e dando uma janela de fuga/esquiva.
+  - **Placar com Atraso de 30s (Anti-Cheat):** O tempo camuflado exibido no HUD do Caçador possui um atraso intencional de 30 segundos, impedindo a localização de esconderijos por leitura de pontos em tempo real.
+  - **Zona de Sorteio do Lobby (+50% Peso):** Anel circular emissivo demarcado no mapa do Lobby. Jogadores posicionados dentro da zona no fim da contagem recebem +50% de peso no sorteio do Caçador.
 - **Reinício Instantâneo em Memória (0ms de Espera):** Botão **Jogar Novamente** na tela de Game Over/Vitória reseta o estado da partida instantaneamente em memória sem recarregar a página ou refazer downloads 3D.
 
 ## Estrutura
