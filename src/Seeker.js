@@ -145,6 +145,34 @@ export class Seeker {
     visor.position.set(0, toy.headY, toy.headR + 0.05);
     toy.rig.upper.add(visor);
 
+    // ARMA DE ÁGUA 3D (Water Blaster / Super Soaker)
+    const blasterGroup = new THREE.Group();
+    const bodyBarrel = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.08, 0.08, 0.55, 12),
+      new THREE.MeshToonMaterial({ color: 0x59c1e8, gradientMap: toonGradient() })
+    );
+    bodyBarrel.rotation.x = Math.PI / 2;
+    blasterGroup.add(bodyBarrel);
+
+    const tankMesh = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.11, 0.11, 0.40, 12),
+      new THREE.MeshToonMaterial({ color: 0xf2c63c, gradientMap: toonGradient() })
+    );
+    tankMesh.position.set(0, 0.14, -0.05);
+    tankMesh.rotation.x = Math.PI / 2;
+    blasterGroup.add(tankMesh);
+
+    const nozzle = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.04, 0.06, 0.12, 8),
+      new THREE.MeshToonMaterial({ color: 0x14181d, gradientMap: toonGradient() })
+    );
+    nozzle.position.set(0, 0, 0.32);
+    nozzle.rotation.x = Math.PI / 2;
+    blasterGroup.add(nozzle);
+
+    blasterGroup.position.set(0.32, toy.headY * 0.4, 0.28);
+    toy.rig.upper.add(blasterGroup);
+
     // Cone de visão (visual/debug), apontando +Z a partir dos olhos
     const coneR = Math.tan(VISION_HALF_ANGLE) * VISION_RANGE;
     this.visionMat = new THREE.MeshBasicMaterial({
@@ -169,6 +197,7 @@ export class Seeker {
     this._avoidL = new THREE.Vector3();
     this._avoidR = new THREE.Vector3();
     this._probe = new THREE.Raycaster();     // sonda de chão (vertical) p/ o Y por andar
+    this._probeOrig = new THREE.Vector3();
   }
 
   reset() {
