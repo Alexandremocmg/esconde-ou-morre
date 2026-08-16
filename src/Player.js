@@ -179,10 +179,14 @@ export class Player {
     for (const z of this.zones) {
       z.mat.color.lerp(BASE_COLOR, speed);
       z.target.lerp(BASE_COLOR, speed);
-      totalDist += z.mat.color.distanceTo(BASE_COLOR);
+      // THREE.Color não tem distanceTo — calcula manualmente com deltas RGB
+      const dr = z.mat.color.r - BASE_COLOR.r;
+      const dg = z.mat.color.g - BASE_COLOR.g;
+      const db = z.mat.color.b - BASE_COLOR.b;
+      totalDist += Math.sqrt(dr * dr + dg * dg + db * db);
     }
-    // Se a distância até o branco original for pequena (<0.08), a tinta foi limpa.
-    return totalDist / 2;
+    // Normaliza: distância máxima possível no espaço RGB = sqrt(3) ≈ 1.73
+    return totalDist / (this.zones.length * 1.732);
   }
 
   get position() { return this.object.position; }
