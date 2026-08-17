@@ -9,3 +9,6 @@ Thumbs.db
 node_modules/
 dist/
 .env
+
+# Área de trabalho de testes/diagnóstico (screenshots, harnesses, backups GLB)
+scratchpad/

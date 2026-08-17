@@ -53,10 +53,13 @@ export class Game {
 
     // Cena — ambiente CLARO e legível (party game), não mais penumbra de terror.
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0xeaf0f5);
-    // Fog claro e distante: só suaviza o horizonte, sem fechar a cena. A leitura
-    // clara é a assinatura do look toon (ao contrário da penumbra anterior).
-    this.scene.fog = new THREE.Fog(0xeaf0f5, 40, 120);
+    // Fundo: céu toon GERADO (assets/sky.jpg) — preenche a tela atrás da geometria.
+    const sky = new THREE.TextureLoader().load('assets/sky.jpg');
+    sky.colorSpace = THREE.SRGBColorSpace;
+    this.scene.background = sky;
+    // Fog claro e distante casado ao tom do céu: suaviza o horizonte onde a
+    // geometria some, sem descolar da arte do fundo. Leitura clara = assinatura toon.
+    this.scene.fog = new THREE.Fog(0xe3e9ee, 40, 120);
 
     // Câmera (proporção landscape de celular; ajustada no resize)
     this.camera = new THREE.PerspectiveCamera(60, 16 / 9, 0.1, 200);

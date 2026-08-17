@@ -54,6 +54,102 @@ function toTexture(cv, { repeatX = 1, repeatY = 1, aniso = 4 } = {}) {
   return tex;
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// PAINÉIS FACETADOS DO BONECO (estilo art toy de vinil técnico — ver referência)
+// Sulcos angulares gravados no corpo. O MESMO traçado alimenta duas saídas:
+//   • panelNormal() — relevo real (via heightToNormal), sobrevive à camuflagem
+//     porque vive no normalMap, não no mapa de cor (que é sobrescrito ao estampar).
+//   • panelLines()  — a mesma linha em alpha baixo, carimbada por cima da pele.
+// As duas juntas são necessárias: o cel de poucas bandas quase não mostra relevo
+// puro, e a linha sozinha não teria volume. O traçado é DETERMINÍSTICO (PRNG
+// semeado) — sem isso, relevo e linha sairiam desalinhados.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// LCG minúsculo: mesma semente → mesma sequência (traçado idêntico entre saídas).
+function seeded(seed) {
+  let s = seed >>> 0;
+  return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
+}
+
+// Traçado das juntas: costuras longas quase verticais com dobras angulares +
+// ramos diagonais ligando-as (a malha de facetas da referência). Devolve uma
+// lista de polilinhas em coordenadas 0..1 — independente do tamanho do canvas.
+function panelSeams() {
+  const rnd = seeded(0x5eed17);
+  const seams = [];
+  // Costuras principais: segmentos LONGOS e retos com poucas dobras nítidas. O
+  // passo em Y é grande de propósito — kinks curtos leem como rabisco, não como
+  // painel técnico (foi o erro da 1ª versão).
+  for (let i = 0; i < 4; i++) {
+    const x0 = 0.12 + i * 0.25;
+    const pts = [[x0 + (rnd() - 0.5) * 0.04, -0.05]];
+    let x = pts[0][0];
+    for (let y = 0.30; y <= 1.05; y += 0.36) {
+      x += (rnd() - 0.5) * 0.22;                     // dobra única e ampla
+      pts.push([Math.min(0.97, Math.max(0.03, x)), y]);
+    }
+    seams.push(pts);
+  }
+  // Chevrons (V) — a marca do peito/membros da referência: duas retas em ângulo.
+  // Poucos e grandes: o painel técnico vem de traços DELIBERADOS. Muitos traços
+  // curtos viram arranhão (aparecia nas faces planas da forma 'cube').
+  for (let i = 0; i < 3; i++) {
+    const cx = 0.22 + rnd() * 0.5, cy = 0.16 + rnd() * 0.66;
+    const w = 0.26 + rnd() * 0.16, h = 0.12 + rnd() * 0.08;
+    seams.push([[cx - w / 2, cy - h], [cx, cy], [cx + w / 2, cy - h]]);
+  }
+  // Ramos retos ligando costuras vizinhas (fecham as facetas).
+  for (let i = 0; i < 4; i++) {
+    const y = 0.10 + rnd() * 0.78;
+    const x = 0.06 + rnd() * 0.5;
+    const w = 0.28 + rnd() * 0.20;
+    seams.push([[x, y], [x + w, y + (rnd() - 0.5) * 0.20]]);
+  }
+  return seams;
+}
+
+// Desenha o traçado num contexto com um estilo/espessura dados.
+function strokeSeams(ctx, size, style, width) {
+  ctx.strokeStyle = style;
+  ctx.lineWidth = width;
+  ctx.lineJoin = 'miter';
+  ctx.lineCap = 'round';
+  for (const pts of panelSeams()) {
+    ctx.beginPath();
+    ctx.moveTo(pts[0][0] * size, pts[0][1] * size);
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0] * size, pts[i][1] * size);
+    ctx.stroke();
+  }
+}
+
+// Normal map dos painéis: sulco = vale (linha escura no canvas de altura).
+export function panelNormal({ size = 256, strength = 2.6, aniso = 4 } = {}) {
+  return cached(`panelN:${size}:${strength}:${aniso}`, () => {
+    const { cv, ctx } = makeCanvas(size, '#808080');
+    strokeSeams(ctx, size, 'rgba(0,0,0,0.85)', Math.max(2, size / 96));   // vale
+    strokeSeams(ctx, size, 'rgba(255,255,255,0.28)', Math.max(1, size / 190)); // lábio de luz
+    const tex = heightToNormal(cv, { strength, aniso });
+    tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping; // arte única no corpo, não tile
+    return tex;
+  });
+}
+
+// Canvas com AS MESMAS juntas em tinta suave — carimbado por cima da pele para o
+// painel continuar legível sob o cel chapado (e após a estampa da camuflagem).
+// Alpha baixo de propósito: o boneco não pode ficar visivelmente mais escuro que
+// a superfície copiada, senão a camuflagem "vaza" a olho nu.
+// `size` é a resolução de DESENHO (maior = linha nítida); o chamador reescala
+// para a pele de 128². Desenhar direto a 128 saía borrado.
+export function panelLinesCanvas(size = 256) {
+  return cached(`panelL:${size}`, () => {
+    const cv = document.createElement('canvas');
+    cv.width = cv.height = size;
+    const ctx = cv.getContext('2d');
+    strokeSeams(ctx, size, 'rgba(30,36,46,0.13)', Math.max(1.2, size / 260));
+    return cv;
+  });
+}
+
 // Ruído granulado leve (grão de superfície suja/áspera).
 function speckle(ctx, size, count, alpha, dark = true) {
   for (let i = 0; i < count; i++) {
