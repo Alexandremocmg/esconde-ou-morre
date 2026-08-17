@@ -8,20 +8,30 @@ import { HunterCamera } from './HunterCamera.js';
 import { Joystick } from './Joystick.js';
 import { Effects } from './Effects.js';
 import { Audio } from './Audio.js';
-import { ColorPicker } from './ColorPicker.js';
 import { animationManager } from './AnimationManager.js';
+import { Net } from './Net.js';
+import { RemotePlayer } from './RemotePlayer.js';
+import {
+  FIXED_LAYOUT,
+  JET_RANGE,
+  HUNTER_AIM_HALF_ANGLE_DEG,
+  HUNTER_FIRE_COOLDOWN_MS,
+  HUNTER_MISS_COOLDOWN_MS,
+  makeInputPayload,
+  S2C,
+  ROLE,
+} from './net/protocol.js';
 
 // Mira do Caçador jogável (Game.fireHunterShot): cone de mira a partir do
 // centro da câmera, não pixel-perfect — evita o problema de raycast contra o
 // SkinnedMesh animado (a malha usa a BIND POSE no raycast, ver o comentário
 // grande em fireWaterJet mais abaixo). Mesma técnica: posição conhecida do
 // alvo + checagem de oclusão contra paredes.
-const HUNTER_AIM_HALF_ANGLE = THREE.MathUtils.degToRad(9); // ~18° de cone total
-const HUNTER_FIRE_COOLDOWN_MS = 300;
-// Fase 2 (docs/MECANICA_CACADOR_VISAO.md §2): tiro que erra o alvo aplica um cooldown de
-// "bomba de pressão" bem mais longo, pra desincentivar spam contra parede/objeto. Só
-// cooldown extra — sem consumir munição a mais (a normal do disparo já foi debitada).
-const HUNTER_MISS_COOLDOWN_MS = 2600; // 2-3s pedido
+//
+// HUNTER_AIM_HALF_ANGLE_DEG/HUNTER_FIRE_COOLDOWN_MS/HUNTER_MISS_COOLDOWN_MS/JET_RANGE
+// vêm de net/protocol.js — o servidor do modo online (docs/PLANO_MULTIPLAYER.md)
+// precisa dos MESMOS valores para validar o disparo, então moram num só lugar.
+const HUNTER_AIM_HALF_ANGLE = THREE.MathUtils.degToRad(HUNTER_AIM_HALF_ANGLE_DEG); // ~18° de cone total
 const HUNTER_TARGET_COUNT = 6;
 
 // Scanner / Visão Reveladora (Fase 3, docs/MECANICA_CACADOR_VISAO.md §3). MVP "ping
@@ -42,7 +52,6 @@ const DIFF_PER_STAGE = 0.12;  // incremento de dificuldade por estágio (velocid
 // andares altos — e um 3º (térreo, sentido oposto) a partir do estágio 3.
 const THIRD_SEEKER_STAGE = 3;
 const WARN_WINDOW = 5;        // s de antecedência para o feedback de perigo / quase-vitória
-const JET_RANGE = 15;         // alcance do jato de água (m)
 
 // Formata segundos como m:ss.
 function fmtTime(sec) {
@@ -93,11 +102,15 @@ export class Game {
 
     this._addLights();
 
-    // Modo da partida: 'chameleon' (padrão, fuja/camufle-se do Caçador IA) ou
-    // 'hunter' (Caçador jogável, mira e atira nos Camaleões-alvo). Escolhido no
-    // menu inicial (#mode-pick em index.html), persistido em 'eom-mode' (ver main.js).
-    this.mode = sessionStorage.getItem('eom-mode') === 'hunter' ? 'hunter' : 'chameleon';
+    // Modo da partida: 'chameleon' (padrão, fuja/camufle-se do Caçador IA), 'hunter'
+    // (Caçador jogável, mira e atira nos Camaleões-alvo) ou 'online' (multiplayer —
+    // docs/PLANO_MULTIPLAYER.md: servidor autoritativo decide papel/tiro/fim de
+    // partida; ver _connectOnline()). Escolhido no menu inicial (#mode-pick em
+    // index.html), persistido em 'eom-mode' (ver main.js).
+    const savedMode = sessionStorage.getItem('eom-mode');
+    this.mode = (savedMode === 'hunter' || savedMode === 'online') ? savedMode : 'chameleon';
     document.body.classList.toggle('mode-hunter', this.mode === 'hunter');
+    document.body.classList.toggle('mode-online', this.mode === 'online');
 
     // Estágio atual (persiste entre reloads para permitir progressão).
     this.stage = Math.max(1, parseInt(sessionStorage.getItem('eom-stage') || '1', 10) || 1);
@@ -111,7 +124,10 @@ export class Game {
     this.camoTime = 0;   // tempo total camuflado (só faz sentido no modo Camaleão)
 
     // Layout da arena por estágio (cicla a cada 3): 1=aberta, 2=labirinto, 3=ilhas.
-    const layout = ((this.stage - 1) % 3) + 1;
+    // Online usa um layout FIXO (protocol.FIXED_LAYOUT) — os dois clientes precisam
+    // carregar o mesmo número pro servidor poder atribuir spawns coerentes com a
+    // geometria (ver room.js: os spawns são copiados do layout 1 de Level.js).
+    const layout = this.mode === 'online' ? FIXED_LAYOUT : ((this.stage - 1) % 3) + 1;
     this.level = new Level(this.scene, layout, { mobile: this.isMobile });
     this.player = new Player(this.scene, this.level, { isHunter: this.mode === 'hunter' });
     this.effects = new Effects(this.scene);
@@ -131,6 +147,20 @@ export class Game {
       this._scannerDots = [];       // pool de elementos DOM do radar (reaproveitados)
       this._spawnHunterTargets();
       this._addHunterFlashlight();
+    } else if (this.mode === 'online') {
+      // Nem IA nem alvos-boneco: o outro jogador é um RemotePlayer de verdade (ver
+      // _connectOnline). seekers/targets ficam vazios pelo mesmo motivo do modo
+      // Caçador acima — os laços que os percorrem já não fazem nada sozinhos.
+      this.seekers = [];
+      this.targets = [];
+      this.remotePlayers = new Map(); // id → RemotePlayer
+      this.onlineRole = null;         // só sabido depois do 'welcome' do servidor
+      this._nextFireAt = 0;
+      this._onlineConnected = false;
+      this._hunterViewAttached = false; // reaproveitado por _updateHunterFPSRig() se o papel for Caçador
+      this._hunterMuzzle = null;
+      this.net = new Net(this._wsUrl());
+      this._connectOnline(); // assíncrono de propósito — não bloqueia o boot da cena
     } else {
       // Caçadores. O primeiro sempre existe; um segundo (rota cruzada, cor distinta)
       // entra a partir do estágio THIRD_SEEKER_STAGE. As rotas vêm do layout.
@@ -189,7 +219,10 @@ export class Game {
     const hint = document.getElementById('hint');
     if (hint && this.mode === 'hunter') {
       hint.textContent = 'Mire com a retícula e toque em 💦 para atirar. Encontre e acerte todos os Camaleões antes que o tempo ou a munição acabem.';
+    } else if (hint && this.mode === 'online') {
+      hint.textContent = 'Conectando à sala...'; // trocado por papel/instrução ao chegar o "welcome"
     }
+    this._hintEl = hint;
 
     // Oclusão da câmera: blocos entre a câmera e o jogador desvanecem para não
     // esconder o personagem (ex.: grudado na face traseira de um bloco).
@@ -285,53 +318,169 @@ export class Game {
     this._hunterFlashlight = light;
   }
 
-  // Fiação dos controles: botões de ação e a área de olhar (arrasto → câmera).
-  _setupControls() {
-    // Botões: um toque (pointerdown) dispara a ação. stopPropagation evita que o
-    // toque também conte como arrasto de olhar no look-zone que fica atrás.
-    const press = (el, fn) => {
-      if (!el) return;
-      el.addEventListener('pointerdown', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        if (this.over || this.won) return;
-        fn();
-      }, { passive: false });
-    };
-    press(this._btnLatch, () => this.player.toggleLatch(this.camera));
-    press(this._btnCrouch, () => this.player.toggleCrouch());
-    press(this._btnProne, () => this.player.toggleProne());
-    press(this._btnPaint, () => {
-      const color = this.player.sampleColor(this.camera); // conta-gotas mirado (Fase 5a)
-      if (color) {
-        this.effects.pulse(this.player.position, color);
-        this.audio.paint();
-        if (this.colorPicker.open) this.colorPicker.show(color); // re-semeia a roda aberta
-      }
-    });
-    // Abre/fecha a roda de cor, semeando com a cor atual do disfarce (Fase 5b).
-    press(this._btnPalette, () => this.colorPicker.toggle(this.player.targetColor));
+  // ------------------------------------------------------------ MODO ONLINE
+  // Endereço do servidor autoritativo (docs/PLANO_MULTIPLAYER.md). Padrão: mesmo
+  // host da página, porta 8787 (server/index.js). `?ws=host` ou `?ws=host:porta`
+  // sobrescreve — necessário ao testar por túnel (cloudflared/ngrok), onde o cliente e
+  // o servidor ficam em domínios/túneis DIFERENTES (o túnel do cliente não repassa a
+  // porta 8787). Aceita também uma URL completa (`?ws=wss://...`).
+  //
+  // wss:// obrigatório quando a página é servida por https (o túnel sempre é) — um
+  // navegador bloqueia ws:// (inseguro) chamado de uma página https (conteúdo misto).
+  _wsUrl() {
+    const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
+    const override = new URLSearchParams(location.search).get('ws');
+    if (override) return /^wss?:\/\//.test(override) ? override : `${scheme}://${override}`;
+    return `${scheme}://${location.hostname}:8787`;
+  }
 
-    // Olhar: arrasto na metade direita. Segue o padrão do Joystick (pointerId
-    // próprio; move/up no window) para não conflitar com o joystick esquerdo.
-    const zone = document.getElementById('look-zone');
-    if (zone) {
-      let id = null, lx = 0, ly = 0;
-      zone.addEventListener('pointerdown', (e) => {
-        if (id !== null) return;
-        e.preventDefault();
-        id = e.pointerId; lx = e.clientX; ly = e.clientY;
-      }, { passive: false });
-      window.addEventListener('pointermove', (e) => {
-        if (e.pointerId !== id) return;
-        e.preventDefault();
-        this.follow.addLook(e.clientX - lx, e.clientY - ly);
-        lx = e.clientX; ly = e.clientY;
-      }, { passive: false });
-      const end = (e) => { if (e.pointerId === id) id = null; };
-      window.addEventListener('pointerup', end);
-      window.addEventListener('pointercancel', end);
+  // Conecta à sala, resolve o papel (servidor decide) e liga os handlers de rede.
+  // Roda em paralelo ao boot da cena (chamada no construtor sem await) — o jogador
+  // aparece no spawn genérico do layout até o 'welcome' chegar e reposicioná-lo.
+  async _connectOnline() {
+    try {
+      const welcome = await this.net.connect();
+      this._onlineConnected = true;
+      this.onlineRole = welcome.role;
+      this.player.isHunter = welcome.role === ROLE.HUNTER;
+      this.player.position.set(welcome.spawn.x, this.player.position.y, welcome.spawn.z);
+
+      // Chrome de UI específico do papel Caçador (botão de tiro) — mesma classe CSS
+      // que o modo Caçador single-player usa para #btn-fire, só que sem munição/
+      // scanner/alvos-boneco, que não existem no modo online (ver css/style.css).
+      document.body.classList.toggle('online-hunter', this.onlineRole === ROLE.HUNTER);
+
+      // Caçador no online usa a MESMA câmera 1ª pessoa do single-player — troca só
+      // agora porque o papel só é conhecido depois do 'welcome'. É mais que estética:
+      // a FollowCamera (3ª pessoa) sempre faz lookAt() no PRÓPRIO jogador, então
+      // camera.getWorldDirection() usado em _fireOnline() sempre apontaria pra si
+      // mesmo — a mira não funcionaria. Lanterna junto, mesma UX do modo Caçador.
+      if (this.onlineRole === ROLE.HUNTER) {
+        this.follow = new HunterCamera(this.camera);
+        this._addHunterFlashlight();
+      }
+
+      for (const p of welcome.players) this._spawnRemotePlayer(p);
+      this._updateOnlineHint(); // já sabe se entrou sozinho (welcome.players vazio) ou não
+
+      this.net.on(S2C.SNAPSHOT, (msg) => this._onSnapshot(msg));
+      this.net.on(S2C.PLAYER_JOIN, (msg) => { this._spawnRemotePlayer(msg.player); this._updateOnlineHint(); });
+      this.net.on(S2C.PLAYER_LEAVE, (msg) => { this._removeRemotePlayer(msg.id); this._updateOnlineHint(); });
+      this.net.on(S2C.PLAYER_HIT, (msg) => this._onPlayerHit(msg));
+      this.net.on(S2C.MATCH_OVER, (msg) => this._onMatchOver(msg));
+      this.net.on('_close', () => {
+        if (!this.over && !this.won) this._gameOver('Conexão com o servidor perdida.');
+      });
+    } catch (err) {
+      console.error('❌ Game: falha ao conectar no modo online', err);
+      this._gameOver('Não foi possível conectar ao servidor. Verifique se ele está rodando (server/).');
     }
+  }
+
+  // Deixa explícito quando o jogador está SOZINHO na sala — sem isto, "conectado mas
+  // sem ninguém pra ver" e "conectado e pareado" pareciam a mesma coisa na tela (era
+  // exatamente o que causava a confusão de "entrei e não vi o outro jogador": as duas
+  // pontas às vezes nunca chegaram a estar na sala AO MESMO TEMPO, e nada na UI avisava).
+  _updateOnlineHint() {
+    if (!this._hintEl) return;
+    if (this.remotePlayers.size === 0) {
+      this._hintEl.textContent = '⏳ Sozinho na sala — aguardando outro jogador entrar (mesmo link, outra aba/aparelho).';
+      return;
+    }
+    this._hintEl.textContent = this.onlineRole === ROLE.HUNTER
+      ? 'Modo Online — Caçador: mire e toque em 💦 para atirar no outro jogador.'
+      : 'Modo Online — Camaleão: pinte-se e se esconda do outro jogador.';
+  }
+
+  _spawnRemotePlayer(p) {
+    if (this.remotePlayers.has(p.id)) return;
+    const rp = new RemotePlayer(this.scene, p.id, p.role, p.pos);
+    this.remotePlayers.set(p.id, rp);
+  }
+
+  _removeRemotePlayer(id) {
+    const rp = this.remotePlayers.get(id);
+    if (!rp) return;
+    rp.destroy();
+    this.remotePlayers.delete(id);
+  }
+
+  _onSnapshot(msg) {
+    for (const p of msg.players) {
+      if (p.id === this.net.id) continue; // não aplica o próprio snapshot em si mesmo
+      let rp = this.remotePlayers.get(p.id);
+      if (!rp) { this._spawnRemotePlayer(p); rp = this.remotePlayers.get(p.id); }
+      rp.pushSnapshot(p, msg.t);
+    }
+  }
+
+  // O acerto em si já chega via snapshot (`eliminated`, lido por RemotePlayer) — este
+  // handler é só o momento pontual (som/vibração), igual ao fireHunterShot local.
+  _onPlayerHit(msg) {
+    this.audio.waterSplash();
+    if (msg.targetId === this.net.id) {
+      if (navigator.vibrate) try { navigator.vibrate([30, 40, 30]); } catch (_) {}
+      if (this._vignette) {
+        this._vignette.classList.add('spotted');
+        setTimeout(() => this._vignette && this._vignette.classList.remove('spotted'), 500);
+      }
+    }
+  }
+
+  _onMatchOver(msg) {
+    const iAmHunter = this.onlineRole === ROLE.HUNTER;
+    const iWon = (msg.winner === ROLE.HUNTER) === iAmHunter;
+    if (iWon) this._win(msg.reason);
+    else this._gameOver(msg.reason);
+  }
+
+  // Disparo do modo online: mesma mira por cone do modo Caçador single-player
+  // (câmera → alvo), mas a DECISÃO de acerto é do servidor (net/hittest.js — o
+  // MESMO módulo que Game.js usaria localmente). O cooldown aqui é só feedback
+  // otimista de UI; quem manda de verdade é o servidor (room.js).
+  _fireOnline() {
+    if (this.over || this.won || this.onlineRole !== ROLE.HUNTER) return;
+    if (!this.net || !this.net.connected) return;
+    const now = performance.now();
+    if (now < this._nextFireAt) return;
+    this._nextFireAt = now + HUNTER_FIRE_COOLDOWN_MS;
+
+    this.audio.waterBlast();
+    if (this.player.triggerShootPose) this.player.triggerShootPose();
+
+    const origin = this.camera.position;
+    this._tmpFireDir = this._tmpFireDir || new THREE.Vector3();
+    this.camera.getWorldDirection(this._tmpFireDir);
+    this.net.sendFire(
+      { x: origin.x, y: origin.y, z: origin.z },
+      { x: this._tmpFireDir.x, y: this._tmpFireDir.y, z: this._tmpFireDir.z },
+    );
+  }
+
+  // Manda o estado do jogador local pro servidor (throttlado por Net.sendInput à
+  // taxa de tick — não precisa gate aqui). "yaw" é a orientação do BONECO (pra onde
+  // o RemotePlayer do outro lado deve olhar), não da câmera — Player._orientTo já
+  // gira o objeto pra direção do movimento, então isto é só extrair o Y.
+  _sendOnlineInput() {
+    this._onlineEuler = this._onlineEuler || new THREE.Euler();
+    this._onlineEuler.setFromQuaternion(this.player.object.quaternion, 'YXZ');
+
+    const pos = this.player.position;
+    const moved = this._onlinePrevPos
+      ? this._onlinePrevPos.distanceTo(pos) > 1e-3
+      : false;
+    this._onlinePrevPos = (this._onlinePrevPos || new THREE.Vector3()).copy(pos);
+
+    this.net.sendInput(makeInputPayload({
+      pos,
+      yaw: this._onlineEuler.y,
+      state: this.player.state,
+      crouched: this.player.crouched,
+      prone: this.player.prone,
+      statue: this.player.statue,
+      moving: moved,
+      color: [this.player.zones[0].mat.color.getHex(), this.player.zones[1].mat.color.getHex()],
+    }));
   }
 
   start() {
@@ -355,6 +504,18 @@ export class Game {
         for (const t of this.targets) t.update(dt);
         this._updateScanner();
       }
+      // Papel Caçador no modo online: mesma câmera 1ª pessoa/viewmodel do single-
+      // player (ver _connectOnline, que troca this.follow pra HunterCamera assim
+      // que o servidor confirma o papel) — sem isto a mira ficaria olhando pro
+      // próprio corpo (câmera de 3ª pessoa sempre "lookAt" o próprio jogador).
+      if (this.mode === 'online' && this.onlineRole === ROLE.HUNTER) {
+        this._updateHunterFPSRig();
+      }
+
+      if (this.mode === 'online') {
+        for (const rp of this.remotePlayers.values()) rp.update(dt);
+        if (this._onlineConnected) this._sendOnlineInput();
+      }
 
       // Juice: pulso + clique ao GRUDAR na parede (transição chão → parede).
       if (this._prevState === 'grounded' && this.player.state === 'latched') {
@@ -377,7 +538,9 @@ export class Game {
 
       this._updateFeedback(dt);
 
-      if (this.elapsed >= this.surviveTime) {
+      // Modo online: quem decide fim de partida é o SERVIDOR (_onMatchOver), nunca o
+      // relógio local — os dois lados não têm por que concordar no milissegundo exato.
+      if (this.mode !== 'online' && this.elapsed >= this.surviveTime) {
         if (this.mode === 'hunter') this._gameOver('O tempo acabou — os Camaleões que restaram escaparam.');
         else this._win();
       }
@@ -891,7 +1054,8 @@ export class Game {
     if (this._btnFire) {
       this._btnFire.addEventListener('pointerdown', (e) => {
         e.preventDefault();
-        this.fireHunterShot();
+        if (this.mode === 'online') this._fireOnline();
+        else this.fireHunterShot();
         if (navigator.vibrate) try { navigator.vibrate(14); } catch (_) {}
       });
     }

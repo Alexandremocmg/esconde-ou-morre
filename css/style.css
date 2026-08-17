@@ -395,6 +395,20 @@ body.mode-hunter #btn-scan { display: flex; }
 #scanner-hud-badge { display: none; }
 body.mode-hunter #scanner-hud-badge { display: flex; }
 
+/* ---------- Modo Online (docs/PLANO_MULTIPLAYER.md) ----------
+   Sem munição/scanner/alvos-boneco (não existem no servidor da v1) — só o botão de
+   tiro, e só para quem o servidor atribuiu o papel de Caçador. */
+body.mode-online #water-ammo-hud { display: none; }
+body.mode-online.online-hunter #btn-fire { display: flex; }
+body.mode-online.online-hunter #btn-paint,
+body.mode-online.online-hunter #btn-pose { display: none; }
+
+/* #hint some em telas estreitas (@media acima) — mas no online ele é a ÚNICA forma de
+   avisar "você está sozinho na sala" (ver Game._updateOnlineHint()), e celular é
+   EXATAMENTE a tela estreita. Mais específico que a regra do media query, então
+   sobrepõe independente da ordem no arquivo. */
+body.mode-online #hint { display: block; }
+
 /* Vinheta azulada enquanto o pulso está ativo (docs/MECANICA_CACADOR_VISAO.md §3) —
    mesmo padrão de #vignette.danger/.almost/.spotted, cor fria em vez de quente. */
 #vignette.scanning {

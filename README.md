@@ -6,7 +6,9 @@ Camaleão** (padrão) você é um **boneco de vinil branco** (estilo art toy / P
 camuflar** e precisa **sobreviver ao(s) Caçador(es)** até o tempo acabar. No **modo
 Caçador** (jogável) você vira o caçador: câmera em **1ª pessoa** com FOV estreito e
 lanterna, arma de água com penalidade de tiro errado, e uma habilidade de **Scanner**
-para revelar Camaleões próximos — ver `docs/MECANICA_CACADOR_VISAO.md` abaixo.
+para revelar Camaleões próximos — ver `docs/MECANICA_CACADOR_VISAO.md` abaixo. Um 3º
+modo, **Online**, coloca dois jogadores de verdade na mesma sala (1 Caçador + 1
+Camaleão) via um servidor autoritativo — ver `docs/PLANO_MULTIPLAYER.md`.
 
 O visual é **toon / cel-shaded** no espírito do **Meccha Chameleon**: ambiente claro e
 legível, superfícies chapadas com paleta pop (creme, azul-céu, coral, roxo, menta,
@@ -22,7 +24,9 @@ camuflagem**. Todo o visual é **procedural** — sem assets externos.
 > visão/câmera, arma e scanner do Caçador (proposta, com status de implementação por item)
 > está em [`docs/MECANICA_CACADOR_VISAO.md`](docs/MECANICA_CACADOR_VISAO.md).
 > A arquitetura da mansão (andares/escada/colisão) está em
-> [`docs/PLANO_MANSAO.md`](docs/PLANO_MANSAO.md).
+> [`docs/PLANO_MANSAO.md`](docs/PLANO_MANSAO.md). Um 3º modo, **Online** (multiplayer,
+> servidor autoritativo em `server/`), está documentado em
+> [`docs/PLANO_MULTIPLAYER.md`](docs/PLANO_MULTIPLAYER.md).
 
 ## Como rodar (build estática)
 
@@ -36,6 +40,10 @@ python3 dev_server.py 8123   # outra porta
 ```
 
 Abra `http://localhost:8000` e clique em **JOGAR**.
+
+> 🌐 **Modo Online**: além do `dev_server.py`, precisa do servidor autoritativo rodando
+> (`cd server && npm install && npm start`, porta 8787). Duas abas escolhendo "Online"
+> entram na mesma sala — detalhes em `docs/PLANO_MULTIPLAYER.md`.
 
 > ⚠️ Evite `python -m http.server`: sem os headers no-store, o navegador (e um eventual
 > túnel) servem módulos ES em cache — misturando versões e podendo travar a inicialização.
@@ -81,6 +89,7 @@ Vercel, S3, etc.) — publique a raiz do repositório.
 index.html        # HUD Glassmorphic, menus radiais, preloader 3D, overlays e importmap
 css/style.css     # Estilização Glassmorphism, botões em arco, menus radiais
 dev_server.py     # Servidor de dev com Cache-Control: no-store (use este)
+server/           # Servidor autoritativo do modo Online (docs/PLANO_MULTIPLAYER.md) — Node + ws, isolado do cliente
 public/
   animation/      # Arquivos FBX das 7 animações Mixamo (Idle, Run, Crouch, Hide, Prone, Climb, Jump)
   models/         # Modelos 3D base (FBX, OBJ, GLB)
@@ -94,6 +103,9 @@ src/
   Level.js        # Mansão de 2 andares, mobília e áreas de camuflagem
   FollowCamera.js # Câmera 3ª pessoa (Camaleão) com colisão e suporte a Pinch to Zoom
   HunterCamera.js # Câmera 1ª pessoa do Caçador jogável (FOV, olhar livre)
+  Net.js          # Cliente WebSocket do modo Online (WebSocket nativo, sem dependência nova)
+  RemotePlayer.js # Avatar remoto interpolado do modo Online
+  net/            # protocol.js + hittest.js — compartilhados verbatim com server/ (sem imports)
   Joystick.js     # Joystick flutuante dinâmico com vibração haptática
   ColorPicker.js  # Roda de cor HSV para ajuste fino
   Audio.js        # Efeitos de áudio procedurais (Web Audio API)
