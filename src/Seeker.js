@@ -256,12 +256,29 @@ export class Seeker {
     this._prevPos.copy(this.group.position);
 
     if (this.animInstance) {
+      // Poses COM arma: o Caçador carrega o water blaster, então correr de
+      // braços soltos (o clipe `run`, do Camaleão) deixava a arma balançando
+      // solta na mão. `shoot` tem prioridade e dura uma janela curta após o
+      // disparo, senão o clipe seria cortado no frame seguinte.
+      this._shootHold = Math.max(0, (this._shootHold || 0) - dt);
       const moving = dist > 1e-3;
-      this.animInstance.playAnimation(moving ? 'run' : 'idle');
+      let clipe;
+      if (this._shootHold > 0) clipe = 'shoot';
+      else if (moving) clipe = 'rifleRun';
+      else clipe = 'idle';
+      // Um GLB antigo (sem os clipes de arma) não pode deixar o Caçador parado:
+      // cai para os clipes de sempre.
+      if (!this.animInstance.actions[clipe]) clipe = moving ? 'run' : 'idle';
+      this.animInstance.playAnimation(clipe);
       this.animInstance.update(dt);
     } else {
       this.gait.update(dt, dist);
     }
+  }
+
+  // Chamado pelo Game a cada disparo: segura a pose de tiro por um instante.
+  triggerShootPose(dur = 0.35) {
+    this._shootHold = dur;
   }
 
   _checkAnimInstance() {

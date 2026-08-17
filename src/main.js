@@ -38,10 +38,17 @@ animationManager.loadAll((percent, key) => {
 
 let game = null;
 
+// Em desenvolvimento (localhost/LAN ou ?debug), expõe o Game no console para
+// inspecionar cena, ossos e estado sem precisar instrumentar o código a cada
+// verificação. Fica fora quando servido de um domínio de verdade.
+const EM_DESENVOLVIMENTO = /^(localhost|127\.0\.0\.1|\[::1\]|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/
+  .test(location.hostname) || new URLSearchParams(location.search).has('debug');
+
 function boot() {
   if (game) return;
   const canvas = document.getElementById('scene');
   game = new Game(canvas);
+  if (EM_DESENVOLVIMENTO) window.game = game;
   game.start();
 }
 

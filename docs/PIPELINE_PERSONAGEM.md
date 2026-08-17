@@ -27,17 +27,32 @@ PC só porque sobra RAM.
 ## 2. O que existe hoje
 
 Um único **`public/models/character_animated.glb`**: uma malha, um esqueleto de
-41 ossos e os 7 clipes embutidos.
+41 ossos e **9 clipes** embutidos — `idle`, `run`, `crouch`, `hide`, `prone`,
+`climb`, `jump` (Camaleão) e `rifleRun`, `shoot` (poses com arma, só do Caçador).
 
 | | Antes | Depois |
 |---|---|---|
-| Download | ~47 MB (7 FBX) | **1,43 MB** (1 GLB) |
+| Download | ~47 MB (7 FBX) | **1,53 MB** (1 GLB) |
 | Faces por personagem | 204.344 | **12.000** |
 | Triângulos na cena (3 personagens) | ~1,07 M | **109 K** |
 | Heap com o jogo rodando | 86 MB | **14 MB** |
 
 Os FBX originais continuam versionados em `public/animation/` — são a **fonte**
 para regerar o GLB. O jogo não os baixa mais.
+
+### A arma de água
+
+**`public/models/water_gun.glb`** (96 KB, 2.600 triângulos) é um asset separado,
+carregado pelo `AnimationManager` na mesma barra de progresso e clonado por
+Caçador via `createBlaster()`. Fica fora do GLB do personagem porque só o
+Caçador a usa — o Camaleão compartilha o mesmo corpo.
+
+Preparado no Blender: hierarquia do Sketchfab achatada, **cano orientado no eixo
++Z**, maior eixo normalizado para 1,0, centrado na origem e **sem material nem
+textura** (o jogo aplica `MeshToonMaterial`; a textura embutida era 0,12 MB de
+peso morto). A arma é filha do osso `mixamorigRightHand`, então acompanha o
+braço; a rotação alinha o cano com a direção dos **dedos**, que no espaço do osso
+é +Y — medido, não deduzido.
 
 ## 3. Como regerar
 
@@ -107,6 +122,20 @@ for (const b of pes) { b.getWorldPosition(wp); chao = Math.min(chao, wp.y); }
 **Frustum culling some com o personagem.** A bounding sphere de um `SkinnedMesh`
 é calculada uma vez na bind pose e nunca recalculada, então em certos ângulos o
 Three.js para de desenhar. `createInstance` marca `frustumCulled = false`.
+
+**Não acerte um `SkinnedMesh` por raycast.** Pelo mesmo motivo, o raycast do
+Three.js testa a geometria da **bind pose** — que no nosso GLB é centrada na
+origem, com metade abaixo do piso. O jato de água do Caçador mirava no corpo
+animado, passava por cima da bind pose e "acertava" a parede atrás: com o
+jogador dentro de um cômodo, o tiro **nunca** lavava tinta. Para acertar um
+personagem, teste distância + oclusão contra o cenário (é o que
+`Game.fireWaterJet` faz), ou use os ossos — nunca a malha deformada.
+
+**Pendurar algo num osso herda a escala do rig.** O osso vive dentro do clone,
+que leva `inst.modelScale`. Um filho do osso sai `modelScale`× maior; divida por
+ela (`multiplyScalar(1/modelScale)`, nunca `setScalar`, que jogaria fora a
+normalização de tamanho do próprio objeto). Offsets de posição em espaço de osso
+também precisam ser divididos para valerem em metros de mundo.
 
 ## 6. Defeito herdado da fonte
 

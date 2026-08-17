@@ -32,6 +32,10 @@ FONTES = [
     ("Laying Sleeping.fbx", "prone"),
     ("Climbing Up Wall.fbx", "climb"),
     ("Jump.fbx", "jump"),
+    # Poses com arma, usadas só pelo Caçador: sem elas ele corre de braços
+    # soltos com a arma de água pendurada na mão.
+    ("Rifle Run.fbx", "rifleRun"),
+    ("Shoot Rifle.fbx", "shoot"),
 ]
 
 # Quais eixos do osso raiz zerar, por clipe.
@@ -40,13 +44,15 @@ FONTES = [
 #        (jump). FICA onde a descida É a própria ação (crouch, prone, hide):
 #        zerar ali arruína o clipe — o corpo deita mas fica flutuando.
 POLITICA_ROOT_MOTION = {
-    "idle":   {"x": True, "y": False, "z": True},
-    "run":    {"x": True, "y": False, "z": True},
-    "crouch": {"x": True, "y": False, "z": True},
-    "hide":   {"x": True, "y": False, "z": True},
-    "prone":  {"x": True, "y": False, "z": True},
-    "climb":  {"x": True, "y": True,  "z": True},
-    "jump":   {"x": True, "y": True,  "z": True},
+    "idle":     {"x": True, "y": False, "z": True},
+    "run":      {"x": True, "y": False, "z": True},
+    "crouch":   {"x": True, "y": False, "z": True},
+    "hide":     {"x": True, "y": False, "z": True},
+    "prone":    {"x": True, "y": False, "z": True},
+    "climb":    {"x": True, "y": True,  "z": True},
+    "jump":     {"x": True, "y": True,  "z": True},
+    "rifleRun": {"x": True, "y": False, "z": True},
+    "shoot":    {"x": True, "y": False, "z": True},
 }
 
 

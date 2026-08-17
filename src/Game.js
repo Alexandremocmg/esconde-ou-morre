@@ -454,6 +454,7 @@ export class Game {
     }
 
     this.audio.waterBlast();
+    seeker.triggerShootPose && seeker.triggerShootPose();
 
     // Origem = boca do cano DE VERDADE (marcador preso à arma, que por sua vez
     // acompanha o osso da mão). Antes era um offset fixo sobre o grupo lógico —
