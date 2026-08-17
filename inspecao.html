@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Inspeção do personagem — GLB novo vs FBX original</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  html, body { height:100%; }
+  body {
+    margin:0; font:14px/1.45 system-ui,sans-serif; background:#12151a; color:#e7ecf3;
+    display:flex; flex-direction:row; overflow:hidden;
+  }
+
+  /* A cena ganha a area que sobra — nunca fica atras do painel. */
+  #palco { position:relative; flex:1 1 auto; min-width:0; min-height:0; }
+  #cena { display:block; width:100%; height:100%; }
+  .legenda {
+    position:absolute; left:10px; bottom:8px; color:#7f8b9c; font-size:12px;
+    pointer-events:none; text-shadow:0 1px 3px #000;
+  }
+  #recolher {
+    position:absolute; top:10px; right:10px; z-index:5;
+    background:rgba(20,25,32,.9); border:1px solid #333c49;
+  }
+
+  .painel {
+    flex:0 0 290px; overflow-y:auto; padding:14px;
+    background:#0e1116; border-right:1px solid #262c36;
+  }
+  body.recolhido .painel { display:none; }
+
+  h1 { font-size:15px; margin:0 0 4px; }
+  .sub { color:#9aa6b6; font-size:12px; margin-bottom:12px; }
+  h2 { font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:#8b97a8;
+       margin:16px 0 7px; border-top:1px solid #262c36; padding-top:12px; }
+  h2:first-of-type { border-top:0; padding-top:0; margin-top:8px; }
+  .clipes { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
+  button {
+    font:inherit; padding:8px 9px; border-radius:7px; border:1px solid #333c49;
+    background:#1c222b; color:#e7ecf3; cursor:pointer;
+  }
+  button:hover { background:#242c37; }
+  button.on { background:#3f6ee0; border-color:#3f6ee0; color:#fff; font-weight:600; }
+  .larga { width:100%; margin-top:6px; }
+  label { display:block; margin:9px 0 3px; color:#9aa6b6; font-size:12px; }
+  input[type=range] { width:100%; }
+  table { width:100%; border-collapse:collapse; font-size:12px; }
+  td { padding:3px 0; border-bottom:1px solid #20262f; }
+  td:last-child { text-align:right; font-variant-numeric:tabular-nums; color:#b9c4d2; }
+  .ok { color:#57d08a; font-weight:600; }
+  .ruim { color:#ff6b6b; font-weight:600; }
+  .aviso { background:#1a1f28; border-left:3px solid #3f6ee0; padding:8px 10px;
+           border-radius:0 6px 6px 0; color:#b9c4d2; font-size:12px; margin-top:10px; }
+  code { background:#232a34; padding:1px 4px; border-radius:3px; font-size:11px; }
+
+  /* Celular / janela estreita: painel vira faixa embaixo, cena fica por cima. */
+  @media (max-width: 720px) {
+    body { flex-direction:column-reverse; }
+    .painel { flex:0 0 auto; max-height:46vh; border-right:0; border-top:1px solid #262c36; }
+    #palco { flex:1 1 auto; }
+    .clipes { grid-template-columns:repeat(4, 1fr); }
+  }
+</style>
+</head>
+<body>
+
+<div id="palco">
+  <canvas id="cena"></canvas>
+  <button id="recolher">Esconder painel</button>
+  <div class="legenda">Grade = 1 m · o personagem tem 0,9 m no jogo</div>
+</div>
+
+<div class="painel">
+  <h1>Inspeção do personagem</h1>
+  <div class="sub">GLB novo (12k faces) vs FBX original (204k faces)</div>
+
+  <h2>Clipe</h2>
+  <div class="clipes" id="clipes"></div>
+
+  <h2>Reprodução</h2>
+  <label>Velocidade: <span id="vel-txt">1.00×</span></label>
+  <input type="range" id="vel" min="0" max="2" step="0.05" value="1">
+  <button class="larga" id="pausar">Pausar</button>
+
+  <h2>Câmera</h2>
+  <button class="larga" id="cam-perto">Ver o personagem de perto</button>
+  <button class="larga" id="cam-jogo">Enquadramento real do jogo</button>
+  <div class="sub" style="margin:8px 0 0">Arraste para girar · pinça/roda para zoom</div>
+
+  <h2>Comparação</h2>
+  <button class="larga on" id="ver-novo">Novo GLB visível</button>
+  <button class="larga" id="ver-orig">Carregar original p/ comparar</button>
+  <label>Rotação Y do modelo: <span id="rot-txt">0°</span></label>
+  <input type="range" id="rot" min="-180" max="180" step="90" value="0">
+
+  <h2>Medição pelos ossos</h2>
+  <table>
+    <tr><td>Topo real (m)</td><td id="m-topo">—</td></tr>
+    <tr><td>Variação no clipe</td><td id="m-var">—</td></tr>
+    <tr><td>Sanidade (tem que variar)</td><td id="m-san">—</td></tr>
+    <tr><td>Altura do modelo</td><td id="m-alt">—</td></tr>
+  </table>
+
+  <h2>Custo</h2>
+  <table>
+    <tr><td>Triângulos (novo)</td><td id="c-tri">—</td></tr>
+    <tr><td>Triângulos (original)</td><td id="c-tri-o">—</td></tr>
+    <tr><td>Download novo</td><td>1,43 MB</td></tr>
+    <tr><td>Download antigo</td><td>~47 MB</td></tr>
+  </table>
+
+  <div class="aviso" id="status">Carregando GLB…</div>
+  <div class="aviso" style="border-left-color:#d9a441">
+    <b>Já era assim antes:</b> em <b>prone</b> o corpo deita mas fica flutuando.
+    Conferido no FBX original (<i>Laying Sleeping</i>) — vem da fonte, não da
+    conversão. O jogo compensa tombando o objeto 90° em <code>toggleProne()</code>.
+  </div>
+</div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://unpkg.com/three@0.161.0/build/three.module.js",
+  "three/addons/": "https://unpkg.com/three@0.161.0/examples/jsm/"
+} }
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+const ALTURA_JOGO = 0.9;                              // HALF_EXTENT*2 do Player.js
+const CAM_DIST = 3.5, CAM_ALT = 1.9, CAM_FOV = 60;    // FollowCamera.js / Game.js
+
+const palco = document.getElementById('palco');
+const canvas = document.getElementById('cena');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias:true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x12151a);
+const camera = new THREE.PerspectiveCamera(CAM_FOV, 1, 0.01, 200);
+const controls = new OrbitControls(camera, canvas);
+controls.target.set(0, ALTURA_JOGO*0.5, 0);
+
+scene.add(new THREE.HemisphereLight(0xffffff, 0x2b3038, 2.4));
+const sol = new THREE.DirectionalLight(0xffffff, 1.7);
+sol.position.set(3, 6, 4); scene.add(sol);
+scene.add(new THREE.GridHelper(10, 10, 0x3f6ee0, 0x2a313c));
+
+// Dimensiona pela área REAL do palco (não pela janela): assim o personagem fica
+// centralizado no que aparece, em vez de escondido atrás do painel.
+function redimensionar() {
+  const w = Math.max(palco.clientWidth, 1), h = Math.max(palco.clientHeight, 1);
+  renderer.setSize(w, h, false);
+  camera.aspect = w/h;
+  camera.updateProjectionMatrix();
+}
+addEventListener('resize', redimensionar);
+new ResizeObserver(redimensionar).observe(palco);
+redimensionar();
+
+// Distância que faz um corpo de `altura` caber na tela, respeitando o aspecto.
+function distanciaParaCaber(altura, margem = 1.35) {
+  const vFov = THREE.MathUtils.degToRad(camera.fov);
+  const dV = (altura/2) / Math.tan(vFov/2);
+  const hFov = 2 * Math.atan(Math.tan(vFov/2) * camera.aspect);
+  const dH = (altura/2) / Math.tan(hFov/2);
+  return Math.max(dV, dH) * margem;
+}
+function camPerto() {
+  const d = distanciaParaCaber(ALTURA_JOGO);
+  camera.position.set(d*0.62, ALTURA_JOGO*0.62, d*0.80);
+  controls.target.set(0, ALTURA_JOGO*0.48, 0); controls.update();
+}
+function camJogo() {
+  camera.position.set(0, CAM_ALT, CAM_DIST);
+  controls.target.set(0, ALTURA_JOGO*0.5, 0); controls.update();
+}
+camPerto();
+document.getElementById('cam-perto').onclick = camPerto;
+document.getElementById('cam-jogo').onclick = camJogo;
+
+document.getElementById('recolher').onclick = function () {
+  document.body.classList.toggle('recolhido');
+  this.textContent = document.body.classList.contains('recolhido') ? 'Mostrar painel' : 'Esconder painel';
+  requestAnimationFrame(() => { redimensionar(); camPerto(); });
+};
+
+const status = document.getElementById('status');
+let novo = null, orig = null, pausado = false, velocidade = 1;
+
+function normalizar(raiz, alvo) {
+  // updateMatrixWorld ANTES de medir: sem isto as matrizes ainda não foram
+  // compostas e o Box3 devolve altura errada (0,28 em vez de 1,0), inflando 3,2×.
+  raiz.updateMatrixWorld(true);
+  const bb = new THREE.Box3().setFromObject(raiz);
+  const alt = bb.max.y - bb.min.y || 1;
+  raiz.scale.setScalar(alvo/alt);
+  raiz.updateMatrixWorld(true);
+  const bb2 = new THREE.Box3().setFromObject(raiz);
+  raiz.position.y -= bb2.min.y;                       // pés no chão
+  return alt;
+}
+function contarTri(raiz) {
+  let t = 0;
+  raiz.traverse(o => {
+    if (o.isMesh && o.geometry) {
+      const g = o.geometry;
+      t += g.index ? g.index.count/3 : g.attributes.position.count/3;
+    }
+  });
+  return Math.round(t);
+}
+
+new GLTFLoader().load('/public/models/character_animated.glb', (gltf) => {
+  const raiz = gltf.scene;
+  // A bounding sphere de um SkinnedMesh não acompanha os ossos: sem desligar o
+  // culling o personagem some em certos ângulos de câmera.
+  raiz.traverse(o => { o.frustumCulled = false; });
+  normalizar(raiz, ALTURA_JOGO);
+  scene.add(raiz);
+
+  const mixer = new THREE.AnimationMixer(raiz);
+  const acoes = {};
+  for (const clip of gltf.animations) acoes[clip.name] = mixer.clipAction(clip);
+  const ossos = []; raiz.traverse(o => { if (o.isBone) ossos.push(o); });
+
+  novo = { raiz, mixer, acoes, ossos };
+  document.getElementById('c-tri').textContent = contarTri(raiz).toLocaleString('pt-BR');
+  document.getElementById('m-alt').textContent = ALTURA_JOGO.toFixed(2) + ' m';
+
+  montarBotoes(gltf.animations.map(c => c.name));
+  trocarClipe('idle');
+  camPerto();
+  status.textContent = `GLB carregado: ${gltf.animations.length} clipes, ${ossos.length} ossos.`;
+}, undefined, (e) => { status.innerHTML = '<span class="ruim">Falha ao carregar GLB: '+e+'</span>'; });
+
+document.getElementById('ver-orig').onclick = function () {
+  if (orig) { orig.raiz.visible = !orig.raiz.visible; this.classList.toggle('on', orig.raiz.visible); return; }
+  this.textContent = 'Carregando original (6,5 MB)…'; this.disabled = true;
+  new FBXLoader().load('/public/animation/Running.fbx', (fbx) => {
+    fbx.traverse(o => { o.frustumCulled = false; });
+    normalizar(fbx, ALTURA_JOGO);
+    fbx.position.x = 0.55;
+    fbx.traverse(o => { if (o.isMesh) o.material = new THREE.MeshStandardMaterial({ color:0xd8dee7, roughness:.8 }); });
+    scene.add(fbx);
+    const mixer = new THREE.AnimationMixer(fbx);
+    mixer.clipAction(fbx.animations[0]).play();
+    orig = { raiz: fbx, mixer };
+    document.getElementById('c-tri-o').textContent = contarTri(fbx).toLocaleString('pt-BR');
+    if (novo) { novo.raiz.position.x = -0.55; trocarClipe('run'); }
+    this.textContent = 'Original visível (clique p/ ocultar)';
+    this.classList.add('on'); this.disabled = false;
+    status.innerHTML = '<b>Esquerda</b> = novo 12k · <b>direita</b> = original 204k. Ambos correndo.';
+  }, undefined, () => { this.textContent = 'Falha ao carregar original'; this.disabled = false; });
+};
+document.getElementById('ver-novo').onclick = function () {
+  if (!novo) return;
+  novo.raiz.visible = !novo.raiz.visible;
+  this.classList.toggle('on', novo.raiz.visible);
+  this.textContent = novo.raiz.visible ? 'Novo GLB visível' : 'Novo GLB oculto';
+};
+
+function montarBotoes(nomes) {
+  const cont = document.getElementById('clipes');
+  cont.innerHTML = '';
+  for (const n of nomes) {
+    const b = document.createElement('button');
+    b.textContent = n; b.dataset.clipe = n;
+    b.onclick = () => trocarClipe(n);
+    cont.appendChild(b);
+  }
+}
+function trocarClipe(nome) {
+  if (!novo || !novo.acoes[nome]) return;
+  for (const k in novo.acoes) if (k !== nome) novo.acoes[k].fadeOut(0.2);
+  novo.acoes[nome].reset().fadeIn(0.2).play();
+  medida = { min: Infinity, max: -Infinity };
+  for (const b of document.querySelectorAll('#clipes button')) b.classList.toggle('on', b.dataset.clipe === nome);
+}
+
+document.getElementById('vel').oninput = (e) => {
+  velocidade = +e.target.value;
+  document.getElementById('vel-txt').textContent = velocidade.toFixed(2) + '×';
+};
+document.getElementById('pausar').onclick = function () {
+  pausado = !pausado; this.textContent = pausado ? 'Continuar' : 'Pausar';
+};
+document.getElementById('rot').oninput = (e) => {
+  const g = +e.target.value;
+  document.getElementById('rot-txt').textContent = g + '°';
+  if (novo) novo.raiz.rotation.y = g * Math.PI/180;
+};
+
+// Medição pelos OSSOS — Box3 mediria a bind pose e daria valor constante.
+const wp = new THREE.Vector3();
+let medida = { min: Infinity, max: -Infinity };
+function topoReal(ossos) {
+  let max = -Infinity;
+  for (const b of ossos) { b.getWorldPosition(wp); if (wp.y > max) max = wp.y; }
+  return max;
+}
+
+const relogio = new THREE.Clock();
+renderer.setAnimationLoop(() => {
+  const dt = relogio.getDelta() * (pausado ? 0 : velocidade);
+  if (novo) novo.mixer.update(dt);
+  if (orig) orig.mixer.update(dt);
+
+  if (novo && novo.ossos.length) {
+    const t = topoReal(novo.ossos);
+    medida.min = Math.min(medida.min, t);
+    medida.max = Math.max(medida.max, t);
+    const varia = medida.max - medida.min;
+    document.getElementById('m-topo').textContent = t.toFixed(3);
+    document.getElementById('m-var').textContent = varia.toFixed(3);
+    const el = document.getElementById('m-san');
+    const anima = varia > 0.001;
+    el.textContent = anima ? 'ok, varia' : 'parado';
+    el.className = anima ? 'ok' : 'ruim';
+  }
+  controls.update();
+  renderer.render(scene, camera);
+});
+
+window.__insp = { THREE, scene, camera, controls, clipe: trocarClipe,
+                  get modelo() { return novo && novo.raiz; } };
+</script>
+</body>
+</html>

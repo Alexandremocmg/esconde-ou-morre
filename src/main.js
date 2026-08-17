@@ -1,9 +1,10 @@
 import { Game } from './Game.js?v=3';
+import { animationManager } from './AnimationManager.js?v=3';
 
-// O jogo só arranca após um gesto do usuário — necessário para fullscreen
-// e para a tentativa de travar a orientação em paisagem no mobile.
 const overlay = document.getElementById('start-overlay');
 const startBtn = document.getElementById('start-btn');
+const loaderFill = document.getElementById('loader-fill');
+const loaderStatus = document.getElementById('loader-status');
 
 // Seletor de forma (Fase 4): persiste 'eom-body' e realça o botão escolhido.
 const bodyPick = document.getElementById('body-pick');
@@ -18,34 +19,58 @@ if (bodyPick) {
   }
 }
 
+// Inicia o pré-carregamento de todas as animações 3D no boot da página
+animationManager.loadAll((percent, key) => {
+  if (loaderFill) loaderFill.style.width = `${percent}%`;
+  if (loaderStatus) {
+    if (percent < 100) {
+      loaderStatus.textContent = `Carregando modelos e animações 3D... ${percent}%`;
+    } else {
+      loaderStatus.textContent = '✅ Tudo pronto! Clique em JOGAR.';
+    }
+  }
+
+  if (percent >= 100 && startBtn) {
+    startBtn.disabled = false;
+    startBtn.textContent = 'JOGAR';
+  }
+});
+
 let game = null;
+
+// Em desenvolvimento (localhost/LAN ou ?debug), expõe o Game no console para
+// inspecionar cena, ossos e estado sem precisar instrumentar o código a cada
+// verificação. Fica fora quando servido de um domínio de verdade.
+const EM_DESENVOLVIMENTO = /^(localhost|127\.0\.0\.1|\[::1\]|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/
+  .test(location.hostname) || new URLSearchParams(location.search).has('debug');
 
 function boot() {
   if (game) return;
   const canvas = document.getElementById('scene');
   game = new Game(canvas);
+  if (EM_DESENVOLVIMENTO) window.game = game;
   game.start();
 }
 
 async function enterImmersive() {
   const app = document.getElementById('app');
-  // Fullscreen (ignora falhas em desktop/permite continuar)
   try {
     if (app.requestFullscreen) await app.requestFullscreen();
   } catch (_) { /* ok */ }
-  // Trava landscape onde suportado (só funciona em fullscreen no mobile)
   try {
     if (screen.orientation && screen.orientation.lock) {
       await screen.orientation.lock('landscape');
     }
-  } catch (_) { /* desktop/iOS não suportam — segue mesmo assim */ }
+  } catch (_) { /* ok */ }
 }
 
 startBtn.addEventListener('click', async () => {
+  if (startBtn.disabled) return;
   overlay.classList.add('hidden');
-  // Inicia jogo + áudio SÍNCRONO, ainda dentro do gesto do clique: garante que
-  // o AudioContext seja retomado (política de autoplay dos navegadores).
-  boot();
-  // Fullscreen / lock de orientação vêm depois (podem falhar sem quebrar o jogo).
+  if (game) {
+    game.restartInPlace(false, false);
+  } else {
+    boot();
+  }
   await enterImmersive();
 });

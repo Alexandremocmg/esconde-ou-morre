@@ -27,35 +27,55 @@ export class FollowCamera {
     this._camRay = new THREE.Raycaster();
     this._camDir = new THREE.Vector3();
 
-    // Olhar controlável (arrasto na metade direita): deslocamentos de yaw/pitch
-    // aplicados sobre a câmera de acompanhamento no chão (ver update).
     this.yaw = 0;
     this.pitch = 0;
+    this.distance = DIST; // 1.8m a 7.5m (ajustável por pinch)
 
     camera.position.set(0, HEIGHT, 6 + DIST);
     camera.up.copy(WORLD_UP);
     camera.lookAt(0, 1, 6);
   }
 
+  reset() {
+    this.yaw = 0;
+    this.pitch = 0;
+    this.distance = DIST;
+    this._prevXZ = null;
+    this._up.copy(WORLD_UP);
+    this._targetUp.copy(WORLD_UP);
+  }
+
   // Arrasto do usuário (área direita): gira/inclina a câmera de acompanhamento.
   addLook(dx, dy) {
     this.yaw -= dx * LOOK_SENS;
-    this.pitch = THREE.MathUtils.clamp(this.pitch - dy * LOOK_SENS, PITCH_MIN, PITCH_MAX);
+    const minPitch = Math.max(PITCH_MIN, -(HEIGHT - 0.4) / Math.max(1, this.distance));
+    this.pitch = THREE.MathUtils.clamp(this.pitch - dy * LOOK_SENS, minPitch, PITCH_MAX);
+  }
+
+  // Zoom por gesto de pinça (pinch multitouch)
+  addZoom(delta) {
+    this.distance = THREE.MathUtils.clamp(this.distance + delta, 1.8, 7.5);
+    const minPitch = Math.max(PITCH_MIN, -(HEIGHT - 0.4) / Math.max(1, this.distance));
+    this.pitch = THREE.MathUtils.clamp(this.pitch, minPitch, PITCH_MAX);
   }
 
   update(dt, player, occluders) {
+    if (isNaN(this.yaw)) this.yaw = 0;
+    if (isNaN(this.pitch)) this.pitch = 0;
+    if (isNaN(this.distance)) this.distance = DIST;
+
     const pos = player.position;
+    if (isNaN(pos.x) || isNaN(pos.y) || isNaN(pos.z)) {
+      pos.set(0, 0.5, 6);
+    }
 
     if (player.state === 'latched') {
       // "Up" da tela = subida na parede; câmera afastada para fora da parede.
       this._targetUp.copy(player.climbUp);
       const outward = this._tmp.copy(player.wallNormal);
-      this._back.copy(outward).multiplyScalar(DIST)
+      this._back.copy(outward).multiplyScalar(this.distance)
         .addScaledVector(this._targetUp, -HEIGHT * 0.35);
     } else {
-      // No chão: up do mundo, câmera atrás da direção que o jogador encara.
-      // O yaw volta devagar a ficar atrás do jogador quando ele anda (a câmera
-      // "reencontra" as costas do personagem); parado, o olhar do usuário fica.
       if (this._prevXZ) {
         const moved = Math.hypot(pos.x - this._prevXZ.x, pos.z - this._prevXZ.z);
         if (moved > 0.005) this.yaw -= this.yaw * Math.min(1, YAW_RECENTER * dt);
@@ -65,19 +85,22 @@ export class FollowCamera {
       facing.setY(0);
       if (facing.lengthSq() < 1e-4) facing.set(0, 0, 1);
       facing.normalize();
-      this._back.copy(facing).multiplyScalar(-DIST);
+      this._back.copy(facing).multiplyScalar(-this.distance);
       if (this.yaw !== 0) this._back.applyAxisAngle(WORLD_UP, this.yaw);   // olhar horizontal
-      this._back.addScaledVector(WORLD_UP, HEIGHT + this.pitch * DIST);    // olhar vertical
+      this._back.addScaledVector(WORLD_UP, HEIGHT + this.pitch * this.distance);    // olhar vertical
     }
     if (!this._prevXZ) this._prevXZ = { x: pos.x, z: pos.z };
     else { this._prevXZ.x = pos.x; this._prevXZ.z = pos.z; }
 
     this._desiredPos.copy(pos).add(this._back);
 
+    // Garante que a posição desejada da câmera nunca fique abaixo do chão
+    if (this._desiredPos.y < 0.35) {
+      this._desiredPos.y = 0.35;
+    }
+
     // Colisão de câmera: se houver parede entre o jogador e a posição desejada,
-    // puxa a câmera para logo ANTES dela. Sem isto, ao voltar da parede para o
-    // chão (encarando o interior), a câmera atravessava a parede de perímetro e
-    // saía da arena — mostrando só o fundo escuro (tela "preta").
+    // puxa a câmera para logo ANTES dela.
     if (occluders && occluders.length) {
       const want = this._camDir.copy(this._desiredPos).sub(pos);
       const dist = want.length();
@@ -87,12 +110,8 @@ export class FollowCamera {
         this._camRay.far = dist;
         const hit = this._camRay.intersectObjects(occluders, false)[0];
         if (hit) {
-          // Fica logo antes da parede (nunca a atravessa).
           const d = Math.max(0.05, Math.min(hit.distance - 0.05, hit.distance - 0.35));
           this._desiredPos.copy(pos).addScaledVector(want, d);
-          // Se ficou perto demais (ex.: colado na parede encarando o interior),
-          // eleva ao longo do "up" para uma vista mais alta em vez de colar no
-          // jogador — mantém enquadramento sem atravessar a parede.
           if (d < MIN_DIST) this._desiredPos.addScaledVector(this._targetUp, MIN_DIST - d);
         }
       }
@@ -100,6 +119,11 @@ export class FollowCamera {
 
     // Suaviza posição e up
     this.camera.position.lerp(this._desiredPos, Math.min(1, POS_LERP * dt));
+
+    // Trava de segurança: a câmera nunca pode afundar no chão (Y < 0.35)
+    if (this.camera.position.y < 0.35) {
+      this.camera.position.y = 0.35;
+    }
 
     // Guarda final (defesa em profundidade): a câmera NUNCA pode ficar dentro de
     // um sólido — é o que produz a "tela preta". O raycast acima cobre o caso

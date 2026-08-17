@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { buildHumanoid, Gait } from './Character.js?v=3';
 import { toonGradient } from './textures.js?v=3';
+import { animationManager } from './AnimationManager.js?v=3';
 
 // Parâmetros do Caçador
 const BODY_R = 0.6;
@@ -28,6 +29,12 @@ const VIEW_SAMPLES = [0.35, 0.0, -0.35];
 const CATCH_DIST = 1.1;
 const CATCH_V_TOL = 1.2;              // banda vertical de captura (|Δy|) — separada da horizontal
 const WAYPOINT_REACH = 1.2;
+// Pose da arma na mão direita. A rotação alinha o cano (+Z do modelo) com a
+// direção dos DEDOS, que no espaço do osso é +Y — medido, não chutado, e por
+// isso ~-90° em X. O offset é em METROS de mundo; o código converte para o
+// espaço do osso dividindo pela escala do modelo.
+const GUN_OFFSET = { x: 0, y: 0.06, z: 0.02 };
+const GUN_ROT = { x: -Math.PI / 2, y: 0, z: 0 };
 const LOSE_TIME = 0.8;                // s sem alvo válido (camuflado OU fora de vista) até desistir
 // Campo de visão VERTICAL próprio (o horizontal é VISION_HALF_ANGLE). Enxerga mais
 // para baixo (escada/andar abaixo) do que para cima (impede onisciência do mezanino).
@@ -86,6 +93,9 @@ export class Seeker {
     // Rota de patrulha (permite instanciar Caçadores com rotas alternadas).
     this.waypoints = opts.waypoints || WAYPOINTS;
     const bodyColor = opts.color != null ? opts.color : 0xd21f1f;
+    this._bodyColor = bodyColor;
+    const startY = opts.startY != null ? opts.startY : EYE_Y;
+    this._startY = startY;
 
     this.state = 'patrol'; // 'patrol' | 'chase' | 'caught'
     this.yaw = 0;
@@ -98,15 +108,14 @@ export class Seeker {
     this._avoidBias = 1;        // lado preferido ao desviar (evita jitter esquerda/direita)
 
     this.group = new THREE.Group();
-    // startY = altura inicial dos olhos (andar em que este Caçador nasce). O 2º
-    // Caçador do estágio 3 nasce no mezanino (startY ~ laje+EYE_Y); depois a sonda
-    // de chão mantém o Y a cada frame.
-    const startY = opts.startY != null ? opts.startY : EYE_Y;
     this.group.position.set(this.waypoints[0].x, startY, this.waypoints[0].z);
 
     // Grupo visual interno: recebe o bobbing (flutuação) SEM mover a origem da
     // visão (this.group.position), que a IA mantém em EYE_Y de forma determinística.
+    // position.y = -EYE_Y desloca o modelo visual PARA BAIXO de modo que os pés do
+    // FBX (em y=0 no espaço local) coincidam com o chão quando o grupo lógico está em EYE_Y.
     this.bodyGroup = new THREE.Group();
+    this.bodyGroup.position.y = -EYE_Y;
     this.group.add(this.bodyGroup);
     this._bobPhase = Math.random() * Math.PI * 2; // dessincroniza 2 Caçadores
 
@@ -116,8 +125,16 @@ export class Seeker {
     const bodyMat = new THREE.MeshToonMaterial({
       color: bodyColor, gradientMap: toonGradient(),
     });
+    this.bodyMat = bodyMat;
     const toy = buildHumanoid(bodyMat, BODY_H, { outline: true }); // contorno cel (Fase 3a): ameaça "salta"
+    this.toy = toy;
+    this.animInstance = null;
     this.bodyGroup.add(toy.group);
+
+    // O modelo animado é montado DEPOIS da arma (mais abaixo): antes, a
+    // transferência da arma rodava aqui, quando `this._blaster` ainda era
+    // undefined — o `if` falhava calado e a arma ficava presa no toy oculto.
+    // Era essa a causa da arma invisível.
 
     // Caminhada procedural (mesmo Gait do jogador): pernas/braços balançam e o
     // tronco bobeia — substitui o antigo "flutuar de drone". Fase inicial aleatória
@@ -140,6 +157,24 @@ export class Seeker {
     );
     visor.position.set(0, toy.headY, toy.headR + 0.05);
     toy.rig.upper.add(visor);
+
+    // ARMA DE ÁGUA (modelo water_gun.glb, ver docs/PIPELINE_PERSONAGEM.md).
+    // Criada ANTES do modelo animado, para que `_attachBlaster` tenha o que
+    // pendurar. `muzzle` é o marcador da boca do cano, usado como origem do jato.
+    const arma = animationManager.createBlaster();
+    if (arma) {
+      this._blasterGroup = arma.group;
+      this._muzzle = arma.muzzle;
+      // Enquanto o modelo animado não existe, a arma fica no rig do toy.
+      this._blasterGroup.position.set(0.32, toy.headY * 0.4, 0.28);
+      toy.rig.upper.add(this._blasterGroup);
+    } else {
+      this._blasterGroup = null;
+      this._muzzle = null;
+    }
+
+    // Agora sim monta o modelo animado e leva a arma para a mão.
+    this._checkAnimInstance();
 
     // Cone de visão (visual/debug), apontando +Z a partir dos olhos
     const coneR = Math.tan(VISION_HALF_ANGLE) * VISION_RANGE;
@@ -166,6 +201,20 @@ export class Seeker {
     this._avoidR = new THREE.Vector3();
     this._probe = new THREE.Raycaster();     // sonda de chão (vertical) p/ o Y por andar
     this._probeOrig = new THREE.Vector3();
+  }
+
+  reset() {
+    this.state = 'patrol';
+    this.wpIndex = 0;
+    this.loseTimer = 0;
+    this.chaseRamp = 0;
+    this.validTarget = false;
+    const startY = this._startY != null ? this._startY : EYE_Y;
+    if (this.waypoints && this.waypoints.length > 0) {
+      this.group.position.set(this.waypoints[0].x, startY, this.waypoints[0].z);
+    }
+    this.yaw = 0;
+    this.group.rotation.set(0, 0, 0);
   }
 
   update(dt) {
@@ -213,8 +262,76 @@ export class Seeker {
     // Caminhada: fase avança pela distância horizontal percorrida neste frame.
     const dx = this.group.position.x - this._prevPos.x;
     const dz = this.group.position.z - this._prevPos.z;
+    const dist = Math.hypot(dx, dz);
     this._prevPos.copy(this.group.position);
-    this.gait.update(dt, Math.hypot(dx, dz));
+
+    if (this.animInstance) {
+      // Poses COM arma: o Caçador carrega o water blaster, então correr de
+      // braços soltos (o clipe `run`, do Camaleão) deixava a arma balançando
+      // solta na mão. `shoot` tem prioridade e dura uma janela curta após o
+      // disparo, senão o clipe seria cortado no frame seguinte.
+      this._shootHold = Math.max(0, (this._shootHold || 0) - dt);
+      const moving = dist > 1e-3;
+      let clipe;
+      if (this._shootHold > 0) clipe = 'shoot';
+      else if (moving) clipe = 'rifleRun';
+      else clipe = 'idle';
+      // Um GLB antigo (sem os clipes de arma) não pode deixar o Caçador parado:
+      // cai para os clipes de sempre.
+      if (!this.animInstance.actions[clipe]) clipe = moving ? 'run' : 'idle';
+      this.animInstance.playAnimation(clipe);
+      this.animInstance.update(dt);
+    } else {
+      this.gait.update(dt, dist);
+    }
+  }
+
+  // Chamado pelo Game a cada disparo: segura a pose de tiro por um instante.
+  triggerShootPose(dur = 0.35) {
+    this._shootHold = dur;
+  }
+
+  _checkAnimInstance() {
+    if (this.animInstance || !animationManager.isLoaded) return;
+    const inst = animationManager.createInstance(this.bodyMat, BODY_H, { outline: true });
+    if (inst) {
+      if (this.toy && this.toy.group) {
+        this.bodyGroup.remove(this.toy.group);
+      }
+      this.bodyGroup.add(inst.group);
+      this.animInstance = inst;
+      this._attachBlaster(inst);
+    }
+  }
+
+  // Leva a arma para a MÃO do modelo animado, para que ela acompanhe o braço.
+  _attachBlaster(inst) {
+    if (!this._blasterGroup) return;
+
+    const mao = inst.handBone;
+    if (!mao) {
+      // Sem osso não dá para prender na mão; avisa alto em vez de sumir calado.
+      console.warn('⚠️ Seeker: osso da mão não encontrado — arma fica no corpo.');
+      inst.group.add(this._blasterGroup);
+      this._blasterGroup.position.set(0.32, BODY_H * 0.35, 0.28);
+      return;
+    }
+
+    mao.add(this._blasterGroup);
+
+    // O osso vive dentro do clone, que leva `inst.modelScale`. Um filho herda
+    // essa escala, então a arma sairia modelScale× maior sem esta divisão.
+    // multiplyScalar, não setScalar: a arma já vem normalizada no comprimento
+    // certo por createBlaster, e sobrescrever jogaria essa normalização fora.
+    const s = 1 / (inst.modelScale || 1);
+    this._blasterGroup.scale.multiplyScalar(s);
+
+    // Pose na mão. Os eixos dos ossos do Mixamo são rotacionados, então estes
+    // valores são calibrados no olho, vendo o jogo — não dá para deduzi-los.
+    // `position` é em espaço do osso: multiplicar por `s` deixa o offset em
+    // metros de mundo (position × modelScale = metros).
+    this._blasterGroup.position.set(GUN_OFFSET.x * s, GUN_OFFSET.y * s, GUN_OFFSET.z * s);
+    this._blasterGroup.rotation.set(GUN_ROT.x, GUN_ROT.y, GUN_ROT.z);
   }
 
   // ------------------------------------------------------------------- VISION

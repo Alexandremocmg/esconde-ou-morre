@@ -11,8 +11,9 @@ recarregam. Uso:
 
 O túnel continua apontando para localhost:8000; é só reiniciar o server.
 """
+import socket
 import sys
-from http.server import SimpleHTTPRequestHandler, test
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
 
 class NoCacheHandler(SimpleHTTPRequestHandler):
@@ -23,6 +24,23 @@ class NoCacheHandler(SimpleHTTPRequestHandler):
         super().end_headers()
 
 
+# Melhorias de conforto no playtest (NÃO são a causa do antigo travamento de
+# carregamento no celular — esse era consumo de memória no cliente; ver
+# AnimationManager.loadAll).
+class Server(ThreadingHTTPServer):
+    # ThreadingHTTPServer: o padrão (HTTPServer) atende UMA conexão por vez, e o
+    # jogo pede 7 FBX de uma vez (~47MB) — celular e PC testando juntos ficavam
+    # em fila atrás de downloads longos.
+    #
+    # address_family: `http.server` no Windows escuta só em `::` (IPv6) com
+    # dual-stack desligado, então o celular na mesma Wi-Fi (que chega por IPv4)
+    # tomava "connection refused" e só restava o túnel, bem mais lento
+    # (upload de casa medido em ~230KB/s). Bind IPv4 permite testar pela LAN.
+    address_family = socket.AF_INET
+
+
 if __name__ == "__main__":
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8000
-    test(HandlerClass=NoCacheHandler, port=port)
+    httpd = Server(("0.0.0.0", port), NoCacheHandler)
+    print(f"Servindo em http://0.0.0.0:{port} (todas as interfaces IPv4)")
+    httpd.serve_forever()

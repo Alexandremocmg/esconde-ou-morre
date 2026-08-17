@@ -7,6 +7,7 @@ import { Joystick } from './Joystick.js?v=3';
 import { Effects } from './Effects.js?v=3';
 import { Audio } from './Audio.js?v=3';
 import { ColorPicker } from './ColorPicker.js?v=3';
+import { animationManager } from './AnimationManager.js?v=3';
 
 // Partida (Fase 4): objetivo = sobreviver ao Caçador até o tempo acabar.
 const BASE_SURVIVE = 60;      // s de sobrevivência no estágio 1
@@ -17,6 +18,7 @@ const DIFF_PER_STAGE = 0.12;  // incremento de dificuldade por estágio (velocid
 // andares altos — e um 3º (térreo, sentido oposto) a partir do estágio 3.
 const THIRD_SEEKER_STAGE = 3;
 const WARN_WINDOW = 5;        // s de antecedência para o feedback de perigo / quase-vitória
+const JET_RANGE = 15;         // alcance do jato de água (m)
 
 // Formata segundos como m:ss.
 function fmtTime(sec) {
@@ -29,6 +31,9 @@ function fmtTime(sec) {
 export class Game {
   constructor(canvas) {
     this.canvas = canvas;
+
+    // Inicia o carregamento em segundo plano das animações FBX
+    animationManager.loadAll();
 
     // Detecção de GPU mobile: ponteiro grosso (touch) OU tela curta. Usada para
     // limitar pixel ratio e resolução de sombra — evita a queda de FPS relatada
@@ -88,6 +93,18 @@ export class Game {
     this.seekers = [mkSeeker(0), mkSeeker(1, 0xb01ecb)];
     if (this.stage >= THIRD_SEEKER_STAGE) this.seekers.push(mkSeeker(2, 0xd88a1a));
 
+    // Regras de Munição do Caçador (Meccha Chameleon Spec)
+    const ammoSel = document.getElementById('ammo-select');
+    const ammoOpt = ammoSel ? parseInt(ammoSel.value, 10) : 5;
+    this.maxWaterAmmo = isNaN(ammoOpt) ? 5 : ammoOpt;
+    this.waterAmmo = this.maxWaterAmmo;
+    const infCheck = document.getElementById('infinite-ammo-toggle');
+    this.infiniteAmmo = infCheck ? infCheck.checked : false;
+
+    // Placar com Atraso de 30 Segundos (Anti-Cheat Spec)
+    this.scoreHistory = []; // { t, camoTime }
+    this.delayedCamoTime = 0;
+
     this.follow = new FollowCamera(this.camera);
     this.joystick = new Joystick();
 
@@ -98,15 +115,15 @@ export class Game {
     this._spotted = false; // borda de subida da detecção (para som + UI de alerta)
     this._wasCamo = false;  // borda de subida da camuflagem (stinger de sucesso)
 
-    // Controles de ação (botões) + olhar (arrasto na metade direita da tela).
-    this._btnLatch = document.getElementById('btn-latch');
+    // Controles em arco Glassmorphism + menus radiais
+    this._btnJump = document.getElementById('btn-jump');
+    this._btnClimb = document.getElementById('btn-climb');
+    this._btnPose = document.getElementById('btn-pose');
     this._btnPaint = document.getElementById('btn-paint');
-    this._btnPalette = document.getElementById('btn-palette');
-    this._btnCrouch = document.getElementById('btn-crouch');
-    this._btnProne = document.getElementById('btn-prone');
-    // Roda de cor (Fase 5b): ajuste fino do disfarce sobre o conta-gotas.
-    this.colorPicker = new ColorPicker({ onChange: (c) => this.player.setCamouflage(c) });
+    this._radialPoseMenu = document.getElementById('radial-pose-menu');
+    this._radialPaintMenu = document.getElementById('radial-paint-menu');
     this._setupControls();
+    this._updateWaterAmmoHud();
 
     // Oclusão da câmera: blocos entre a câmera e o jogador desvanecem para não
     // esconder o personagem (ex.: grudado na face traseira de um bloco).
@@ -131,17 +148,16 @@ export class Game {
     if (this._elStage) this._elStage.textContent = String(this.stage);
     if (this._elGoal) this._elGoal.textContent = fmtTime(this.surviveTime);
 
-    // Botões da tela de vitória
+    // Botões da tela de Game Over e Vitória (Recomeço instantâneo sem recarregar 3D)
+    const goRestart = document.getElementById('go-restart');
+    const goMenu = document.getElementById('go-menu');
     const nextBtn = document.getElementById('win-next');
     const restartBtn = document.getElementById('win-restart');
-    if (nextBtn) nextBtn.addEventListener('click', () => {
-      sessionStorage.setItem('eom-stage', String(this.stage + 1));
-      location.reload();
-    });
-    if (restartBtn) restartBtn.addEventListener('click', () => {
-      sessionStorage.setItem('eom-stage', '1');
-      location.reload();
-    });
+
+    if (goRestart) goRestart.addEventListener('click', () => this.restartInPlace(false, false));
+    if (goMenu) goMenu.addEventListener('click', () => this.restartInPlace(false, true));
+    if (nextBtn) nextBtn.addEventListener('click', () => this.restartInPlace(true, false));
+    if (restartBtn) restartBtn.addEventListener('click', () => this.restartInPlace(false, true));
 
     this._clock = new THREE.Clock();
     this._resize();
@@ -235,7 +251,12 @@ export class Game {
     const dt = Math.min(this._clock.getDelta(), 0.05); // clamp anti-tab-switch
     if (!this.over && !this.won) {
       this.player.update(dt, this.joystick.value, this.camera);
-      for (const s of this.seekers) s.update(dt);
+      for (const s of this.seekers) {
+        s.update(dt);
+        if (s.state === 'chase' && s.validTarget) {
+          this.fireWaterJet(s, dt);
+        }
+      }
 
       // Juice: pulso + clique ao GRUDAR na parede (transição chão → parede).
       if (this._prevState === 'grounded' && this.player.state === 'latched') {
@@ -247,6 +268,12 @@ export class Game {
       // Cronômetro da partida
       this.elapsed += dt;
       if (this.player.isCamouflaged()) this.camoTime += dt;
+
+      // Atraso de 30s no Placar de Tempo Camuflado (Anti-Cheat Spec)
+      this.scoreHistory.push({ t: this.elapsed, camoTime: this.camoTime });
+      while (this.scoreHistory.length > 0 && (this.elapsed - this.scoreHistory[0].t) >= 30) {
+        this.delayedCamoTime = this.scoreHistory.shift().camoTime;
+      }
 
       this._updateFeedback(dt);
 
@@ -275,22 +302,32 @@ export class Game {
     const hits = this._occRay.intersectObjects(this.level.climbables, false);
 
     const nowFaded = new Set();
-    for (const h of hits) nowFaded.add(h.object.material);
+    for (const h of hits) {
+      if (!h.object || !h.object.material) continue;
+      const mats = Array.isArray(h.object.material) ? h.object.material : [h.object.material];
+      for (const m of mats) if (m) nowFaded.add(m);
+    }
+
     for (const mat of nowFaded) {
       mat.transparent = true;
       mat.depthWrite = false;               // deixa o jogador aparecer através
-      mat.opacity += (FADE - mat.opacity) * k;
+      const curOpacity = Number.isFinite(mat.opacity) ? mat.opacity : 1.0;
+      mat.opacity = THREE.MathUtils.clamp(curOpacity + (FADE - curOpacity) * k, FADE, 1.0);
       this._occFaded.add(mat);
     }
+
     // Restaura os que deixaram de ocluir (delete-durante-iteração é seguro em Set).
-    for (const mat of this._occFaded) {
+    for (const mat of Array.from(this._occFaded)) {
       if (nowFaded.has(mat)) continue;
-      mat.opacity += (1 - mat.opacity) * k;
-      if (mat.opacity > 0.985) {
+      const curOpacity = Number.isFinite(mat.opacity) ? mat.opacity : FADE;
+      const nextOpacity = curOpacity + (1 - curOpacity) * k;
+      if (nextOpacity > 0.985) {
         mat.opacity = 1;
         mat.transparent = false;
         mat.depthWrite = true;
         this._occFaded.delete(mat);
+      } else {
+        mat.opacity = THREE.MathUtils.clamp(nextOpacity, FADE, 1.0);
       }
     }
   }
@@ -361,35 +398,257 @@ export class Game {
     this._spotted = false;
   }
 
+  _updateWaterAmmoHud() {
+    const elCount = document.getElementById('ammo-count');
+    const elMax = document.getElementById('ammo-max');
+    const elBadge = document.getElementById('water-ammo-hud');
+    if (elCount) elCount.textContent = this.infiniteAmmo ? '∞' : String(this.waterAmmo);
+    if (elMax) elMax.textContent = this.infiniteAmmo ? '∞' : String(this.maxWaterAmmo);
+    if (elBadge) {
+      elBadge.classList.toggle('empty', !this.infiniteAmmo && this.waterAmmo <= 0);
+    }
+  }
+
   _updateHud() {
     const camo = this.player.isCamouflaged();
     const latched = this.player.state === 'latched';
-    this._badge.textContent = camo ? 'CAMUFLADO' : (latched ? 'PAREDE' : (this.player.crouched ? 'AGACHADO' : 'CHÃO'));
+    this._badge.textContent = camo ? 'CAMUFLADO' : (latched ? 'PAREDE' : (this.player.statue ? 'ESTÁTUA' : (this.player.crouched ? 'AGACHADO' : 'CHÃO')));
     this._badge.classList.toggle('latched', latched && !camo);
     this._badge.classList.toggle('camo', camo);
     this._chip.style.background = `#${this.player.material.color.getHexString()}`;
 
-    // Botões: rótulo/realce de Grudar↔Soltar e destaque do Agachar ativo.
-    if (this._btnLatch) {
-      this._btnLatch.classList.toggle('on', latched);
-      const lbl = this._btnLatch.querySelector('.lbl');
-      if (lbl) lbl.textContent = latched ? 'Soltar' : 'Grudar';
+    // Botão Escalar: destaca quando próximo a uma parede/superfície
+    if (this._btnClimb) {
+      const nearWall = latched || (this.player.object.position.y > 0.5) || (this.player.statue);
+      this._btnClimb.classList.toggle('near', nearWall);
+      this._btnClimb.classList.toggle('active', latched);
     }
-    if (this._btnCrouch) this._btnCrouch.classList.toggle('on', this.player.crouched);
-    if (this._btnProne) this._btnProne.classList.toggle('on', this.player.prone);
 
-    // Placar: tempo decorrido (limitado à meta) e tempo camuflado
+    // Placar: tempo decorrido e tempo camuflado (com Atraso de 30s Anti-Cheat)
     const shown = Math.min(this.elapsed, this.surviveTime);
     if (this._elElapsed) this._elElapsed.textContent = fmtTime(shown);
-    if (this._elCamo) this._elCamo.textContent = `🫥 ${fmtTime(this.camoTime)}`;
+    if (this._elCamo) this._elCamo.textContent = `🫥 ${fmtTime(this.delayedCamoTime || 0)}`;
     if (this._elFill) {
       const pct = this.surviveTime > 0 ? (shown / this.surviveTime) * 100 : 0;
       this._elFill.style.width = `${Math.min(100, pct)}%`;
     }
   }
 
+  fireWaterJet(seeker, dt) {
+    if (this.over || this.won) return;
+
+    // Cooldown entre rajadas
+    seeker._shotCooldown = (seeker._shotCooldown || 0) - dt;
+    if (seeker._shotCooldown > 0) return;
+    seeker._shotCooldown = 0.25; // 4 disparos por segundo em rajada
+
+    if (!this.infiniteAmmo) {
+      if (this.waterAmmo <= 0) {
+        this.audio.emptyClick();
+        this._updateWaterAmmoHud();
+        this._gameOver("Vitória dos Camaleões! O Caçador ficou sem água.");
+        return;
+      }
+      this.waterAmmo--;
+      this._updateWaterAmmoHud();
+    }
+
+    this.audio.waterBlast();
+    seeker.triggerShootPose && seeker.triggerShootPose();
+
+    // Origem = boca do cano DE VERDADE (marcador preso à arma, que por sua vez
+    // acompanha o osso da mão). Antes era um offset fixo sobre o grupo lógico —
+    // o jato saía do meio do corpo, e o comentário dizia "bocal" sem ser.
+    const fromPos = new THREE.Vector3();
+    if (seeker._muzzle) seeker._muzzle.getWorldPosition(fromPos);
+    else fromPos.copy(seeker.group.position).add(new THREE.Vector3(0, 1.2, 0));
+    const targetPos = this.player.position.clone().add(new THREE.Vector3(0, 0.5, 0));
+
+    // Acerto = jogador no alcance E sem parede na frente.
+    //
+    // NÃO se testa o corpo do jogador por raycast: ele é um SkinnedMesh, e o
+    // raycast do Three.js usa a BIND POSE (no nosso GLB, centrada na origem e com
+    // metade abaixo do piso), não a pose animada — o tiro passava por cima do
+    // jogador e "acertava" a parede atrás. O código antigo escondia isso porque
+    // tratava "não acertei nada" como acerto. Testar oclusão contra as paredes é
+    // mais barato e não depende da malha deformada.
+    const dir = new THREE.Vector3().subVectors(targetPos, fromPos).normalize();
+    const distAlvo = fromPos.distanceTo(targetPos);
+    let hitPlayer = false;
+    if (distAlvo <= JET_RANGE) {
+      const ray = new THREE.Raycaster(fromPos, dir, 0, Math.max(0, distAlvo - 0.15));
+      hitPlayer = ray.intersectObjects(this.level.climbables, false).length === 0;
+    }
+
+    this.effects.waterJetBeam(fromPos, targetPos, hitPlayer);
+
+    if (hitPlayer) {
+      this.audio.waterSplash();
+      const remain = this.player.washPaint(dt * 3.0);
+      if (remain < 0.08) {
+        this._gameOver("O Caçador lavou toda a sua tinta com o jato de água!");
+      }
+    } else {
+      this.audio.waterSplash();
+    }
+
+    // Se a munição acabou e não acertou um Camaleão para vencer, Vitória dos Camaleões!
+    if (!this.infiniteAmmo && this.waterAmmo <= 0 && !hitPlayer) {
+      this._gameOver("Vitória dos Camaleões! O Caçador ficou sem água.");
+    }
+  }
+
+  _setupControls() {
+    const lookZone = document.getElementById('look-zone');
+    let activePointers = new Map();
+    let prevPinchDist = 0;
+
+    if (lookZone) {
+      lookZone.addEventListener('pointerdown', (e) => {
+        activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        if (activePointers.size === 2) {
+          const pts = Array.from(activePointers.values());
+          prevPinchDist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+        }
+      });
+
+      window.addEventListener('pointermove', (e) => {
+        if (!activePointers.has(e.pointerId)) return;
+        const prev = activePointers.get(e.pointerId);
+        const dx = e.clientX - prev.x;
+        const dy = e.clientY - prev.y;
+        activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+        if (activePointers.size === 1 && this.follow) {
+          this.follow.addLook(dx, dy);
+        } else if (activePointers.size === 2 && this.follow) {
+          const pts = Array.from(activePointers.values());
+          const currDist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+          if (prevPinchDist > 0) {
+            const zoomDelta = (prevPinchDist - currDist) * 0.015;
+            this.follow.addZoom(zoomDelta);
+          }
+          prevPinchDist = currDist;
+        }
+      });
+
+      const clearPointer = (e) => {
+        activePointers.delete(e.pointerId);
+        if (activePointers.size < 2) prevPinchDist = 0;
+      };
+      window.addEventListener('pointerup', clearPointer);
+      window.addEventListener('pointercancel', clearPointer);
+    }
+
+    // Botões e Menus Radiais
+    const setupLongPress = (btn, onTap, onHold) => {
+      let timer = null;
+      let held = false;
+
+      btn.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        held = false;
+        btn.classList.add('active');
+        if (navigator.vibrate) try { navigator.vibrate(8); } catch (_) {}
+        timer = setTimeout(() => {
+          held = true;
+          onHold();
+        }, 250);
+      });
+
+      const cancel = (e) => {
+        btn.classList.remove('active');
+        if (timer) { clearTimeout(timer); timer = null; }
+        if (!held) {
+          onTap();
+        }
+      };
+
+      btn.addEventListener('pointerup', cancel);
+      btn.addEventListener('pointercancel', (e) => {
+        btn.classList.remove('active');
+        if (timer) { clearTimeout(timer); timer = null; }
+      });
+    };
+
+    if (this._btnJump) {
+      this._btnJump.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        this.player.jump();
+        if (navigator.vibrate) try { navigator.vibrate(12); } catch (_) {}
+      });
+    }
+
+    if (this._btnClimb) {
+      this._btnClimb.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        this.player.toggleLatch(this.camera);
+        if (navigator.vibrate) try { navigator.vibrate(12); } catch (_) {}
+      });
+    }
+
+    if (this._btnPaint) {
+      setupLongPress(
+        this._btnPaint,
+        () => {
+          this.player.sampleQuickMatch(this.camera);
+        },
+        () => {
+          if (this._radialPaintMenu) this._radialPaintMenu.classList.toggle('hidden');
+          if (navigator.vibrate) try { navigator.vibrate(18); } catch (_) {}
+        }
+      );
+    }
+
+    if (this._btnPose) {
+      setupLongPress(
+        this._btnPose,
+        () => {
+          this.player.setPose('lock');
+        },
+        () => {
+          if (this._radialPoseMenu) this._radialPoseMenu.classList.toggle('hidden');
+          if (navigator.vibrate) try { navigator.vibrate(18); } catch (_) {}
+        }
+      );
+    }
+
+    // Handlers do Menu Radial de Poses
+    if (this._radialPoseMenu) {
+      const items = this._radialPoseMenu.querySelectorAll('.radial-item');
+      items.forEach((item) => {
+        item.addEventListener('click', () => {
+          const pose = item.dataset.pose;
+          this.player.setPose(pose);
+          this._radialPoseMenu.classList.add('hidden');
+        });
+      });
+    }
+
+    // Handlers do Menu Radial de Pintura Avançada
+    if (this._radialPaintMenu) {
+      const chips = this._radialPaintMenu.querySelectorAll('.p-chip');
+      chips.forEach((chip) => {
+        chip.addEventListener('click', () => {
+          const colorHex = chip.dataset.color || '#eef0f2';
+          this.player.setCamouflage(new THREE.Color(colorHex));
+          this._radialPaintMenu.classList.add('hidden');
+        });
+      });
+
+      const finishBtns = this._radialPaintMenu.querySelectorAll('.finish-btn');
+      finishBtns.forEach((btn) => {
+        btn.addEventListener('click', () => {
+          finishBtns.forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          this.player.setFinish(btn.dataset.finish);
+        });
+      });
+    }
+  }
+
   _gameOver() {
-    if (this.won || this.over) return; // já venceu / já acabou neste frame
+    if (this.won || this.over) return;
     this.over = true;
     this._clearVignette();
     this.audio.caught();
@@ -412,6 +671,64 @@ export class Game {
       winPct.textContent = `${Math.min(100, pct)}%`;
     }
     if (this._victoryEl) this._victoryEl.classList.add('show');
+  }
+
+  restartInPlace(nextStage = false, backToMenu = false) {
+    if (nextStage) {
+      this.stage++;
+    } else if (backToMenu) {
+      this.stage = 1;
+    }
+    sessionStorage.setItem('eom-stage', String(this.stage));
+
+    if (this._elStage) this._elStage.textContent = String(this.stage);
+
+    this.elapsed = 0;
+    this.camoTime = 0;
+    this.delayedCamoTime = 0;
+    this.scoreHistory = [];
+    this.over = false;
+    this.won = false;
+    this._heartTimer = 0;
+    this._lastWinTick = -1;
+
+    // Atualiza configurações de munição do Caçador
+    const ammoSel = document.getElementById('ammo-select');
+    const ammoOpt = ammoSel ? parseInt(ammoSel.value, 10) : 5;
+    this.maxWaterAmmo = isNaN(ammoOpt) ? 5 : ammoOpt;
+    this.waterAmmo = this.maxWaterAmmo;
+    const infCheck = document.getElementById('infinite-ammo-toggle');
+    this.infiniteAmmo = infCheck ? infCheck.checked : false;
+
+    this._clearVignette();
+    if (this._gameoverEl) this._gameoverEl.classList.remove('show');
+    if (this._victoryEl) this._victoryEl.classList.remove('show');
+    this._updateWaterAmmoHud();
+
+    // Reset camera orientation and distance
+    if (this.follow && this.follow.reset) {
+      this.follow.reset();
+    }
+
+    // Reset player position and state in memory
+    if (this.player && this.player.reset) {
+      this.player.reset();
+    }
+
+    // Reset seekers positions and AI state in memory
+    if (this.seekers) {
+      for (const s of this.seekers) {
+        if (s.reset) s.reset();
+      }
+    }
+
+    const menu = document.getElementById('start-overlay');
+    if (menu) {
+      if (backToMenu) menu.classList.remove('hidden');
+      else menu.classList.add('hidden');
+    }
+
+    this._updateHud();
   }
 
   _resize = () => {

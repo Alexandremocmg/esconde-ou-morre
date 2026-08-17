@@ -36,12 +36,15 @@
   <div id="hud">
     <div id="state-badge">CHÃO</div>
     <div id="color-chip"><span></span>camuflagem</div>
+    <div id="water-ammo-hud" class="water-ammo-badge" title="Munição de Jatos de Água do Caçador">
+      <span class="ammo-ic">💧</span><span id="ammo-count">5</span> / <span id="ammo-max">5</span>
+    </div>
 
-    <!-- Placar da partida: sobrevivência + tempo camuflado -->
+    <!-- Placar da partida: sobrevivência + tempo camuflado (Atraso de 30s anti-cheat) -->
     <div id="timer">
       <div class="t-top">
         <span class="t-stage">FASE <b id="stage-num">1</b></span>
-        <span id="timer-camo" title="Tempo total camuflado">🫥 0:00</span>
+        <span id="timer-camo" title="Tempo total camuflado (Atualizado a cada 30s)">🫥 0:00</span>
       </div>
       <div class="t-bar"><i id="timer-fill"></i></div>
       <div class="t-bottom">
@@ -64,23 +67,53 @@
   <!-- Área de olhar: arraste na metade direita para girar/inclinar a câmera -->
   <div id="look-zone"></div>
 
-  <!-- Botões de ação (empilhados à direita) -->
+  <!-- Botões de ação mobile: dispostos em arco ergonômico com estilo Glassmorphism -->
   <div id="actions">
-    <button id="btn-latch" type="button" aria-label="Grudar / Soltar">
-      <span class="ic">🧱</span><span class="lbl">Grudar</span>
-    </button>
-    <button id="btn-paint" type="button" aria-label="Pintar">
+    <button id="btn-paint" class="glass-btn action-paint" type="button" aria-label="Pintar / Pincel">
       <span class="ic">🎨</span><span class="lbl">Pintar</span>
     </button>
-    <button id="btn-palette" type="button" aria-label="Roda de cor">
-      <span class="ic">🎛️</span><span class="lbl">Cor</span>
+    <button id="btn-pose" class="glass-btn action-pose" type="button" aria-label="Poses / Mimetismo">
+      <span class="ic">🧍</span><span class="lbl">Poses</span>
     </button>
-    <button id="btn-crouch" type="button" aria-label="Agachar">
-      <span class="ic">⬇</span><span class="lbl">Agachar</span>
+    <button id="btn-climb" class="glass-btn action-climb" type="button" aria-label="Escalar / Apoiar">
+      <span class="ic">🧱</span><span class="lbl">Escalar</span>
     </button>
-    <button id="btn-prone" type="button" aria-label="Deitar">
-      <span class="ic">🛌</span><span class="lbl">Deitar</span>
+    <button id="btn-jump" class="glass-btn action-jump" type="button" aria-label="Pular">
+      <span class="ic">🟢</span><span class="lbl">Pular</span>
     </button>
+  </div>
+
+  <!-- Menu Radial de Poses (Hold & Drag no botão de Poses) -->
+  <div id="radial-pose-menu" class="radial-menu hidden">
+    <div class="radial-center">
+      <span class="radial-title">POSES</span>
+    </div>
+    <button class="radial-item" data-pose="idle" style="--i:0"><span class="r-ic">🧍‍♂️</span><span class="r-label">Em Pé</span></button>
+    <button class="radial-item" data-pose="crouch" style="--i:1"><span class="r-ic">⬇️</span><span class="r-label">Agachar</span></button>
+    <button class="radial-item" data-pose="hide" style="--i:2"><span class="r-ic">🧱</span><span class="r-label">Parede</span></button>
+    <button class="radial-item" data-pose="prone" style="--i:3"><span class="r-ic">🛌</span><span class="r-label">Deitado</span></button>
+    <button class="radial-item" data-pose="climb" style="--i:4"><span class="r-ic">🧗</span><span class="r-label">Escalar</span></button>
+    <button class="radial-item" data-pose="lock" style="--i:5"><span class="r-ic">🔒</span><span class="r-label">Estátua</span></button>
+  </div>
+
+  <!-- Menu Radial de Pintura Avançada (Hold no botão de Pintura) -->
+  <div id="radial-paint-menu" class="radial-menu paint-menu hidden">
+    <div class="radial-center">
+      <span class="radial-title">PINCEL</span>
+    </div>
+    <div class="paint-history-ring">
+      <span class="p-hist-label">Cores Recentes</span>
+      <div id="paint-history-chips" class="p-chips">
+        <button class="p-chip" data-color="#eef0f2" style="background:#eef0f2"></button>
+        <button class="p-chip" data-color="#3a86ff" style="background:#3a86ff"></button>
+        <button class="p-chip" data-color="#ff006e" style="background:#ff006e"></button>
+        <button class="p-chip" data-color="#80b918" style="background:#80b918"></button>
+      </div>
+    </div>
+    <div class="paint-finish-toggle">
+      <button id="btn-finish-matte" class="finish-btn active" data-finish="matte">Fosco</button>
+      <button id="btn-finish-gloss" class="finish-btn" data-finish="gloss">Brilhante</button>
+    </div>
   </div>
 
   <!-- Roda de cor HSV (Fase 5b): ajuste fino do disfarce sobre o conta-gotas -->
@@ -117,7 +150,29 @@
         <button type="button" data-kind="cube"><span class="bp-ic">🧊</span>Cubo</button>
       </div>
 
-      <button id="start-btn">JOGAR</button>
+      <div class="body-label">Regras do Caçador (Munição de Água)</div>
+      <div class="ammo-cfg-panel">
+        <label for="ammo-select">💧 Jatos de Água:
+          <select id="ammo-select">
+            <option value="1">1 Jato (Hardcore)</option>
+            <option value="3">3 Jatos</option>
+            <option value="5" selected>5 Jatos (Padrão)</option>
+            <option value="10">10 Jatos</option>
+            <option value="15">15 Jatos</option>
+            <option value="30">30 Jatos</option>
+          </select>
+        </label>
+        <label class="toggle-lbl">
+          <input type="checkbox" id="infinite-ammo-toggle"> Munição Infinita
+        </label>
+      </div>
+
+      <div id="loader-box" class="loader-box">
+        <div class="loader-bar"><i id="loader-fill"></i></div>
+        <span id="loader-status">Carregando modelos 3D... 0%</span>
+      </div>
+
+      <button id="start-btn" disabled>Carregando 3D...</button>
       <small>Melhor em tela cheia, na horizontal. Ative o som do aparelho.</small>
     </div>
   </div>
@@ -127,7 +182,10 @@
     <div class="go-panel">
       <h2>GAME OVER</h2>
       <p>O Caçador te pegou.</p>
-      <button onclick="location.reload()">Reiniciar Fase</button>
+      <div class="go-actions">
+        <button id="go-restart" class="btn-primary" type="button">Jogar Novamente</button>
+        <button id="go-menu" class="btn-ghost" type="button">Voltar ao Menu</button>
+      </div>
     </div>
   </div>
 

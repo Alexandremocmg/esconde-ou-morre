@@ -111,4 +111,20 @@ export class Audio {
     notes.forEach((f, i) =>
       setTimeout(() => this._sweep(f, f * 0.94, 0.28, 0.3, 'sawtooth'), i * 180));
   }
+
+  // DISPARO DE ÁGUA DO CAÇADOR: ruído branco de alta pressão com varredura descendente.
+  waterBlast() {
+    this._sweep(850, 220, 0.18, 0.35, 'sawtooth');
+    setTimeout(() => this._sweep(1200, 300, 0.14, 0.25, 'triangle'), 30);
+  }
+
+  // SEM MUNIÇÃO (CLICK SECO): "tick" metálico de gatilho sem água.
+  emptyClick() {
+    this._beep(180, 0.03, 0.3, 'square');
+  }
+
+  // RESPINGO DE ÁGUA / LAVAGEM DE TINTA: som de borrifo líquido.
+  waterSplash() {
+    this._sweep(400, 950, 0.08, 0.20, 'sine');
+  }
 }

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { buildBody, Gait } from './Character.js?v=3';
 import { toonGradient } from './textures.js?v=3';
+import { animationManager } from './AnimationManager.js?v=3';
 
 const WORLD_UP = new THREE.Vector3(0, 1, 0);
 const DOWN = new THREE.Vector3(0, -1, 0); // amostra/checagem do chão na pose deitada (P3c)
@@ -91,11 +92,28 @@ export class Player {
     };
     this.zones = [makeZone('upper', 0.12 * H), makeZone('lower', -0.30 * H)];
 
-    // Boneco branco na forma escolhida no menu (Fase 4): 'toy' | 'blob' | 'cube'.
-    // A colisão/latch NÃO muda com a forma (usa a cápsula lógica); só o visual.
-    const kind = sessionStorage.getItem('eom-body') || 'toy';
+    let kind = 'toy';
+    try { kind = sessionStorage.getItem('eom-body') || 'toy'; } catch (_) {}
     const toy = buildBody({ upper: this.zones[0].mat, lower: this.zones[1].mat }, H, { kind });
+    this.toy = toy;
+    this.animInstance = null;
+    this.playerHeight = H;
+
     this.object.add(toy.group);
+
+    if (animationManager.isLoaded) {
+      const inst = animationManager.createInstance({ upper: this.zones[0].mat, lower: this.zones[1].mat }, H);
+      if (inst) {
+        toy.group.visible = false;
+        // Desloca o modelo FBX para baixo de modo que os pés (y=0 no espaço FBX)
+        // coincidam com o chão quando o object do jogador está em GROUND_Y.
+        inst.group.position.y = -GROUND_Y;
+        this.object.add(inst.group);
+        this.animInstance = inst;
+      }
+    } else {
+      this._checkAnimInstance();
+    }
 
     // Caminhada procedural: pernas/braços balançam e o corpo bobeia/inclina,
     // sincronizados com a distância percorrida (ver Gait em Character.js).
@@ -127,12 +145,52 @@ export class Player {
     // reutilizáveis (evita alocação no loop)
     this._raycaster = new THREE.Raycaster();
     this._tmpDir = new THREE.Vector3();
+    this._tmpV = new THREE.Vector3();
     this._tmpMat = new THREE.Matrix4();
     this._tmpQuat = new THREE.Quaternion();
     this._axX = new THREE.Vector3();
     this._axY = new THREE.Vector3();
     this._axZ = new THREE.Vector3();
-    this._tmpV = new THREE.Vector3(); // âncora de zona (P1)
+  }
+
+  reset() {
+    this.state = 'grounded';
+    this.prone = false;
+    this.crouched = false;
+    this.statue = false;
+    this.isJumping = false;
+    this.latchedObject = null;
+    this.object.position.set(0, GROUND_Y, 6);
+    this.object.rotation.set(0, 0, 0);
+    this.velocity.set(0, 0, 0);
+    this._camo = false;
+    this._eyeHide = 0;
+    this._glow = 0;
+    const BASE = 0xeef0f2;
+    for (const z of this.zones) {
+      z.mat.color.setHex(BASE);
+      z.target.setHex(BASE);
+      this._clearZone(z);
+    }
+  }
+
+  // Lava a tinta do corpo do jogador com o jato de água do Caçador.
+  // Retorna a proporção de tinta restante (0..1).
+  washPaint(dt) {
+    const BASE_COLOR = new THREE.Color(0xeef0f2);
+    const speed = Math.min(1, 2.0 * dt);
+    let totalDist = 0;
+    for (const z of this.zones) {
+      z.mat.color.lerp(BASE_COLOR, speed);
+      z.target.lerp(BASE_COLOR, speed);
+      // THREE.Color não tem distanceTo — calcula manualmente com deltas RGB
+      const dr = z.mat.color.r - BASE_COLOR.r;
+      const dg = z.mat.color.g - BASE_COLOR.g;
+      const db = z.mat.color.b - BASE_COLOR.b;
+      totalDist += Math.sqrt(dr * dr + dg * dg + db * db);
+    }
+    // Normaliza: distância máxima possível no espaço RGB = sqrt(3) ≈ 1.73
+    return totalDist / (this.zones.length * 1.732);
   }
 
   get position() { return this.object.position; }
@@ -146,10 +204,96 @@ export class Player {
     return this._tangentUp(this.wallNormal, this._axY);
   }
 
-  // Aplica uma cor SÓLIDA em TODAS as zonas e limpa as estampas (P2): usado pela
-  // roda de cor (5b), onde o jogador escolhe um tom puro único para o corpo inteiro.
+  // Aplica uma cor SÓLIDA em TODAS as zonas e limpa as estampas (P2)
   setCamouflage(color) {
     for (const z of this.zones) { z.target.copy(color); this._clearZone(z); }
+    if (color && color.getHexString) this._saveColorHistory(color.getHexString());
+  }
+
+  // Amostragem Rápida (Quick Match): amostra a cor da superfície em frente ou abaixo
+  sampleQuickMatch(camera) {
+    let sampledColor = null;
+    if (camera) {
+      this._raycaster.setFromCamera({ x: 0, y: 0 }, camera);
+      this._raycaster.far = 15;
+      const hits = this._raycaster.intersectObjects(this.level.colorables, false);
+      if (hits.length > 0 && hits[0].object.material) {
+        sampledColor = hits[0].object.material.color;
+      }
+    }
+
+    if (!sampledColor) {
+      const floor = this._surfaceBelowColor();
+      if (floor) sampledColor = floor;
+    }
+
+    if (sampledColor) {
+      this.setCamouflage(sampledColor);
+      if (navigator.vibrate) try { navigator.vibrate(15); } catch (_) {}
+      return true;
+    }
+    return false;
+  }
+
+  _saveColorHistory(hexStr) {
+    try {
+      let hist = JSON.parse(sessionStorage.getItem('eom-color-history') || '[]');
+      const fullHex = '#' + hexStr.toLowerCase();
+      hist = hist.filter(c => c !== fullHex);
+      hist.unshift(fullHex);
+      if (hist.length > 4) hist = hist.slice(0, 4);
+      sessionStorage.setItem('eom-color-history', JSON.stringify(hist));
+      this._updateUIHistoryChips(hist);
+    } catch (_) {}
+  }
+
+  _updateUIHistoryChips(hist) {
+    const container = document.getElementById('paint-history-chips');
+    if (!container) return;
+    const chips = container.querySelectorAll('.p-chip');
+    hist.forEach((colorHex, idx) => {
+      if (chips[idx]) {
+        chips[idx].style.background = colorHex;
+        chips[idx].dataset.color = colorHex;
+      }
+    });
+  }
+
+  setFinish(finish) {
+    const isGloss = finish === 'gloss';
+    for (const z of this.zones) {
+      z.mat.roughness = isGloss ? 0.2 : 0.85;
+      z.mat.metalness = isGloss ? 0.25 : 0.0;
+    }
+  }
+
+  setPose(poseName) {
+    this.statue = (poseName === 'lock');
+    if (this.statue) {
+      this.prone = false;
+      this.crouched = false;
+      if (navigator.vibrate) try { navigator.vibrate(20); } catch (_) {}
+      return;
+    }
+
+    if (poseName === 'prone') {
+      this.prone = true;
+      this.crouched = false;
+    } else if (poseName === 'crouch') {
+      this.crouched = true;
+      this.prone = false;
+    } else if (poseName === 'hide' || poseName === 'climb') {
+      this.prone = false;
+      this.crouched = false;
+    } else {
+      this.prone = false;
+      this.crouched = false;
+    }
+
+    if (this.animInstance && this.animInstance.actions[poseName]) {
+      this.animInstance.playAnimation(poseName);
+    }
+    if (navigator.vibrate) try { navigator.vibrate(12); } catch (_) {}
   }
 
   // Pinta a pele de UMA zona de branco (mapa branco × color = cor sólida).
@@ -220,7 +364,24 @@ export class Player {
     return this.object.localToWorld(out.set(0, z.y, 0));
   }
 
+  _checkAnimInstance() {
+    if (this.animInstance || !animationManager.isLoaded) return;
+    const inst = animationManager.createInstance({ upper: this.zones[0].mat, lower: this.zones[1].mat }, this.playerHeight);
+    if (inst) {
+      if (this.toy && this.toy.group) {
+        this.object.remove(this.toy.group);
+      }
+      // Desloca o modelo FBX para baixo de modo que os pés (y=0 no espaço FBX)
+      // coincidam com o chão quando o object do jogador está em GROUND_Y.
+      inst.group.position.y = -GROUND_Y;
+      this.object.add(inst.group);
+      this.animInstance = inst;
+    }
+  }
+
   update(dt, joy, camera) {
+    this._checkAnimInstance();
+
     if (this.prone) this._updateProne(dt, joy);
     else if (this.state === 'grounded') this._updateGrounded(dt, joy, camera);
     else this._updateLatched(dt, joy);
@@ -254,13 +415,29 @@ export class Player {
     let dist = this.object.position.distanceTo(this._prevPos);
     dist = Math.min(dist, MOVE_SPEED * dt * 1.6);
     this._prevPos.copy(this.object.position);
-    this.gait.update(dt, dist);
 
-    // Agachar: pose HUMANOIDE (dobra pernas + afunda/inclina o tronco), aplicada
-    // pelo Gait sobre o rig — bem mais orgânica que comprimir a malha. É só visual:
-    // a cápsula de colisão/latch não muda (evita regressão de degrau/pin).
-    this._crouchT += ((this.crouched ? 1 : 0) - this._crouchT) * Math.min(1, 10 * dt);
-    this.gait.crouch = this._crouchT;
+    if (this.animInstance) {
+      const moving = dist > 1e-3;
+      if (this.isJumping || this.velocity.y > 0.5) {
+        this.animInstance.playAnimation('jump');
+      } else if (this.state === 'latched') {
+        this.animInstance.playAnimation(moving ? 'climb' : 'hide');
+      } else if (this.prone) {
+        this.animInstance.playAnimation('prone');
+      } else if (this.crouched) {
+        this.animInstance.playAnimation('crouch');
+      } else if (moving) {
+        this.animInstance.playAnimation('run');
+      } else {
+        this.animInstance.playAnimation('idle');
+      }
+      this.animInstance.setColor(this.zones[0].mat.color);
+      this.animInstance.update(dt);
+    } else {
+      this.gait.update(dt, dist);
+      this._crouchT += ((this.crouched ? 1 : 0) - this._crouchT) * Math.min(1, 10 * dt);
+      this.gait.crouch = this._crouchT;
+    }
   }
 
   // Articulação da face: as pupilas deslizam na direção do joystick, dando vida
@@ -412,6 +589,7 @@ export class Player {
     if (feet <= supportTop) {
       this.position.y = supportTop + HALF_EXTENT;
       this.velocity.y = 0;
+      this.isJumping = false;
     }
   }
 
@@ -469,6 +647,31 @@ export class Player {
   }
 
   // ---------------------------------------------------------- AÇÕES (botões)
+  // Pular: executa salto físico com velocidade vertical + animação Jump.fbx
+  jump() {
+    if (this.state === 'latched') {
+      this._release();
+      this.velocity.y = 5.5;
+      this.isJumping = true;
+      if (this.animInstance && this.animInstance.actions['jump']) {
+        this.animInstance.playAnimation('jump');
+      }
+      return;
+    }
+
+    const feet = this.position.y - HALF_EXTENT;
+    const supportTop = this._supportTopBelow(this.position.x, this.position.z, feet + 0.1);
+    if (feet <= supportTop + 0.1 && this.velocity.y <= 0.1) {
+      this.velocity.y = 6.2;
+      this.isJumping = true;
+      this.prone = false;
+      this.statue = false;
+      if (this.animInstance && this.animInstance.actions['jump']) {
+        this.animInstance.playAnimation('jump');
+      }
+      if (navigator.vibrate) try { navigator.vibrate(15); } catch (_) {}
+    }
+  }
   // Grudar/soltar manual (botão). No chão: gruda na superfície que o boneco
   // ENCARA (não mais ao andar de encontro). Grudado: solta.
   toggleLatch(camera) {
