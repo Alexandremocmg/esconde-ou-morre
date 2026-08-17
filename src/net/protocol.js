@@ -38,6 +38,7 @@ export const C2S = {
   INPUT: 'input',     // ver makeInputPayload
   FIRE: 'fire',       // { origin:{x,y,z}, dir:{x,y,z}, t }
   LEAVE: 'leave',
+  REVIVE: 'revive',   // "jogar novamente" sem reconectar — ver room.js:_onRevive
 };
 
 // Servidor → cliente

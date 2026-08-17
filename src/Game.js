@@ -1213,6 +1213,20 @@ export class Game {
       }
     }
 
+    // Modo online: avisa o servidor que a partida recomeça (room.js:_onRevive) — sem
+    // isto, `eliminated`/`_over` ficavam presos em true no servidor pra sempre (só
+    // zeravam quando a sala esvaziava), e o avatar do Camaleão eliminado continuava
+    // sumido na tela do Caçador na rodada seguinte (RemotePlayer.js funde a escala a
+    // zero e sem este aviso nunca soube que devia voltar).
+    if (this.mode === 'online' && this.net) {
+      this.net.sendRevive();
+      for (const rp of this.remotePlayers.values()) {
+        rp.eliminated = false;
+        rp._fade = 0;
+        rp.group.scale.setScalar(1);
+      }
+    }
+
     // Modo Caçador jogável: replanta os Camaleões-alvo. NÃO zera _hunterViewAttached/
     // _hunterMuzzle aqui — o viewmodel já é filho da câmera (que sobrevive ao restart) e
     // zerar o flag reanexaria uma 2ª arma na câmera a cada reinício (empilhando modelos).

@@ -33,8 +33,10 @@ const WAYPOINT_REACH = 1.2;
 // direção dos DEDOS, que no espaço do osso é +Y — medido, não chutado, e por
 // isso ~-90° em X. O offset é em METROS de mundo; o código converte para o
 // espaço do osso dividindo pela escala do modelo.
-const GUN_OFFSET = { x: 0, y: 0.06, z: 0.02 };
-const GUN_ROT = { x: -Math.PI / 2, y: 0, z: 0 };
+// Exportadas: RemotePlayer.js reusa a mesma pose para pendurar a arma no
+// Caçador remoto (mesmo osso/malha, mesma calibração).
+export const GUN_OFFSET = { x: 0, y: 0.06, z: 0.02 };
+export const GUN_ROT = { x: -Math.PI / 2, y: 0, z: 0 };
 const LOSE_TIME = 0.8;                // s sem alvo válido (camuflado OU fora de vista) até desistir
 // Campo de visão VERTICAL próprio (o horizontal é VISION_HALF_ANGLE). Enxerga mais
 // para baixo (escada/andar abaixo) do que para cima (impede onisciência do mezanino).

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { animationManager } from './AnimationManager.js';
+import { GUN_OFFSET, GUN_ROT } from './Seeker.js';
 import { INTERP_DELAY_MS, GROUND_Y } from './net/protocol.js';
 
 const HEIGHT = 0.9; // altura total do avatar (Player.js: HALF_EXTENT*2)
@@ -41,7 +42,32 @@ export class RemotePlayer {
       inst.group.position.y = -GROUND_Y; // pés em y=0 (ver Player.js/ChameleonTarget.js)
       this.group.add(inst.group);
       this.animInstance = inst;
+      // Caçador remoto carrega a arma de água — sem isto, o Camaleão via o
+      // Caçador desarmado (mesma pegadinha de Seeker.js: a arma tem que ser
+      // pendurada DEPOIS que o modelo animado existe, para achar o osso da mão).
+      if (this.role === 'hunter') this._attachBlaster(inst);
     }
+  }
+
+  // Mesma calibração de Seeker.js:_attachBlaster (GUN_OFFSET/GUN_ROT importados
+  // de lá) — o Caçador remoto usa o mesmo GLB e osso da mão.
+  _attachBlaster(inst) {
+    const arma = animationManager.createBlaster();
+    if (!arma) return;
+    const blasterGroup = arma.group;
+
+    const mao = inst.handBone;
+    if (!mao) {
+      inst.group.add(blasterGroup);
+      blasterGroup.position.set(0.32, HEIGHT * 0.35, 0.28);
+      return;
+    }
+
+    mao.add(blasterGroup);
+    const s = 1 / (inst.modelScale || 1);
+    blasterGroup.scale.multiplyScalar(s);
+    blasterGroup.position.set(GUN_OFFSET.x * s, GUN_OFFSET.y * s, GUN_OFFSET.z * s);
+    blasterGroup.rotation.set(GUN_ROT.x, GUN_ROT.y, GUN_ROT.z);
   }
 
   // Chamado a cada snapshot recebido do servidor (protocol.js S2C.SNAPSHOT).
@@ -101,7 +127,18 @@ export class RemotePlayer {
       this.animInstance.setColor(this._tmpColor);
     }
 
-    if (latest.eliminated && !this.eliminated) this.eliminated = true;
+    // Bidirecional: sem o ramo `false`, um Camaleão revivido ("jogar novamente" —
+    // room.js:_onRevive) ficava com `eliminated` travado em true no cliente pra
+    // sempre, e a escala nunca voltava de perto-de-zero (só fica cada vez menor em
+    // update()) — o avatar sumia da tela do Caçador na rodada seguinte, mesmo com o
+    // servidor já sabendo que a partida recomeçou.
+    if (latest.eliminated !== this.eliminated) {
+      this.eliminated = latest.eliminated;
+      if (!this.eliminated) {
+        this._fade = 0;
+        this.group.scale.setScalar(1);
+      }
+    }
   }
 
   // Mesma árvore de decisão de Player.js:439-454, adaptada ao que o fio carrega (sem

@@ -118,6 +118,23 @@ export class Room {
       this._applyInput(client, msg);
     } else if (msg.type === C2S.FIRE) {
       this._handleFire(client, msg);
+    } else if (msg.type === C2S.REVIVE) {
+      this._onRevive(client);
+    }
+  }
+
+  // "Jogar novamente" sem reconectar (Game.js:restartInPlace). Sem isto, `eliminated`
+  // e `_over` ficavam presos em true pra sempre (só zeravam quando a sala esvaziava),
+  // então: o avatar do Camaleão eliminado continuava sumindo (RemotePlayer.js funde a
+  // escala a zero e nunca volta) e o Caçador ficava travado sem poder atirar de novo
+  // (_handleFire recusa enquanto _over). Quem clicar primeiro reabre a partida pra
+  // ambos — v1 não tem "pronto?" de lobby, então o 1º clique já vale.
+  _onRevive(client) {
+    client.eliminated = false;
+    if (this._over) {
+      this._over = false;
+      this._matchStartAt = Date.now();
+      for (const c of this.clients.values()) c.eliminated = false;
     }
   }
 

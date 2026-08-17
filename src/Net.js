@@ -92,6 +92,11 @@ export class Net {
     this._send({ type: C2S.FIRE, origin, dir });
   }
 
+  // "Jogar novamente" sem reconectar — ver room.js:_onRevive.
+  sendRevive() {
+    this._send({ type: C2S.REVIVE });
+  }
+
   _send(obj) {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
     this.ws.send(JSON.stringify(obj));
