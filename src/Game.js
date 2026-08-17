@@ -2,12 +2,36 @@ import * as THREE from 'three';
 import { Level } from './Level.js';
 import { Player } from './Player.js';
 import { Seeker, WAYPOINTS_ALT } from './Seeker.js';
+import { ChameleonTarget } from './ChameleonTarget.js';
 import { FollowCamera } from './FollowCamera.js';
+import { HunterCamera } from './HunterCamera.js';
 import { Joystick } from './Joystick.js';
 import { Effects } from './Effects.js';
 import { Audio } from './Audio.js';
 import { ColorPicker } from './ColorPicker.js';
 import { animationManager } from './AnimationManager.js';
+
+// Mira do Caçador jogável (Game.fireHunterShot): cone de mira a partir do
+// centro da câmera, não pixel-perfect — evita o problema de raycast contra o
+// SkinnedMesh animado (a malha usa a BIND POSE no raycast, ver o comentário
+// grande em fireWaterJet mais abaixo). Mesma técnica: posição conhecida do
+// alvo + checagem de oclusão contra paredes.
+const HUNTER_AIM_HALF_ANGLE = THREE.MathUtils.degToRad(9); // ~18° de cone total
+const HUNTER_FIRE_COOLDOWN_MS = 300;
+// Fase 2 (docs/MECANICA_CACADOR_VISAO.md §2): tiro que erra o alvo aplica um cooldown de
+// "bomba de pressão" bem mais longo, pra desincentivar spam contra parede/objeto. Só
+// cooldown extra — sem consumir munição a mais (a normal do disparo já foi debitada).
+const HUNTER_MISS_COOLDOWN_MS = 2600; // 2-3s pedido
+const HUNTER_TARGET_COUNT = 6;
+
+// Scanner / Visão Reveladora (Fase 3, docs/MECANICA_CACADOR_VISAO.md §3). MVP "ping
+// simplificado": os ChameleonTarget de hoje são bonecos parados sem IA de esconderijo/
+// troca de cor (ChameleonTarget.js), então o pulso revela direção/distância de todo alvo
+// vivo dentro do alcance — sem o sinal de "movimento/troca de cor" do briefing original,
+// que não existe hoje (religar quando os alvos ganharem esse comportamento).
+const SCANNER_RANGE = 8;          // m — raio do pulso pedido
+const SCANNER_DURATION_MS = 3000; // duração do pulso ativo
+const SCANNER_COOLDOWN_MS = 20000; // recarga entre usos
 
 // Partida (Fase 4): objetivo = sobreviver ao Caçador até o tempo acabar.
 const BASE_SURVIVE = 60;      // s de sobrevivência no estágio 1
@@ -63,8 +87,17 @@ export class Game {
 
     // Câmera (proporção landscape de celular; ajustada no resize)
     this.camera = new THREE.PerspectiveCamera(60, 16 / 9, 0.1, 200);
+    // Filha da cena: inofensivo (câmera não renderiza como objeto) e habilita pendurar
+    // lanterna/arma-viewmodel do Caçador como filhos dela (ver HunterCamera/_addHunterFlashlight).
+    this.scene.add(this.camera);
 
     this._addLights();
+
+    // Modo da partida: 'chameleon' (padrão, fuja/camufle-se do Caçador IA) ou
+    // 'hunter' (Caçador jogável, mira e atira nos Camaleões-alvo). Escolhido no
+    // menu inicial (#mode-pick em index.html), persistido em 'eom-mode' (ver main.js).
+    this.mode = sessionStorage.getItem('eom-mode') === 'hunter' ? 'hunter' : 'chameleon';
+    document.body.classList.toggle('mode-hunter', this.mode === 'hunter');
 
     // Estágio atual (persiste entre reloads para permitir progressão).
     this.stage = Math.max(1, parseInt(sessionStorage.getItem('eom-stage') || '1', 10) || 1);
@@ -72,29 +105,45 @@ export class Game {
     const difficulty = 1 + (this.stage - 1) * DIFF_PER_STAGE;
 
     // Estado da partida
-    this.over = false;   // pego pelo Caçador
+    this.over = false;   // pego pelo Caçador (ou: Camaleões escaparam, no modo Caçador)
     this.won = false;    // objetivo concluído
     this.elapsed = 0;    // tempo decorrido na fase
-    this.camoTime = 0;   // tempo total camuflado
+    this.camoTime = 0;   // tempo total camuflado (só faz sentido no modo Camaleão)
 
     // Layout da arena por estágio (cicla a cada 3): 1=aberta, 2=labirinto, 3=ilhas.
     const layout = ((this.stage - 1) % 3) + 1;
     this.level = new Level(this.scene, layout, { mobile: this.isMobile });
-    this.player = new Player(this.scene, this.level);
+    this.player = new Player(this.scene, this.level, { isHunter: this.mode === 'hunter' });
     this.effects = new Effects(this.scene);
     this.audio = new Audio();
 
-    // Caçadores. O primeiro sempre existe; um segundo (rota cruzada, cor distinta)
-    // entra a partir do estágio THIRD_SEEKER_STAGE. As rotas vêm do layout.
-    const routes = this.level.routes;
-    const routeY = this.level.routeY || [];
-    const mkSeeker = (i, color) => new Seeker(
-      this.scene, this.level, this.player, () => this._gameOver(),
-      { difficulty, waypoints: routes[i] || WAYPOINTS_ALT, startY: routeY[i], color }
-    );
-    // 0 = térreo; 1 = andares altos (nasce no 2º andar); 2 = térreo em sentido oposto.
-    this.seekers = [mkSeeker(0), mkSeeker(1, 0xb01ecb)];
-    if (this.stage >= THIRD_SEEKER_STAGE) this.seekers.push(mkSeeker(2, 0xd88a1a));
+    if (this.mode === 'hunter') {
+      // Sem Caçador IA: quem persegue é o jogador. this.seekers fica vazio de
+      // propósito — os laços que já iteram sobre ele (_tick, _updateFeedback)
+      // simplesmente não fazem nada, sem precisar de guardas extras.
+      this.seekers = [];
+      this.targets = [];
+      this._hunterViewAttached = false;
+      this._hunterMuzzle = null;
+      this._nextFireAt = 0;
+      this._scannerActiveUntil = 0; // performance.now() em que o pulso atual termina (0 = inativo)
+      this._scannerReadyAt = 0;     // performance.now() em que o próximo uso libera
+      this._scannerDots = [];       // pool de elementos DOM do radar (reaproveitados)
+      this._spawnHunterTargets();
+      this._addHunterFlashlight();
+    } else {
+      // Caçadores. O primeiro sempre existe; um segundo (rota cruzada, cor distinta)
+      // entra a partir do estágio THIRD_SEEKER_STAGE. As rotas vêm do layout.
+      const routes = this.level.routes;
+      const routeY = this.level.routeY || [];
+      const mkSeeker = (i, color) => new Seeker(
+        this.scene, this.level, this.player, () => this._gameOver(),
+        { difficulty, waypoints: routes[i] || WAYPOINTS_ALT, startY: routeY[i], color }
+      );
+      // 0 = térreo; 1 = andares altos (nasce no 2º andar); 2 = térreo em sentido oposto.
+      this.seekers = [mkSeeker(0), mkSeeker(1, 0xb01ecb)];
+      if (this.stage >= THIRD_SEEKER_STAGE) this.seekers.push(mkSeeker(2, 0xd88a1a));
+    }
 
     // Regras de Munição do Caçador (Meccha Chameleon Spec)
     const ammoSel = document.getElementById('ammo-select');
@@ -108,7 +157,11 @@ export class Game {
     this.scoreHistory = []; // { t, camoTime }
     this.delayedCamoTime = 0;
 
-    this.follow = new FollowCamera(this.camera);
+    // Câmera de acompanhamento: 1ª pessoa dedicada para o Caçador jogável (ver
+    // docs/MECANICA_CACADOR_VISAO.md §1), 3ª pessoa para o Camaleão. Mesma interface
+    // pública (addLook/addZoom/update/reset) — nenhuma outra chamada a this.follow.*
+    // precisa saber qual das duas está ativa.
+    this.follow = this.mode === 'hunter' ? new HunterCamera(this.camera) : new FollowCamera(this.camera);
     this.joystick = new Joystick();
 
     // Estado de feedback (evita disparar sons repetidos no mesmo segundo)
@@ -123,10 +176,20 @@ export class Game {
     this._btnClimb = document.getElementById('btn-climb');
     this._btnPose = document.getElementById('btn-pose');
     this._btnPaint = document.getElementById('btn-paint');
+    this._btnFire = document.getElementById('btn-fire');
+    this._btnScan = document.getElementById('btn-scan');
     this._radialPoseMenu = document.getElementById('radial-pose-menu');
     this._radialPaintMenu = document.getElementById('radial-paint-menu');
     this._setupControls();
     this._updateWaterAmmoHud();
+    if (this.mode === 'hunter') this._updateTargetsHud();
+
+    // Dica em jogo (topo da tela): difere por modo — o Camaleão foge/camufla,
+    // o Caçador mira e atira. Texto do Camaleão fica fixo no HTML.
+    const hint = document.getElementById('hint');
+    if (hint && this.mode === 'hunter') {
+      hint.textContent = 'Mire com a retícula e toque em 💦 para atirar. Encontre e acerte todos os Camaleões antes que o tempo ou a munição acabem.';
+    }
 
     // Oclusão da câmera: blocos entre a câmera e o jogador desvanecem para não
     // esconder o personagem (ex.: grudado na face traseira de um bloco).
@@ -138,9 +201,17 @@ export class Game {
     this._badge = document.getElementById('state-badge');
     this._chip = document.querySelector('#color-chip span');
     this._gameoverEl = document.getElementById('gameover');
+    this._gameoverMsg = document.getElementById('gameover-msg');
+    this._gameoverMsgDefault = this._gameoverMsg ? this._gameoverMsg.textContent : '';
     this._victoryEl = document.getElementById('victory');
+    this._victoryMsg = document.getElementById('victory-msg');
+    this._victoryMsgDefault = this._victoryMsg ? this._victoryMsg.textContent : '';
     this._vignette = document.getElementById('vignette');
     this._alertEl = document.getElementById('alert');
+    this._scannerRadar = document.getElementById('scanner-radar');
+    this._scannerCdEl = document.getElementById('scanner-cd');
+    this._scanDir = new THREE.Vector3();
+    this._scanTo = new THREE.Vector3();
 
     // Placar da partida
     this._elStage = document.getElementById('stage-num');
@@ -194,6 +265,24 @@ export class Game {
     key.shadow.camera.far = 42;
     key.shadow.bias = -0.0004;
     this.scene.add(key);
+  }
+
+  // Lanterna do Caçador jogável (docs/MECANICA_CACADOR_VISAO.md §1): acoplada à câmera
+  // como filha (this.scene.add(this.camera) no construtor já habilita isto — o alvo
+  // (target) também filho, então os dois seguem a câmera sozinhos via updateMatrixWorld,
+  // sem precisar sincronizar posição por frame). decay=2 é a atenuação quadrática nativa
+  // do Three.js — mapeamento direto do pedido do briefing.
+  _addHunterFlashlight() {
+    const light = new THREE.SpotLight(0xfff2d0, 3.2, 14, THREE.MathUtils.degToRad(28), 0.4, 2);
+    light.castShadow = !this.isMobile; // mesmo guard de custo da key light (perf mobile)
+    if (light.castShadow) {
+      light.shadow.mapSize.set(1024, 1024);
+      light.shadow.bias = -0.0005;
+    }
+    light.target.position.set(0, 0, -1); // -Z local = pra frente da câmera
+    this.camera.add(light);
+    this.camera.add(light.target);
+    this._hunterFlashlight = light;
   }
 
   // Fiação dos controles: botões de ação e a área de olhar (arrasto → câmera).
@@ -261,6 +350,12 @@ export class Game {
         }
       }
 
+      if (this.mode === 'hunter') {
+        this._updateHunterFPSRig();
+        for (const t of this.targets) t.update(dt);
+        this._updateScanner();
+      }
+
       // Juice: pulso + clique ao GRUDAR na parede (transição chão → parede).
       if (this._prevState === 'grounded' && this.player.state === 'latched') {
         this.effects.pulse(this.player.position, 0x9fe8ff);
@@ -270,17 +365,22 @@ export class Game {
 
       // Cronômetro da partida
       this.elapsed += dt;
-      if (this.player.isCamouflaged()) this.camoTime += dt;
+      if (this.mode === 'chameleon') {
+        if (this.player.isCamouflaged()) this.camoTime += dt;
 
-      // Atraso de 30s no Placar de Tempo Camuflado (Anti-Cheat Spec)
-      this.scoreHistory.push({ t: this.elapsed, camoTime: this.camoTime });
-      while (this.scoreHistory.length > 0 && (this.elapsed - this.scoreHistory[0].t) >= 30) {
-        this.delayedCamoTime = this.scoreHistory.shift().camoTime;
+        // Atraso de 30s no Placar de Tempo Camuflado (Anti-Cheat Spec)
+        this.scoreHistory.push({ t: this.elapsed, camoTime: this.camoTime });
+        while (this.scoreHistory.length > 0 && (this.elapsed - this.scoreHistory[0].t) >= 30) {
+          this.delayedCamoTime = this.scoreHistory.shift().camoTime;
+        }
       }
 
       this._updateFeedback(dt);
 
-      if (this.elapsed >= this.surviveTime) this._win();
+      if (this.elapsed >= this.surviveTime) {
+        if (this.mode === 'hunter') this._gameOver('O tempo acabou — os Camaleões que restaram escaparam.');
+        else this._win();
+      }
     }
     const t = this._clock.elapsedTime;
     this.level.update?.(t);                 // girofles/painéis piscando
@@ -412,6 +512,207 @@ export class Game {
     }
   }
 
+  // ------------------------------------------------------ MODO CAÇADOR (jogável)
+  // Espalha os Camaleões-alvo em pontos já validados pela IA do Seeker (routes
+  // de patrulha, ver Level.js._setRoutes) — evita reinventar "onde é seguro
+  // andar" nesta fase 1 (alvos parados; sem esconderijo/camuflagem próprios).
+  _spawnHunterTargets() {
+    const routes = this.level.routes || [];
+    const routeY = this.level.routeY || [];
+    const points = [];
+    // routes[i] guarda x/z de patrulha, mas o .y de cada waypoint é uma altura
+    // GENÉRICA de rota (Level.js: ROUTE_Y) — não a altura real do andar. O
+    // Seeker corrige isso ao vivo com _groundY() a cada frame; o alvo é
+    // estático, então precisa da altura certa já na hora de plantar (routeY[i],
+    // a mesma usada como startY do Seeker daquela rota — ver Level._setRoutes).
+    for (const i of [0, 1]) {
+      const route = routes[i];
+      if (!route) continue;
+      const y = routeY[i] != null ? routeY[i] : undefined;
+      for (const w of route) {
+        points.push(y != null ? new THREE.Vector3(w.x, y, w.z) : w.clone());
+      }
+    }
+    for (let i = points.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [points[i], points[j]] = [points[j], points[i]];
+    }
+    const count = Math.min(HUNTER_TARGET_COUNT, points.length);
+    for (const t of this.targets) t.destroy();
+    this.targets = [];
+    for (let i = 0; i < count; i++) {
+      this.targets.push(new ChameleonTarget(this.scene, this.level, points[i]));
+    }
+  }
+
+  _updateTargetsHud() {
+    const elCount = document.getElementById('targets-count');
+    const elTotal = document.getElementById('targets-total');
+    const remaining = this.targets.filter((t) => !t.eliminated).length;
+    if (elCount) elCount.textContent = String(remaining);
+    if (elTotal) elTotal.textContent = String(this.targets.length);
+  }
+
+  // Fase 1 da Visão do Caçador (docs/MECANICA_CACADOR_VISAO.md §1): em 1ª pessoa não faz
+  // sentido ver o próprio boneco colado na câmera, então o corpo inteiro fica invisível
+  // assim que o GLB terminar de carregar (mesmo padrão de lazy-attach do Seeker — ver
+  // Seeker._attachBlaster e o comentário sobre a arma "pipocar" se anexada tarde demais;
+  // em Three.js um filho não renderiza se o pai está invisible). No lugar, uma instância
+  // própria da arma (createBlaster clona o protótipo — seguro chamar de novo) fica
+  // pendurada na câmera como "viewmodel" ao estilo FPS clássico. this._hunterMuzzle
+  // aponta pro cano dela — fireHunterShot() não muda.
+  _updateHunterFPSRig() {
+    if (this._hunterViewAttached || !this.player.animInstance) return;
+    this._hunterViewAttached = true; // marca já: mesmo se a arma falhar, não tenta de novo
+
+    this.player.animInstance.group.visible = false;
+
+    const vm = animationManager.createBlaster();
+    if (!vm) return;
+    // createBlaster() normaliza a arma para ARMA_COMPRIMENTO (0.55) em unidades de MUNDO —
+    // certo para pendurar num osso da mão distante, grande demais tão perto da câmera.
+    // Encolhe para o viewmodel não dominar a tela.
+    vm.group.scale.multiplyScalar(0.4);
+    vm.group.position.set(0.26, -0.24, -0.6);
+    vm.group.rotation.set(0, Math.PI, 0); // cano apontando pra frente da câmera (-Z)
+    this.camera.add(vm.group);
+    this._hunterMuzzle = vm.muzzle;
+  }
+
+  // Disparo do Caçador jogável (botão 💦). Mira por cone a partir do centro da
+  // câmera contra a posição CONHECIDA de cada alvo vivo (não raycast contra a
+  // malha animada — ver o comentário grande em fireWaterJet sobre bind pose).
+  fireHunterShot() {
+    if (this.over || this.won) return;
+    const now = performance.now();
+    if (now < this._nextFireAt) return;
+    this._nextFireAt = now + HUNTER_FIRE_COOLDOWN_MS;
+
+    if (!this.infiniteAmmo) {
+      if (this.waterAmmo <= 0) {
+        this.audio.emptyClick();
+        return;
+      }
+      this.waterAmmo--;
+      this._updateWaterAmmoHud();
+    }
+
+    this.audio.waterBlast();
+    if (this.player.triggerShootPose) this.player.triggerShootPose();
+
+    const fromPos = new THREE.Vector3();
+    if (this._hunterMuzzle) this._hunterMuzzle.getWorldPosition(fromPos);
+    else fromPos.copy(this.camera.position);
+
+    const camDir = this.camera.getWorldDirection(new THREE.Vector3());
+    const cosHalf = Math.cos(HUNTER_AIM_HALF_ANGLE);
+    const up = new THREE.Vector3(0, 0.3, 0);
+
+    let best = null, bestCos = -1, bestPos = null;
+    for (const t of this.targets) {
+      if (t.eliminated) continue;
+      const targetPos = t.position.clone().add(up);
+      const dist = this.camera.position.distanceTo(targetPos);
+      if (dist > JET_RANGE || dist < 1e-3) continue;
+      const dir = targetPos.clone().sub(this.camera.position).normalize();
+      const cos = camDir.dot(dir);
+      if (cos < cosHalf || cos <= bestCos) continue;
+      // Oclusão: alguma parede/móvel entre a câmera e o alvo?
+      const ray = new THREE.Raycaster(this.camera.position, dir, 0, Math.max(0, dist - 0.15));
+      if (ray.intersectObjects(this.level.climbables, false).length > 0) continue;
+      best = t; bestCos = cos; bestPos = targetPos;
+    }
+
+    const beamEnd = bestPos || fromPos.clone().addScaledVector(camDir, JET_RANGE);
+    this.effects.waterJetBeam(fromPos, beamEnd, !!best);
+    this.audio.waterSplash();
+
+    if (best) {
+      best.hit();
+      this._updateTargetsHud();
+      if (this.targets.every((t) => t.eliminated)) {
+        this._win('Você encontrou e acertou todos os Camaleões!');
+        return;
+      }
+    } else {
+      // Errou: estica o cooldown (bomba de pressão) em vez do normal — desincentiva
+      // atirar às cegas contra parede/objeto sem punir a munição de novo.
+      this._nextFireAt = now + HUNTER_MISS_COOLDOWN_MS;
+    }
+
+    if (!this.infiniteAmmo && this.waterAmmo <= 0) {
+      this._gameOver('Sem munição! Os Camaleões que restaram escaparam.');
+    }
+  }
+
+  // Scanner do Caçador (botão 📡). Só liga o pulso se o cooldown já liberou — o resto
+  // (revelar alvos, vinheta) acontece por frame em _updateScanner().
+  activateScanner() {
+    if (this.over || this.won) return;
+    const now = performance.now();
+    if (now < this._scannerReadyAt) {
+      this.audio.emptyClick(); // reaproveita o "negado" já usado pra munição vazia
+      return;
+    }
+    this._scannerActiveUntil = now + SCANNER_DURATION_MS;
+    this._scannerReadyAt = now + SCANNER_COOLDOWN_MS;
+    this.audio.camo(); // stinger de "ligou" — mesmo som usado ao entrar em camuflagem
+    if (this._vignette) this._vignette.classList.add('scanning');
+    if (this._scannerRadar) this._scannerRadar.classList.add('active');
+  }
+
+  // Por frame: desliga o pulso quando o tempo acaba, atualiza o badge de cooldown do HUD
+  // e posiciona os pontos do radar (direção/distância dos alvos vivos em SCANNER_RANGE).
+  _updateScanner() {
+    const now = performance.now();
+    const active = now < this._scannerActiveUntil;
+
+    if (!active) {
+      if (this._vignette) this._vignette.classList.remove('scanning');
+      if (this._scannerRadar) this._scannerRadar.classList.remove('active');
+    }
+
+    if (this._scannerCdEl) {
+      const cd = this._scannerReadyAt - now;
+      this._scannerCdEl.textContent = cd > 0 ? `${Math.ceil(cd / 1000)}s` : 'Pronto';
+    }
+    if (this._btnScan) this._btnScan.classList.toggle('cooling', now < this._scannerReadyAt);
+
+    if (!active) return;
+
+    // Bearing relativo ao "pra frente" da câmera (plano XZ) — 0 = à frente, ±π = atrás.
+    const camDir = this.camera.getWorldDirection(this._scanDir).setY(0).normalize();
+    const dial = 40; // raio do radar em CSS px (metade de #scanner-radar menos a margem do ponto)
+    let i = 0;
+    for (const t of this.targets) {
+      if (t.eliminated) continue;
+      const toT = this._scanTo.copy(t.position).sub(this.camera.position);
+      const dist = Math.hypot(toT.x, toT.z);
+      if (dist > SCANNER_RANGE) continue;
+
+      const bearing = Math.atan2(
+        camDir.x * toT.z - camDir.z * toT.x,
+        camDir.x * toT.x + camDir.z * toT.z,
+      );
+      const r = (dist / SCANNER_RANGE) * dial;
+      const x = 48 + Math.sin(bearing) * r;
+      const y = 48 - Math.cos(bearing) * r;
+
+      let dot = this._scannerDots[i];
+      if (!dot) {
+        dot = document.createElement('div');
+        dot.className = 'scanner-dot';
+        this._scannerRadar.appendChild(dot);
+        this._scannerDots[i] = dot;
+      }
+      dot.style.left = `${x}px`;
+      dot.style.top = `${y}px`;
+      dot.style.display = 'block';
+      i++;
+    }
+    for (; i < this._scannerDots.length; i++) this._scannerDots[i].style.display = 'none';
+  }
+
   _updateHud() {
     const camo = this.player.isCamouflaged();
     const latched = this.player.state === 'latched';
@@ -425,6 +726,11 @@ export class Game {
       const nearWall = latched || (this.player.object.position.y > 0.5) || (this.player.statue);
       this._btnClimb.classList.toggle('near', nearWall);
       this._btnClimb.classList.toggle('active', latched);
+    }
+
+    // Botão Atirar: esmaece durante o cooldown (mais visível no penalty de erro — Fase 2).
+    if (this._btnFire) {
+      this._btnFire.classList.toggle('cooling', performance.now() < this._nextFireAt);
     }
 
     // Placar: tempo decorrido e tempo camuflado (com Atraso de 30s Anti-Cheat)
@@ -582,6 +888,22 @@ export class Game {
       });
     }
 
+    if (this._btnFire) {
+      this._btnFire.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        this.fireHunterShot();
+        if (navigator.vibrate) try { navigator.vibrate(14); } catch (_) {}
+      });
+    }
+
+    if (this._btnScan) {
+      this._btnScan.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        this.activateScanner();
+        if (navigator.vibrate) try { navigator.vibrate(14); } catch (_) {}
+      });
+    }
+
     if (this._btnClimb) {
       this._btnClimb.addEventListener('pointerdown', (e) => {
         e.preventDefault();
@@ -650,15 +972,16 @@ export class Game {
     }
   }
 
-  _gameOver() {
+  _gameOver(msg) {
     if (this.won || this.over) return;
     this.over = true;
     this._clearVignette();
     this.audio.caught();
+    if (this._gameoverMsg && msg) this._gameoverMsg.textContent = msg;
     if (this._gameoverEl) this._gameoverEl.classList.add('show');
   }
 
-  _win() {
+  _win(msg) {
     if (this.won || this.over) return;
     this.won = true;
     this._clearVignette();
@@ -667,12 +990,13 @@ export class Game {
     const winTime = document.getElementById('win-time');
     const winCamo = document.getElementById('win-camo');
     const winPct = document.getElementById('win-camo-pct');
-    if (winTime) winTime.textContent = fmtTime(this.surviveTime);
+    if (winTime) winTime.textContent = fmtTime(Math.min(this.elapsed, this.surviveTime));
     if (winCamo) winCamo.textContent = fmtTime(this.camoTime);
     if (winPct) {
       const pct = this.surviveTime > 0 ? Math.round((this.camoTime / this.surviveTime) * 100) : 0;
       winPct.textContent = `${Math.min(100, pct)}%`;
     }
+    if (this._victoryMsg && msg) this._victoryMsg.textContent = msg;
     if (this._victoryEl) this._victoryEl.classList.add('show');
   }
 
@@ -724,6 +1048,21 @@ export class Game {
         if (s.reset) s.reset();
       }
     }
+
+    // Modo Caçador jogável: replanta os Camaleões-alvo. NÃO zera _hunterViewAttached/
+    // _hunterMuzzle aqui — o viewmodel já é filho da câmera (que sobrevive ao restart) e
+    // zerar o flag reanexaria uma 2ª arma na câmera a cada reinício (empilhando modelos).
+    if (this.mode === 'hunter') {
+      this._nextFireAt = 0;
+      this._scannerActiveUntil = 0;
+      this._scannerReadyAt = 0;
+      if (this._vignette) this._vignette.classList.remove('scanning');
+      if (this._scannerRadar) this._scannerRadar.classList.remove('active');
+      this._spawnHunterTargets();
+      this._updateTargetsHud();
+    }
+    if (this._gameoverMsg) this._gameoverMsg.textContent = this._gameoverMsgDefault;
+    if (this._victoryMsg) this._victoryMsg.textContent = this._victoryMsgDefault;
 
     const menu = document.getElementById('start-overlay');
     if (menu) {

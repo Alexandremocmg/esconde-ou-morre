@@ -15,7 +15,9 @@ camuflagem**. Todo o visual é **procedural** — sem assets externos.
 > A direção de arte e o histórico das fases estão em
 > [`docs/PLANO_TOON.md`](docs/PLANO_TOON.md) (virada toon, com status de implementação).
 > A especificação técnica da mecânica do Caçador (munição de água, 30s delay anti-cheat) está em
-> [`docs/MECANICA_CACADOR.md`](docs/MECANICA_CACADOR.md).
+> [`docs/MECANICA_CACADOR.md`](docs/MECANICA_CACADOR.md). A especificação de design de
+> visão/câmera, arma e scanner do Caçador (proposta, com status de implementação por item)
+> está em [`docs/MECANICA_CACADOR_VISAO.md`](docs/MECANICA_CACADOR_VISAO.md).
 > A arquitetura da mansão (andares/escada/colisão) está em
 > [`docs/PLANO_MANSAO.md`](docs/PLANO_MANSAO.md).
 
