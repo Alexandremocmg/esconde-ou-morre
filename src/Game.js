@@ -18,6 +18,7 @@ const DIFF_PER_STAGE = 0.12;  // incremento de dificuldade por estágio (velocid
 // andares altos — e um 3º (térreo, sentido oposto) a partir do estágio 3.
 const THIRD_SEEKER_STAGE = 3;
 const WARN_WINDOW = 5;        // s de antecedência para o feedback de perigo / quase-vitória
+const JET_RANGE = 15;         // alcance do jato de água (m)
 
 // Formata segundos como m:ss.
 function fmtTime(sec) {
@@ -454,26 +455,28 @@ export class Game {
 
     this.audio.waterBlast();
 
-    // Posição do bocal da arma de água do Caçador
-    const fromPos = seeker.group.position.clone().add(new THREE.Vector3(0, 1.2, 0));
+    // Origem = boca do cano DE VERDADE (marcador preso à arma, que por sua vez
+    // acompanha o osso da mão). Antes era um offset fixo sobre o grupo lógico —
+    // o jato saía do meio do corpo, e o comentário dizia "bocal" sem ser.
+    const fromPos = new THREE.Vector3();
+    if (seeker._muzzle) seeker._muzzle.getWorldPosition(fromPos);
+    else fromPos.copy(seeker.group.position).add(new THREE.Vector3(0, 1.2, 0));
     const targetPos = this.player.position.clone().add(new THREE.Vector3(0, 0.5, 0));
 
-    // Raycast para verificar impacto
+    // Acerto = jogador no alcance E sem parede na frente.
+    //
+    // NÃO se testa o corpo do jogador por raycast: ele é um SkinnedMesh, e o
+    // raycast do Three.js usa a BIND POSE (no nosso GLB, centrada na origem e com
+    // metade abaixo do piso), não a pose animada — o tiro passava por cima do
+    // jogador e "acertava" a parede atrás. O código antigo escondia isso porque
+    // tratava "não acertei nada" como acerto. Testar oclusão contra as paredes é
+    // mais barato e não depende da malha deformada.
     const dir = new THREE.Vector3().subVectors(targetPos, fromPos).normalize();
-    const ray = new THREE.Raycaster(fromPos, dir, 0, 15);
-    const hits = ray.intersectObjects([this.player.object, ...this.level.climbables], true);
-
+    const distAlvo = fromPos.distanceTo(targetPos);
     let hitPlayer = false;
-    if (hits.length > 0) {
-      let firstObj = hits[0].object;
-      while (firstObj.parent && firstObj !== this.player.object && firstObj.parent !== this.scene) {
-        firstObj = firstObj.parent;
-      }
-      if (firstObj === this.player.object || firstObj.parent === this.player.object) {
-        hitPlayer = true;
-      }
-    } else {
-      hitPlayer = true;
+    if (distAlvo <= JET_RANGE) {
+      const ray = new THREE.Raycaster(fromPos, dir, 0, Math.max(0, distAlvo - 0.15));
+      hitPlayer = ray.intersectObjects(this.level.climbables, false).length === 0;
     }
 
     this.effects.waterJetBeam(fromPos, targetPos, hitPlayer);

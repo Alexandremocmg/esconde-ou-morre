@@ -11,6 +11,14 @@ import { toonGradient } from './textures.js';
 const MODELO = 'public/models/character_animated.glb';
 const TAMANHO_ESTIMADO = 1_495_384; // p/ barra de progresso quando falta Content-Length
 
+// Arma de água do Caçador. Asset separado (não embutido no personagem) porque só
+// o Caçador a carrega — o Camaleão usa o mesmo GLB de corpo. Exportado do
+// Blender já centrado na origem, com o CANO no eixo +Z e o maior eixo = 1,0, e
+// sem material/textura (o jogo aplica MeshToonMaterial). Ver docs/PIPELINE_PERSONAGEM.md.
+const ARMA = 'public/models/water_gun.glb';
+const ARMA_COMPRIMENTO = 0.55; // comprimento alvo, calibrado p/ BODY_H = 2.2
+const ARMA_COR = 0x59c1e8;     // azul-água da paleta do jogo
+
 class AnimationManager {
   constructor() {
     this.loader = new GLTFLoader();
@@ -19,6 +27,7 @@ class AnimationManager {
     this.instances = new Set();
     this.isLoaded = false;
     this.loadPromise = null;
+    this.blasterModel = null;   // protótipo da arma, clonado por Caçador
   }
 
   // Carrega o GLB e envia progresso para a tela de carregamento.
@@ -41,8 +50,19 @@ class AnimationManager {
         this.baseModel = gltf.scene;
         for (const clip of gltf.animations) this.clips[clip.name] = clip;
 
+        // A arma entra na MESMA barra de progresso: carregada depois, ela
+        // apareceria "pipocando" na mão do Caçador já em jogo.
+        try {
+          const arma = await this.loader.loadAsync(ARMA);
+          this.blasterModel = arma.scene;
+        } catch (err) {
+          // Sem fallback silencioso: Caçador desarmado tem que gritar no console.
+          console.error('❌ AnimationManager: falha ao carregar a arma', ARMA, err);
+        }
+
         this.isLoaded = true;
-        console.log('🎉 AnimationManager: pronto!', Object.keys(this.clips));
+        console.log('🎉 AnimationManager: pronto!', Object.keys(this.clips),
+                    this.blasterModel ? '+ arma' : '(SEM arma)');
       } catch (err) {
         // Falha silenciosa aqui viraria "personagem invisível" sem pista alguma.
         console.error('❌ AnimationManager: falha ao carregar', MODELO, err);
@@ -54,6 +74,39 @@ class AnimationManager {
     })();
 
     return this.loadPromise;
+  }
+
+  // Instancia a arma de água: clone do protótipo, já no material toon do jogo e
+  // no comprimento certo. Devolve `{ group, muzzle }` — `muzzle` é um marcador
+  // vazio na BOCA DO CANO, de onde o jato deve sair (o modelo não traz um nó de
+  // bocal nomeado, então a ponta é derivada da bounding box).
+  createBlaster() {
+    if (!this.blasterModel) return null;
+
+    const group = this.blasterModel.clone(true);
+    group.updateMatrixWorld(true);
+
+    // Normaliza pelo comprimento REAL do modelo: se um dia trocarem o asset por
+    // outro de escala diferente, isto continua valendo.
+    const bbox = new THREE.Box3().setFromObject(group);
+    const comprimento = bbox.max.z - bbox.min.z || 1; // cano no eixo Z (ver ARMA)
+    group.scale.setScalar(ARMA_COMPRIMENTO / comprimento);
+
+    const mat = new THREE.MeshToonMaterial({ color: ARMA_COR, gradientMap: toonGradient() });
+    group.traverse((o) => {
+      if (!o.isMesh) return;
+      o.material = mat;
+      o.castShadow = true;
+      o.frustumCulled = false; // acompanha um osso animado; a bounding sphere mente
+    });
+
+    // Marcador na ponta do cano, em coordenadas LOCAIS do grupo (antes da escala,
+    // porque ele entra como filho e herda a mesma escala).
+    const muzzle = new THREE.Object3D();
+    muzzle.position.set(0, 0, bbox.max.z);
+    group.add(muzzle);
+
+    return { group, muzzle };
   }
 
   // Instancia um personagem animado clonado
@@ -145,6 +198,11 @@ class AnimationManager {
       actions,
       currentActionName: 'idle',
       materials: customMaterials,
+      // Escala aplicada ao clone. Quem pendura algo num OSSO precisa dividir por
+      // ela: o osso vive dentro do clone e o filho herda essa escala.
+      modelScale: scale,
+      // Osso da mão direita — ponto de anexo da arma do Caçador.
+      handBone: clone.getObjectByName('mixamorigRightHand') || null,
 
       _registerClip(name, clip) {
         if (actions[name]) return;

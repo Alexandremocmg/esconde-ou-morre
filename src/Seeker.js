@@ -29,6 +29,12 @@ const VIEW_SAMPLES = [0.35, 0.0, -0.35];
 const CATCH_DIST = 1.1;
 const CATCH_V_TOL = 1.2;              // banda vertical de captura (|Δy|) — separada da horizontal
 const WAYPOINT_REACH = 1.2;
+// Pose da arma na mão direita. A rotação alinha o cano (+Z do modelo) com a
+// direção dos DEDOS, que no espaço do osso é +Y — medido, não chutado, e por
+// isso ~-90° em X. O offset é em METROS de mundo; o código converte para o
+// espaço do osso dividindo pela escala do modelo.
+const GUN_OFFSET = { x: 0, y: 0.06, z: 0.02 };
+const GUN_ROT = { x: -Math.PI / 2, y: 0, z: 0 };
 const LOSE_TIME = 0.8;                // s sem alvo válido (camuflado OU fora de vista) até desistir
 // Campo de visão VERTICAL próprio (o horizontal é VISION_HALF_ANGLE). Enxerga mais
 // para baixo (escada/andar abaixo) do que para cima (impede onisciência do mezanino).
@@ -121,21 +127,10 @@ export class Seeker {
     this.animInstance = null;
     this.bodyGroup.add(toy.group);
 
-    if (animationManager.isLoaded) {
-      const inst = animationManager.createInstance(bodyMat, BODY_H, { outline: true });
-      if (inst) {
-        toy.group.visible = false;
-        this.bodyGroup.add(inst.group);
-        this.animInstance = inst;
-        // A arma de água foi criada no rig do toy (agora oculto) — move para o grupo animado
-        if (this._blasterGroup) {
-          inst.group.add(this._blasterGroup);
-          this._blasterGroup.position.set(0.32, BODY_H * 0.35, 0.28);
-        }
-      }
-    } else {
-      this._checkAnimInstance();
-    }
+    // O modelo animado é montado DEPOIS da arma (mais abaixo): antes, a
+    // transferência da arma rodava aqui, quando `this._blaster` ainda era
+    // undefined — o `if` falhava calado e a arma ficava presa no toy oculto.
+    // Era essa a causa da arma invisível.
 
     // Caminhada procedural (mesmo Gait do jogador): pernas/braços balançam e o
     // tronco bobeia — substitui o antigo "flutuar de drone". Fase inicial aleatória
@@ -153,34 +148,23 @@ export class Seeker {
     visor.position.set(0, toy.headY, toy.headR + 0.05);
     toy.rig.upper.add(visor);
 
-    // ARMA DE ÁGUA 3D (Water Blaster / Super Soaker)
-    const blasterGroup = new THREE.Group();
-    const bodyBarrel = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.08, 0.08, 0.55, 12),
-      new THREE.MeshToonMaterial({ color: 0x59c1e8, gradientMap: toonGradient() })
-    );
-    bodyBarrel.rotation.x = Math.PI / 2;
-    blasterGroup.add(bodyBarrel);
+    // ARMA DE ÁGUA (modelo water_gun.glb, ver docs/PIPELINE_PERSONAGEM.md).
+    // Criada ANTES do modelo animado, para que `_attachBlaster` tenha o que
+    // pendurar. `muzzle` é o marcador da boca do cano, usado como origem do jato.
+    const arma = animationManager.createBlaster();
+    if (arma) {
+      this._blasterGroup = arma.group;
+      this._muzzle = arma.muzzle;
+      // Enquanto o modelo animado não existe, a arma fica no rig do toy.
+      this._blasterGroup.position.set(0.32, toy.headY * 0.4, 0.28);
+      toy.rig.upper.add(this._blasterGroup);
+    } else {
+      this._blasterGroup = null;
+      this._muzzle = null;
+    }
 
-    const tankMesh = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.11, 0.11, 0.40, 12),
-      new THREE.MeshToonMaterial({ color: 0xf2c63c, gradientMap: toonGradient() })
-    );
-    tankMesh.position.set(0, 0.14, -0.05);
-    tankMesh.rotation.x = Math.PI / 2;
-    blasterGroup.add(tankMesh);
-
-    const nozzle = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.04, 0.06, 0.12, 8),
-      new THREE.MeshToonMaterial({ color: 0x14181d, gradientMap: toonGradient() })
-    );
-    nozzle.position.set(0, 0, 0.32);
-    nozzle.rotation.x = Math.PI / 2;
-    blasterGroup.add(nozzle);
-
-    blasterGroup.position.set(0.32, toy.headY * 0.4, 0.28);
-    toy.rig.upper.add(blasterGroup);
-    this._blasterGroup = blasterGroup; // guardado para transferir ao animInstance
+    // Agora sim monta o modelo animado e leva a arma para a mão.
+    this._checkAnimInstance();
 
     // Cone de visão (visual/debug), apontando +Z a partir dos olhos
     const coneR = Math.tan(VISION_HALF_ANGLE) * VISION_RANGE;
@@ -289,12 +273,38 @@ export class Seeker {
       }
       this.bodyGroup.add(inst.group);
       this.animInstance = inst;
-      // Transfere a arma de água para o grupo animado (toy ficou removido)
-      if (this._blasterGroup) {
-        inst.group.add(this._blasterGroup);
-        this._blasterGroup.position.set(0.32, BODY_H * 0.35, 0.28);
-      }
+      this._attachBlaster(inst);
     }
+  }
+
+  // Leva a arma para a MÃO do modelo animado, para que ela acompanhe o braço.
+  _attachBlaster(inst) {
+    if (!this._blasterGroup) return;
+
+    const mao = inst.handBone;
+    if (!mao) {
+      // Sem osso não dá para prender na mão; avisa alto em vez de sumir calado.
+      console.warn('⚠️ Seeker: osso da mão não encontrado — arma fica no corpo.');
+      inst.group.add(this._blasterGroup);
+      this._blasterGroup.position.set(0.32, BODY_H * 0.35, 0.28);
+      return;
+    }
+
+    mao.add(this._blasterGroup);
+
+    // O osso vive dentro do clone, que leva `inst.modelScale`. Um filho herda
+    // essa escala, então a arma sairia modelScale× maior sem esta divisão.
+    // multiplyScalar, não setScalar: a arma já vem normalizada no comprimento
+    // certo por createBlaster, e sobrescrever jogaria essa normalização fora.
+    const s = 1 / (inst.modelScale || 1);
+    this._blasterGroup.scale.multiplyScalar(s);
+
+    // Pose na mão. Os eixos dos ossos do Mixamo são rotacionados, então estes
+    // valores são calibrados no olho, vendo o jogo — não dá para deduzi-los.
+    // `position` é em espaço do osso: multiplicar por `s` deixa o offset em
+    // metros de mundo (position × modelScale = metros).
+    this._blasterGroup.position.set(GUN_OFFSET.x * s, GUN_OFFSET.y * s, GUN_OFFSET.z * s);
+    this._blasterGroup.rotation.set(GUN_ROT.x, GUN_ROT.y, GUN_ROT.z);
   }
 
   // ------------------------------------------------------------------- VISION
