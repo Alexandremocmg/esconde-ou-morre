@@ -60,7 +60,7 @@ export const C2S = {
 
 // Servidor → cliente
 export const S2C = {
-  WELCOME: 'welcome',     // { id, role, spawn, layout, matchDuration, players[], token }
+  WELCOME: 'welcome',     // { id, role, spawn, layout, matchDuration, players[], token, eliminated }
   SNAPSHOT: 'snapshot',   // { t, players[] }
   PLAYER_JOIN: 'playerJoin',
   PLAYER_LEAVE: 'playerLeave',
@@ -98,6 +98,13 @@ export const HUNTER_AMMO_DEFAULT = 5;
 export const AIM_TOLERANCE_DEG = 6;
 
 export const MATCH_DURATION_S = 180; // 3 min (spec §4: 3-5 min)
+
+// Lobby maior (docs/PLANO_LOBBY_MULTIPLAYER.md): quantos Camaleões cabem na MESMA
+// partida, além do único Caçador — a sala inteira é `1 + MAX_CHAMELEONS`. Vive aqui (e
+// não só em room.js) porque room.js:_chameleonSpawn precisa dividir o círculo de spawns
+// por este número, e o valor é conceitualmente uma constante de gameplay como as outras
+// deste arquivo, não um detalhe interno do servidor.
+export const MAX_CHAMELEONS = 4;
 
 // Layout fixo da v1 — os dois clientes carregam o MESMO número de layout. Level.js é
 // função pura dele, com PRNG semeado (mulberry32, Level.js:1162): geometria/solids/

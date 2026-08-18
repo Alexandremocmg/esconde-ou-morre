@@ -176,6 +176,12 @@ export class Game {
       this.onlineRole = null;         // só sabido depois do 'welcome' do servidor
       this._nextFireAt = 0;
       this._onlineConnected = false;
+      // Lobby maior (docs/PLANO_LOBBY_MULTIPLAYER.md §3.2): com N Camaleões, ser
+      // eliminado não encerra mais a partida sozinho — sem este estado, o Camaleão
+      // flagrado continuaria andando/camuflando localmente enquanto já sumiu (fundido
+      // a escala 0) na tela de todo mundo. `true` congela o loop de update deste
+      // cliente (ver _tick) até o MATCH_OVER de verdade chegar.
+      this._eliminatedSpectating = false;
       this._hunterViewAttached = false; // reaproveitado por _updateHunterFPSRig() se o papel for Caçador
       this._hunterMuzzle = null;
       // Scanner (só usado se o papel acabar sendo Caçador — ver _tick). Mesmos
@@ -386,7 +392,15 @@ export class Game {
       }
 
       for (const p of welcome.players) this._spawnRemotePlayer(p);
-      this._updateOnlineHint(); // já sabe se entrou sozinho (welcome.players vazio) ou não
+      // Reload/reconexão no meio de uma partida em que este Camaleão já tinha sido
+      // flagrado antes de cair (docs/PLANO_LOBBY_MULTIPLAYER.md §3.2) — sem checar
+      // isto, ele voltaria a andar normalmente, sem saber que já está fora até o
+      // MATCH_OVER da partida inteira.
+      if (this.onlineRole === ROLE.CHAMELEON && welcome.eliminated) {
+        this._enterEliminatedSpectating();
+      } else {
+        this._updateOnlineHint(); // já sabe se entrou sozinho (welcome.players vazio) ou não
+      }
 
       this.net.on(S2C.SNAPSHOT, (msg) => this._onSnapshot(msg));
       this.net.on(S2C.PLAYER_JOIN, (msg) => { this._spawnRemotePlayer(msg.player); this._updateOnlineHint(); });
@@ -425,6 +439,10 @@ export class Game {
   // pontas às vezes nunca chegaram a estar na sala AO MESMO TEMPO, e nada na UI avisava).
   _updateOnlineHint() {
     if (!this._hintEl) return;
+    // Uma entrada/saída de outro Camaleão (PLAYER_JOIN/LEAVE) não pode apagar o aviso
+    // de "você foi flagrado" — só o fim de partida de verdade (_win/_gameOver) muda o
+    // que está na tela depois disso.
+    if (this._eliminatedSpectating) return;
     if (this.remotePlayers.size === 0) {
       this._hintEl.textContent = '⏳ Sozinho na sala — aguardando outro jogador entrar (mesmo link, outra aba/aparelho).';
       return;
@@ -478,6 +496,28 @@ export class Game {
         this._vignette.classList.add('spotted');
         setTimeout(() => this._vignette && this._vignette.classList.remove('spotted'), 500);
       }
+      // Lobby maior (docs/PLANO_LOBBY_MULTIPLAYER.md §3.2): com N Camaleões, ser
+      // atingido não é mais garantia de fim de partida (MATCH_OVER só chega quando o
+      // ÚLTIMO cai) — sem isto o Camaleão flagrado continuava jogando normalmente
+      // enquanto já sumiu da tela de todo mundo. Não usa _gameOver()/this.over aqui
+      // de propósito: aquilo mostraria a tela final ANTES do resultado real da
+      // partida chegar via _onMatchOver, e bloquearia o _win()/_gameOver() de verdade
+      // (os dois se recusam a rodar de novo quando this.over/this.won já é true).
+      if (this.onlineRole === ROLE.CHAMELEON && !this.won && !this.over) {
+        this._enterEliminatedSpectating();
+      }
+    }
+  }
+
+  // Congela o Camaleão local em modo espectador (docs/PLANO_LOBBY_MULTIPLAYER.md §3.2).
+  // Dois chamadores: o momento em que o PLAYER_HIT chega ao vivo (_onPlayerHit) e o
+  // caso de reload/reconexão no meio de uma partida em que este cliente JÁ estava
+  // eliminado antes de cair (_connectOnline lê `welcome.eliminated` — sem isso o
+  // Camaleão reconectado voltaria a andar normalmente, sem saber que já está fora).
+  _enterEliminatedSpectating() {
+    this._eliminatedSpectating = true;
+    if (this._hintEl) {
+      this._hintEl.textContent = '🫥 Você foi flagrado — aguardando o fim da partida...';
     }
   }
 
@@ -553,7 +593,7 @@ export class Game {
 
   _tick = () => {
     const dt = Math.min(this._clock.getDelta(), 0.05); // clamp anti-tab-switch
-    if (!this.over && !this.won) {
+    if (!this.over && !this.won && !this._eliminatedSpectating) {
       this.player.update(dt, this.joystick.value, this.camera);
       for (const s of this.seekers) {
         s.update(dt);
@@ -580,6 +620,7 @@ export class Game {
         this._updateScanner(
           [...this.remotePlayers.values()].filter((rp) => rp.role === ROLE.CHAMELEON)
         );
+        this._updateOnlineTargetsHud();
       }
 
       if (this.mode === 'online') {
@@ -776,6 +817,19 @@ export class Game {
     for (let i = 0; i < count; i++) {
       this.targets.push(new ChameleonTarget(this.scene, this.level, points[i]));
     }
+  }
+
+  // Lobby maior (docs/PLANO_LOBBY_MULTIPLAYER.md §3.4): mesma UI (#targets-count/
+  // #targets-total) do Caçador solo, mas contando RemotePlayer de verdade em vez de
+  // ChameleonTarget-boneco. O dado já vem em todo SNAPSHOT (rp.eliminated) — não
+  // precisa de nada novo do servidor.
+  _updateOnlineTargetsHud() {
+    const chameleons = [...this.remotePlayers.values()].filter((rp) => rp.role === ROLE.CHAMELEON);
+    const remaining = chameleons.filter((rp) => !rp.eliminated).length;
+    const elCount = document.getElementById('targets-count');
+    const elTotal = document.getElementById('targets-total');
+    if (elCount) elCount.textContent = String(remaining);
+    if (elTotal) elTotal.textContent = String(chameleons.length);
   }
 
   _updateTargetsHud() {
@@ -1253,6 +1307,7 @@ export class Game {
     this.scoreHistory = [];
     this.over = false;
     this.won = false;
+    this._eliminatedSpectating = false;
     this._heartTimer = 0;
     this._lastWinTick = -1;
 
@@ -1298,6 +1353,7 @@ export class Game {
         rp._fade = 0;
         rp.group.scale.setScalar(1);
       }
+      this._updateOnlineHint(); // volta pro texto normal — _eliminatedSpectating já foi zerado acima
       // Mesmo reset do Scanner que o bloco 'hunter' já faz abaixo — o online
       // reusa a mesma UI/estado (ver _tick), então precisa do mesmo cuidado.
       this._scannerActiveUntil = 0;

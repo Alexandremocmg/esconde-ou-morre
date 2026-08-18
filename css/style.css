@@ -406,6 +406,9 @@ body.mode-online.online-hunter #btn-paint,
 body.mode-online.online-hunter #btn-pose { display: none; }
 body.mode-online.online-hunter #btn-scan { display: flex; }
 body.mode-online.online-hunter #scanner-hud-badge { display: flex; }
+/* Lobby maior (docs/PLANO_LOBBY_MULTIPLAYER.md §3.4): reaproveita o mesmo badge 🎯 do
+   Caçador solo (#targets-hud) pra mostrar quantos Camaleões de verdade restam. */
+body.mode-online.online-hunter #targets-hud { display: flex; }
 
 /* #hint some em telas estreitas (@media acima) — mas no online ele é a ÚNICA forma de
    avisar "você está sozinho na sala" (ver Game._updateOnlineHint()), e celular é
