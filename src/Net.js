@@ -38,15 +38,17 @@ export class Net {
     if (fns) for (const fn of fns) fn(msg);
   }
 
-  connect() {
+  // `joinExtra` carrega config que só importa se o servidor der o papel HUNTER a este
+  // socket (hoje: munição — ver protocol.js C2S.JOIN). A sala já atribui papel na
+  // conexão, então isto chega DEPOIS do WELCOME — mas sempre antes do primeiro tiro
+  // possível, que é a única coisa que lê essa config do lado do servidor.
+  connect(joinExtra = {}) {
     return new Promise((resolve, reject) => {
       let settled = false;
       this.ws = new WebSocket(this.url);
 
       this.ws.addEventListener('open', () => {
-        // JOIN é só cerimonial na v1 (a sala já atribui papel na conexão) — mandado
-        // para o protocolo já ter o ponto de extensão quando entrar nome/lobby.
-        this._send({ type: C2S.JOIN });
+        this._send({ type: C2S.JOIN, ...joinExtra });
       });
 
       this.ws.addEventListener('message', (ev) => {

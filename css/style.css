@@ -400,6 +400,7 @@ body.mode-hunter #scanner-hud-badge { display: flex; }
    paridade com o Caçador solo (munição é autoritativa no servidor; Scanner é só
    uma affordance de UI, sem contraparte no servidor — ver Game.js:_updateScanner). */
 body.mode-online #water-ammo-hud { display: none; }
+body.mode-online.online-hunter #water-ammo-hud { display: flex; }
 body.mode-online.online-hunter #btn-fire { display: flex; }
 body.mode-online.online-hunter #btn-paint,
 body.mode-online.online-hunter #btn-pose { display: none; }

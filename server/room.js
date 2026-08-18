@@ -24,6 +24,7 @@ import {
   MATCH_DURATION_S,
   FIXED_LAYOUT,
   GROUND_Y,
+  HUNTER_AMMO_DEFAULT,
 } from '../src/net/protocol.js';
 import { coneCandidates, normalize } from '../src/net/hittest.js';
 
@@ -75,6 +76,12 @@ export class Room {
       eliminated: false,
       nextFireAt: 0,
       lastInputAt: Date.now(),
+      // Munição: valores por padrão, corrigidos por _handleJoin() assim que o JOIN
+      // chegar (sempre antes do primeiro tiro possível — ver protocol.js C2S.JOIN).
+      // Só importa pra quem é HUNTER; o Camaleão nunca lê os próprios.
+      ammo: HUNTER_AMMO_DEFAULT,
+      maxAmmo: HUNTER_AMMO_DEFAULT,
+      infiniteAmmo: false,
     };
     this.clients.set(id, client);
 
@@ -120,7 +127,22 @@ export class Room {
       this._handleFire(client, msg);
     } else if (msg.type === C2S.REVIVE) {
       this._onRevive(client);
+    } else if (msg.type === C2S.JOIN) {
+      this._handleJoin(client, msg);
     }
+  }
+
+  // Chega DEPOIS do WELCOME (o cliente só manda JOIN no evento 'open' do WebSocket,
+  // que dispara depois de a Promise de connect() já ter sido criada) mas sempre ANTES
+  // do primeiro tiro possível — dá tempo de configurar a munição antes de qualquer
+  // _handleFire. Ignorado pra quem virou CHAMELEON: a escolha dele nunca importa,
+  // só a de quem o servidor decidiu que é o Caçador.
+  _handleJoin(client, msg) {
+    if (client.role !== ROLE.HUNTER) return;
+    client.infiniteAmmo = !!msg.infiniteAmmo;
+    const ammo = Number(msg.ammo);
+    client.maxAmmo = Number.isFinite(ammo) && ammo > 0 ? Math.floor(ammo) : HUNTER_AMMO_DEFAULT;
+    client.ammo = client.maxAmmo;
   }
 
   // "Jogar novamente" sem reconectar (Game.js:restartInPlace). Sem isto, `eliminated`
@@ -134,7 +156,10 @@ export class Room {
     if (this._over) {
       this._over = false;
       this._matchStartAt = Date.now();
-      for (const c of this.clients.values()) c.eliminated = false;
+      for (const c of this.clients.values()) {
+        c.eliminated = false;
+        c.ammo = c.maxAmmo; // só tem efeito real pra quem é HUNTER — o resto nunca lê o próprio
+      }
     }
   }
 
@@ -162,8 +187,17 @@ export class Room {
     if (now < client.nextFireAt) return; // spam silenciosamente ignorado (cooldown já corre no cliente)
 
     const origin = msg.origin, dirIn = msg.dir;
-    if (!origin || !dirIn) return;
+    if (!origin || !dirIn) return; // valida ANTES de gastar munição — pacote malformado não pode custar água
     const dir = normalize(dirIn);
+
+    // Munição: mesma ordem de Game.js:fireHunterShot — gasta em TODO tiro (acerto ou
+    // erro) desde que o cooldown já tenha passado. Sem som/aviso aqui: o cliente já se
+    // autonega via HUD espelhado pelo SNAPSHOT (_onSnapshot em Game.js) antes de sequer
+    // mandar o FIRE; chegar aqui sem munição só pode ser um cliente desonesto/dessincronizado.
+    if (!client.infiniteAmmo) {
+      if (client.ammo <= 0) return;
+      client.ammo--;
+    }
 
     const candidates = [...this.clients.values()]
       .filter((c) => c.role === ROLE.CHAMELEON && c.connected && !c.eliminated)
@@ -191,6 +225,15 @@ export class Room {
     } else {
       client.nextFireAt = now + HUNTER_MISS_COOLDOWN_MS;
       this._send(client.ws, { type: S2C.FIRE_DENIED, reason: 'miss', nextFireAt: client.nextFireAt });
+    }
+
+    // Mesma checagem final de Game.js:fireHunterShot — se o tiro acima já eliminou o
+    // último Camaleão, _endMatch(HUNTER,...) já rodou e este _endMatch(CHAMELEON,...)
+    // vira um no-op (idempotente por this._over).
+    if (!client.infiniteAmmo && client.ammo <= 0) {
+      const stillHunting = [...this.clients.values()]
+        .some((c) => c.role === ROLE.CHAMELEON && c.connected && !c.eliminated);
+      if (stillHunting) this._endMatch(ROLE.CHAMELEON, 'Caçador sem munição');
     }
   }
 
@@ -235,6 +278,10 @@ export class Room {
       id: c.id, role: c.role, pos: c.pos, yaw: c.yaw, state: c.state,
       crouched: c.crouched, prone: c.prone, statue: c.statue, moving: c.moving,
       color: c.color, eliminated: c.eliminated,
+      // Munição vai pra TODO mundo (mesmo payload de sempre, sem mensagem nova) —
+      // só o próprio Caçador lê os próprios campos em Game.js:_onSnapshot, mas nada
+      // impede o Camaleão de um dia mostrar "Caçador tem N tiros restantes" com isto.
+      ammo: c.ammo, maxAmmo: c.maxAmmo, infiniteAmmo: c.infiniteAmmo,
     };
   }
 

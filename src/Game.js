@@ -133,6 +133,19 @@ export class Game {
     this.effects = new Effects(this.scene);
     this.audio = new Audio();
 
+    // Regras de Munição do Caçador (Meccha Chameleon Spec). Lido ANTES dos blocos por
+    // modo abaixo: o online manda isto pro servidor em _connectOnline() (chamado dentro
+    // do bloco 'online' logo mais), e precisa que this.maxWaterAmmo/infiniteAmmo já
+    // existam nesse momento — sem depender da ordem relativa a I/O real (o 'open' do
+    // WebSocket só dispara depois que esta função síncrona termina, mas isso não devia
+    // ser uma invariante implícita).
+    const ammoSel = document.getElementById('ammo-select');
+    const ammoOpt = ammoSel ? parseInt(ammoSel.value, 10) : 5;
+    this.maxWaterAmmo = isNaN(ammoOpt) ? 5 : ammoOpt;
+    this.waterAmmo = this.maxWaterAmmo;
+    const infCheck = document.getElementById('infinite-ammo-toggle');
+    this.infiniteAmmo = infCheck ? infCheck.checked : false;
+
     if (this.mode === 'hunter') {
       // Sem Caçador IA: quem persegue é o jogador. this.seekers fica vazio de
       // propósito — os laços que já iteram sobre ele (_tick, _updateFeedback)
@@ -180,14 +193,6 @@ export class Game {
       this.seekers = [mkSeeker(0), mkSeeker(1, 0xb01ecb)];
       if (this.stage >= THIRD_SEEKER_STAGE) this.seekers.push(mkSeeker(2, 0xd88a1a));
     }
-
-    // Regras de Munição do Caçador (Meccha Chameleon Spec)
-    const ammoSel = document.getElementById('ammo-select');
-    const ammoOpt = ammoSel ? parseInt(ammoSel.value, 10) : 5;
-    this.maxWaterAmmo = isNaN(ammoOpt) ? 5 : ammoOpt;
-    this.waterAmmo = this.maxWaterAmmo;
-    const infCheck = document.getElementById('infinite-ammo-toggle');
-    this.infiniteAmmo = infCheck ? infCheck.checked : false;
 
     // Placar com Atraso de 30 Segundos (Anti-Cheat Spec)
     this.scoreHistory = []; // { t, camoTime }
@@ -345,15 +350,18 @@ export class Game {
   // aparece no spawn genérico do layout até o 'welcome' chegar e reposicioná-lo.
   async _connectOnline() {
     try {
-      const welcome = await this.net.connect();
+      // ammo/infiniteAmmo só têm efeito se o servidor der o papel HUNTER a este
+      // socket (room.js:_handleJoin ignora pra quem vira CHAMELEON) — mesma config
+      // que o menu já lê pro Caçador solo, agora também autoritativa no online.
+      const welcome = await this.net.connect({ ammo: this.maxWaterAmmo, infiniteAmmo: this.infiniteAmmo });
       this._onlineConnected = true;
       this.onlineRole = welcome.role;
       this.player.isHunter = welcome.role === ROLE.HUNTER;
       this.player.position.set(welcome.spawn.x, this.player.position.y, welcome.spawn.z);
 
-      // Chrome de UI específico do papel Caçador (botão de tiro) — mesma classe CSS
-      // que o modo Caçador single-player usa para #btn-fire, só que sem munição/
-      // scanner/alvos-boneco, que não existem no modo online (ver css/style.css).
+      // Chrome de UI específico do papel Caçador (botão de tiro, munição, Scanner) —
+      // mesmas classes CSS que o modo Caçador single-player usa, sem alvos-boneco (o
+      // Camaleão é um jogador de verdade — ver css/style.css).
       document.body.classList.toggle('online-hunter', this.onlineRole === ROLE.HUNTER);
 
       // Caçador no online usa a MESMA câmera 1ª pessoa do single-player — troca só
@@ -413,7 +421,19 @@ export class Game {
 
   _onSnapshot(msg) {
     for (const p of msg.players) {
-      if (p.id === this.net.id) continue; // não aplica o próprio snapshot em si mesmo
+      if (p.id === this.net.id) {
+        // Munição AUTORITATIVA: o servidor é quem decide de verdade (room.js:
+        // _handleFire) — o decremento em _fireOnline() é só otimista, pra feedback
+        // instantâneo. Este snapshot (até 50ms depois de cada tiro) corrige qualquer
+        // divergência, mesmo padrão já usado pra posição/cooldown.
+        if (this.onlineRole === ROLE.HUNTER) {
+          this.waterAmmo = p.ammo;
+          this.maxWaterAmmo = p.maxAmmo;
+          this.infiniteAmmo = p.infiniteAmmo;
+          this._updateWaterAmmoHud();
+        }
+        continue; // não aplica o resto do próprio snapshot em si mesmo
+      }
       let rp = this.remotePlayers.get(p.id);
       if (!rp) { this._spawnRemotePlayer(p); rp = this.remotePlayers.get(p.id); }
       rp.pushSnapshot(p, msg.t);
@@ -450,6 +470,15 @@ export class Game {
     const now = performance.now();
     if (now < this._nextFireAt) return;
     this._nextFireAt = now + HUNTER_FIRE_COOLDOWN_MS;
+
+    // Decremento OTIMISTA (feedback instantâneo) — o servidor é quem decide de
+    // verdade (room.js:_handleFire) e o próximo SNAPSHOT corrige qualquer
+    // divergência (ver _onSnapshot). Mesmo gate/ordem de fireHunterShot().
+    if (!this.infiniteAmmo) {
+      if (this.waterAmmo <= 0) { this.audio.emptyClick(); return; }
+      this.waterAmmo--;
+      this._updateWaterAmmoHud();
+    }
 
     this.audio.waterBlast();
     if (this.player.triggerShootPose) this.player.triggerShootPose();

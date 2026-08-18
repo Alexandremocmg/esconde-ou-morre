@@ -34,7 +34,7 @@ export const CLIENT_TIMEOUT_MS = 20000;
 // ------------------------------------------------------------------ mensagens
 // Cliente → servidor
 export const C2S = {
-  JOIN: 'join',       // { name }
+  JOIN: 'join',       // { ammo?, infiniteAmmo? } — só lido se o servidor der o papel HUNTER a este socket
   INPUT: 'input',     // ver makeInputPayload
   FIRE: 'fire',       // { origin:{x,y,z}, dir:{x,y,z}, t }
   LEAVE: 'leave',
@@ -65,6 +65,13 @@ export const JET_RANGE = 15;                  // alcance do jato de água (m)
 export const HUNTER_AIM_HALF_ANGLE_DEG = 9;   // ~18° de cone total
 export const HUNTER_FIRE_COOLDOWN_MS = 300;
 export const HUNTER_MISS_COOLDOWN_MS = 2600;  // penalidade de bomba de pressão ao errar
+
+// Munição padrão do Caçador quando o JOIN não chega ou vem inválido — mesmo valor do
+// <option selected> em index.html. Autoritativa no servidor pelo mesmo motivo do
+// cooldown acima: "as duas abas nunca podem divergir sobre o resultado" (ver
+// room.js:1-10) — client-only deixaria o Caçador trapacear com munição infinita, e
+// pior, as duas pontas poderiam discordar sobre se a partida acabou por falta de água.
+export const HUNTER_AMMO_DEFAULT = 5;
 
 // Tolerância de validação do servidor. O cliente mira num alvo INTERPOLADO e atrasado
 // (INTERP_DELAY_MS), enquanto o servidor valida contra a posição mais recente que
