@@ -15,6 +15,22 @@ const RADIUS = 0.45 * SCALE;
 const LENGTH = 0.9 * SCALE;         // parte cilíndrica da cápsula
 const HALF_EXTENT = RADIUS + LENGTH / 2;
 const GROUND_Y = HALF_EXTENT;       // altura do centro quando no chão
+// O clipe 'prone' já deita o corpo inteiro sozinho — mas a pose baixa o
+// personagem SEM abaixar a raiz (root) do próprio clipe: medido por osso
+// (mixamorigHips/Foot/Head), a altura do MUNDO durante 'prone' fica ~0,6-0,66
+// mesmo com o offset -GROUND_Y do grupo aplicado (que só é correto pra pose
+// EM PÉ, pés em y=0) — por isso "flutua" ~0,6m acima do piso. Compensação
+// extra SÓ enquanto prone (ver update()); medido visualmente, não é o osso
+// mais baixo exato (deixa uma folga pequena de propósito).
+const PRONE_DROP = 0.60;
+// Deitado GRUDADO NA PAREDE (leque): a cápsula fica a RADIUS da parede (preciso
+// pra colisão), mas o clipe 'prone' não preenche essa distância toda — sobra
+// uma folga visível entre o corpo e a superfície. Só o grupo visual é puxado
+// pra mais perto (offset em X local, que mapeia pra ±wallNormal quando faceDir
+// é tangencial — ver _updateLatched); a física/latch continuam em RADIUS.
+// Valor calibrado visualmente (ver memória de verificação); ajustar se o
+// clipe 'prone' mudar.
+const WALL_PRONE_PULL = 0.13;
 // Velocidades NÃO escalam: MOVE_SPEED é o teto de justiça do Caçador
 // (PLAYER_GROUND_SPEED em Seeker.js). Menor + mesma velocidade = mais ágil.
 const MOVE_SPEED = 7.0;             // m/s no chão
@@ -293,15 +309,18 @@ export class Player {
     }
 
     if (poseName === 'prone') {
-      // Deitar só existe no chão (mesma regra de toggleProne) — selecionar essa
-      // pose grudado na parede deixava prone=true com state='latched', e o loop
-      // de física passa a rodar _updateProne (que nunca chama _orientTo) em vez
-      // de _updateLatched: o personagem travava congelado na rotação de deitado,
-      // preso na parede, sem o joystick conseguir tirar dali (toggleProne também
-      // se recusa a rodar fora do chão).
-      if (this.state !== 'grounded') return;
-      this.prone = true;
-      this.crouched = false;
+      // No chão: this.prone=true faz update() rotear pra _updateProne e tocar
+      // o clipe 'prone' (que já É uma pose deitada de corpo inteiro — não
+      // precisa de tombo/rotação extra por cima, ver docs/PLANO_PARIDADE.md).
+      // Grudado na parede: NÃO mexer em prone/state — setar this.prone=true
+      // aqui faria update() rotear pra _updateProne (que nunca chama
+      // _orientTo/re-pin da parede) em vez de _updateLatched, e o jogador
+      // travava, preso, sem o joystick conseguir soltar dali (bug real
+      // verificado no deployment de produção, commit bad75ce). O clipe
+      // 'prone' toca do mesmo jeito via _manualPose logo abaixo — a física
+      // de escalada continua rodando normal, e o personagem sai da pose
+      // sozinho ao voltar a mexer o joystick.
+      if (this.state === 'grounded') { this.prone = true; this.crouched = false; }
     } else if (poseName === 'crouch') {
       this.crouched = true;
       this.prone = false;
@@ -489,6 +508,15 @@ export class Player {
       }
       this.animInstance.setColor(this.zones[0].mat.color);
       this.animInstance.update(freeze ? 0 : dt);
+      // Deitado no chão: baixa o grupo visual extra (PRONE_DROP, ver acima) pra
+      // compensar a raiz do clipe 'prone' — sem isto o personagem fica flutuando
+      // no ar. Reescrito todo frame (idempotente); volta ao offset normal assim
+      // que sai de prone.
+      const wallFlat = this.state === 'latched' && this._manualPose === 'prone';
+      this.animInstance.group.position.y = this.prone ? -GROUND_Y - PRONE_DROP : -GROUND_Y;
+      // Deitado grudado na parede: puxa o grupo visual em X local pra reduzir a
+      // folga entre o corpo e a superfície (ver WALL_PRONE_PULL acima).
+      this.animInstance.group.position.x = wallFlat ? WALL_PRONE_PULL : 0;
     } else {
       this.gait.update(dt, dist);
       this._crouchT += ((this.crouched ? 1 : 0) - this._crouchT) * Math.min(1, 10 * dt);
@@ -586,14 +614,24 @@ export class Player {
     this.wallNormal.copy(worldNormal);
     this.position.copy(hit.point).addScaledVector(this.wallNormal, RADIUS);
 
-    // Alinha a cápsula: eixo (local Y) ao longo da subida. A "face" (local Z)
-    // aponta para FORA normalmente; mas quando CAMUFLADO ela PRENSA na parede
-    // (−normal), escondendo o rosto e mostrando as costas à câmera (P3b). Usa o
-    // flag de histerese _camo (1 frame de atraso, suavizado pelo slerp do _orientTo).
+    // Alinha a cápsula: eixo (local Y) ao longo da subida, "face" (local Z, onde
+    // ficam os olhos) sempre virada PRA DENTRO da parede (−normal) — a barriga
+    // gruda na superfície, como um lagarto de verdade. Face pra FORA (o P3b
+    // original, só virava com camuflagem) lia como "escada invisível": a câmera
+    // via as costas encostadas com a barriga pro lado de fora, não escalada de
+    // verdade. P3a (pupilas somem ao camuflar) já cobre a pista de "esconder o
+    // rosto" sem precisar girar o corpo inteiro.
     const newUp = this._tangentUp(this.wallNormal, this._axY);
-    const faceDir = this._camo
-      ? this._tmpDir.copy(this.wallNormal).multiplyScalar(-1)
-      : this.wallNormal;
+    const wallSide = this._axX.copy(newUp).cross(this.wallNormal).normalize(); // "direita" na parede
+    // Deitar grudado (leque, ver setPose): o clipe 'prone' deita o corpo ao
+    // longo do eixo local Z (medido: pernas/cabeça ficam à mesma altura,
+    // espalhadas em Z — ver PRONE_DROP acima). Com faceDir=−normal (a base
+    // normal, de escalada), esse eixo aponta PRA DENTRO da parede e metade do
+    // corpo fica cravado nela. Trocar faceDir por `wallSide` (tangente horizontal
+    // da parede) deita o personagem DE LADO, esparramado ao longo da
+    // superfície, em vez de atravessá-la.
+    const wallFlat = this._manualPose === 'prone';
+    const faceDir = wallFlat ? wallSide : this._tmpDir.copy(this.wallNormal).multiplyScalar(-1);
     this._orientTo(newUp, faceDir, dt);
 
     // Voltar ao chão: se está descendo e os "pés" da cápsula já alcançaram o
