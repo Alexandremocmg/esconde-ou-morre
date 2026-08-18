@@ -1,13 +1,17 @@
 import * as THREE from 'three';
 
 const WORLD_UP = new THREE.Vector3(0, 1, 0);
-// Distâncias reaproximadas (~metade) para acompanhar o jogador reduzido em 50%
-// (Player SCALE=0.5): mantém o personagem no mesmo tamanho aparente na tela.
-const DIST = 3.5;   // distância atrás do jogador
-const HEIGHT = 1.9; // elevação ao longo do "up"
+// Distância/altura escaladas junto do tamanho do boneco (Player.js: SCALE). Foram
+// calibradas quando SCALE era 0.5 (DIST 3.5 / HEIGHT 1.9) — SCALE subiu depois pra
+// 0.65 e depois pra 0.8 (personagem 60% maior) sem ninguém reajustar aqui, então a
+// câmera foi ficando relativamente mais perto do boneco a cada aumento. Valores
+// abaixo já escalados pro SCALE atual (0.8 → razão 1.6× sobre a calibração de
+// 0.5). Se SCALE mudar de novo em Player.js, reescalar estas constantes junto.
+const DIST = 5.6;   // distância atrás do jogador
+const HEIGHT = 3.0; // elevação ao longo do "up"
 const POS_LERP = 6; // suavização de posição
 const UP_LERP = 5;  // suavização do vetor up (reorientação na parede)
-const MIN_DIST = 1.3; // distância mín. da câmera quando espremida contra parede
+const MIN_DIST = 2.1; // distância mín. da câmera quando espremida contra parede
 const LOOK_SENS = 0.005;  // rad por px de arrasto (área direita da tela)
 const PITCH_MIN = -0.5;   // olhar p/ baixo (limite)
 const PITCH_MAX = 0.6;    // olhar p/ cima (limite; baixo o bastante p/ não furar o teto/laje)
@@ -54,7 +58,8 @@ export class FollowCamera {
 
   // Zoom por gesto de pinça (pinch multitouch)
   addZoom(delta) {
-    this.distance = THREE.MathUtils.clamp(this.distance + delta, 1.8, 7.5);
+    // Faixa de zoom escalada junto de DIST/HEIGHT (ver comentário no topo do arquivo).
+    this.distance = THREE.MathUtils.clamp(this.distance + delta, 2.9, 12.0);
     const minPitch = Math.max(PITCH_MIN, -(HEIGHT - 0.4) / Math.max(1, this.distance));
     this.pitch = THREE.MathUtils.clamp(this.pitch, minPitch, PITCH_MAX);
   }

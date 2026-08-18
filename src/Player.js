@@ -61,6 +61,8 @@ export class Player {
     this.crouched = false;   // agachado (o Caçador lê isto p/ reduzir o alcance de visão)
     this._crouchT = 0;       // transição suavizada de agachamento (0..1)
     this.prone = false;      // deitado no chão (P3c): camufla contra o TAPETE embaixo
+    this._manualPose = null; // pose escolhida no leque (setPose); sobrevive enquanto
+                              // parado — some ao andar/escalar (ver update())
 
     // Modo Caçador jogável (Game.js): reaproveita a física/câmera do Camaleão
     // para o avatar do Caçador, só trocando a prioridade de animação (pose de
@@ -164,6 +166,7 @@ export class Player {
     this.prone = false;
     this.crouched = false;
     this.statue = false;
+    this._manualPose = null;
     this.isJumping = false;
     this.latchedObject = null;
     this.object.position.set(0, GROUND_Y, 6);
@@ -290,6 +293,13 @@ export class Player {
     }
 
     if (poseName === 'prone') {
+      // Deitar só existe no chão (mesma regra de toggleProne) — selecionar essa
+      // pose grudado na parede deixava prone=true com state='latched', e o loop
+      // de física passa a rodar _updateProne (que nunca chama _orientTo) em vez
+      // de _updateLatched: o personagem travava congelado na rotação de deitado,
+      // preso na parede, sem o joystick conseguir tirar dali (toggleProne também
+      // se recusa a rodar fora do chão).
+      if (this.state !== 'grounded') return;
       this.prone = true;
       this.crouched = false;
     } else if (poseName === 'crouch') {
@@ -302,6 +312,11 @@ export class Player {
       this.prone = false;
       this.crouched = false;
     }
+
+    // Guarda a escolha: update() a respeita enquanto o jogador ficar parado
+    // (inclusive grudado na parede, onde o automático sempre tocaria climb/hide)
+    // — some sozinha assim que ele volta a se mover.
+    this._manualPose = poseName;
 
     if (this.animInstance && this.animInstance.actions[poseName]) {
       this.animInstance.playAnimation(poseName);
@@ -436,12 +451,32 @@ export class Player {
       // isHunter é sempre false e este ramo nunca entra — zero mudança de
       // comportamento fora do modo Caçador.
       this._shootHold = Math.max(0, this._shootHold - dt);
+      // Pose manual (leque) cancela sozinha ao andar/escalar — sem isto o
+      // jogador ficaria "preso" na última pose escolhida mesmo se movimento.
+      if (moving) this._manualPose = null;
+      // Congela a pose atual (mixer.update(0), não avança o clipe) em vez de
+      // trocar de animação — usado só pro caso "grudado e parado" abaixo, pra
+      // parar exatamente no gesto de escalar em vez de tocar 'hide' (que lia
+      // como "deitado"). NÃO usar action.paused=true aqui: o mixer para de
+      // reescrever os ossos e o próximo playAnimation() mistura sobre um
+      // resultado congelado — some da câmera some, mas o pulo de pose "salta"
+      // (ver docs/PIPELINE_PERSONAGEM.md / memória player-glb-model).
+      let freeze = false;
+
       if (this.isHunter && this._shootHold > 0 && this.animInstance.actions['shoot']) {
         this.animInstance.playAnimation('shoot');
       } else if (this.isJumping || this.velocity.y > 0.5) {
         this.animInstance.playAnimation('jump');
+      } else if (this._manualPose && this.animInstance.actions[this._manualPose]) {
+        // Grudado na parede e parado, o automático (linha abaixo) sempre tocaria
+        // climb — checar isto ANTES é o que faz a pose do leque "grudar".
+        this.animInstance.playAnimation(this._manualPose);
       } else if (this.state === 'latched') {
-        this.animInstance.playAnimation(moving ? 'climb' : 'hide');
+        // Sempre o clipe de escalada — parado, só CONGELA o quadro em vez de
+        // trocar pra 'hide' (a descida em Y embutida nesse clipe lia como o
+        // personagem deitando contra a parede).
+        this.animInstance.playAnimation('climb');
+        freeze = !moving;
       } else if (this.prone) {
         this.animInstance.playAnimation('prone');
       } else if (this.crouched) {
@@ -453,7 +488,7 @@ export class Player {
         this.animInstance.playAnimation('idle');
       }
       this.animInstance.setColor(this.zones[0].mat.color);
-      this.animInstance.update(dt);
+      this.animInstance.update(freeze ? 0 : dt);
     } else {
       this.gait.update(dt, dist);
       this._crouchT += ((this.crouched ? 1 : 0) - this._crouchT) * Math.min(1, 10 * dt);
@@ -792,6 +827,11 @@ export class Player {
     this.latchedObject = hit.object;
     this.wallNormal.copy(n);
     this.position.copy(hit.point).addScaledVector(this.wallNormal, RADIUS);
+    // Deitar é só-chão (ver setPose): sem isto, grudar vindo de prone deixava
+    // prone=true com state='latched' e travava o personagem — ver comentário em
+    // setPose('prone').
+    this.prone = false;
+    this.object.rotation.x = 0;
     return true;
   }
 
