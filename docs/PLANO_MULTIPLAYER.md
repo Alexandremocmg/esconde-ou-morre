@@ -209,6 +209,14 @@ cita (GitHub Pages/Netlify/Vercel/S3) não seguram isso.
   ficar em sincronia manual com a URL real que o Render atribuir ao criar o
   serviço (só muda se o serviço for recriado com outro nome).
 
+**Status: em produção e verificado (2026-08-18).** Cliente ao vivo em
+`https://esconde-ou-morre.vercel.app` (deploy `8c28758` promovido automaticamente pelo
+webhook do GitHub e aliasado em produção) e servidor no Render respondendo — handshake
+WS real testado (mensagem `welcome` recebida com papel/spawn/token). Pegadinha já
+resolvida nessa checagem: um deploy da Vercel pode ficar `READY` com `target: null`
+(preview, não produção) mesmo em cima do commit certo — confirmar sempre pelo alias de
+produção, não só pelo status do deploy mais recente.
+
 ## Como rodar
 
 ```bash

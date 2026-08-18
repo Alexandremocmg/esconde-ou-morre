@@ -57,8 +57,14 @@ Abra `http://localhost:8000` e clique em **JOGAR**.
 
 ## Deploy
 
-Qualquer host de arquivos estáticos serve a pasta como está (GitHub Pages, Netlify,
-Vercel, S3, etc.) — publique a raiz do repositório.
+**Em produção:** cliente na Vercel — https://esconde-ou-morre.vercel.app (deploy
+automático a cada push em `main`) — e servidor autoritativo do modo Online no
+Render.com (Blueprint `render.yaml`, serviço `esconde-ou-morre-server`). Detalhes e
+histórico de verificação em `docs/PLANO_MULTIPLAYER.md`, seção "Hospedagem
+(produção)".
+
+Fora do modo Online, qualquer host de arquivos estáticos serve a pasta como está
+(GitHub Pages, Netlify, Vercel, S3, etc.) — publique a raiz do repositório.
 
 ## Recursos Principais e Mecânicas
 
