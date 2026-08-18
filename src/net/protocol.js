@@ -31,6 +31,16 @@ export const INTERP_DELAY_MS = 100;
 // a sala (MAX_PLAYERS=2, server/room.js) por tempo demais.
 export const CLIENT_TIMEOUT_MS = 20000;
 
+// Quanto tempo a sala segura a VAGA (papel, munição, estado eliminado) de um
+// cliente que caiu antes de dar a vaga como perdida de vez. Cobre tanto uma queda
+// de wifi rápida (aba viva, WS reconecta sozinho) quanto o navegador matando a aba
+// em segundo plano e recarregando do zero (sessão persistida em sessionStorage,
+// ver Net.js). Contado a partir do ÚLTIMO input visto, não de quando o servidor
+// percebeu — uma morte silenciosa (sem close limpo) só é percebida depois de
+// CLIENT_TIMEOUT_MS, então contar a partir de "agora" desperdiçaria metade da
+// janela em algo que o cliente já não está fazendo há tempo.
+export const RECONNECT_GRACE_MS = 30000;
+
 // ------------------------------------------------------------------ mensagens
 // Cliente → servidor
 export const C2S = {
@@ -43,7 +53,7 @@ export const C2S = {
 
 // Servidor → cliente
 export const S2C = {
-  WELCOME: 'welcome',     // { id, role, spawn, layout, players[] }
+  WELCOME: 'welcome',     // { id, role, spawn, layout, matchDuration, players[], token }
   SNAPSHOT: 'snapshot',   // { t, players[] }
   PLAYER_JOIN: 'playerJoin',
   PLAYER_LEAVE: 'playerLeave',

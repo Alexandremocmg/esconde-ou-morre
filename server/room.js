@@ -13,6 +13,7 @@ import { randomUUID } from 'node:crypto';
 import {
   TICK_MS,
   CLIENT_TIMEOUT_MS,
+  RECONNECT_GRACE_MS,
   C2S,
   S2C,
   ROLE,
@@ -55,27 +56,88 @@ export class Room {
   }
 
   // ------------------------------------------------------------- ciclo de vida
-  addClient(ws) {
-    const active = [...this.clients.values()].filter((c) => c.connected);
-    if (active.length >= MAX_PLAYERS) {
+  // Ponto de entrada de toda conexão nova. Primeiro tenta RECONECTAR a um cliente
+  // que caiu há pouco (identidade vem na própria URL de upgrade do WebSocket —
+  // `?rejoin=<id>:<token>`, ver _parseRejoin/Net.js) e, se não der, segue o fluxo
+  // de entrada nova de sempre.
+  addClient(ws, req) {
+    const rejoin = this._parseRejoin(req);
+    if (rejoin && this._reattach(ws, rejoin)) return;
+    this._freshJoin(ws);
+  }
+
+  // Lê `?rejoin=<id>:<token>` da URL de upgrade. `id` é um UUID (nunca contém
+  // ':'), então dividir na primeira ocorrência é seguro.
+  _parseRejoin(req) {
+    if (!req || !req.url) return null;
+    try {
+      const raw = new URL(req.url, 'http://localhost').searchParams.get('rejoin');
+      if (!raw) return null;
+      const i = raw.indexOf(':');
+      if (i < 0) return null;
+      return { id: raw.slice(0, i), token: raw.slice(i + 1) };
+    } catch (_) {
+      return null;
+    }
+  }
+
+  // Reata um `ws` NOVO a um client EXISTENTE (ainda dentro de RECONNECT_GRACE_MS —
+  // se já foi purgado por _purgeStale, `this.clients` nem tem mais o id, e isto
+  // devolve false, caindo pro fluxo de entrada nova). O token evita que qualquer
+  // um que veja o id (broadcast em todo SNAPSHOT) sequestre a sessão de outro
+  // jogador — não é segurança de verdade (sem TLS mútuo/assinatura), só o
+  // suficiente pra não ser trivial; mesmo nível de confiança que o resto da v1
+  // (Débito 1: movimento também é só confiado, não validado).
+  _reattach(ws, { id, token }) {
+    const client = this.clients.get(id);
+    if (!client || client.connected || client.token !== token) return false;
+
+    client.ws = ws;
+    client.connected = true;
+    client.lastInputAt = Date.now();
+
+    this._send(ws, {
+      type: S2C.WELCOME,
+      id: client.id, role: client.role, spawn: SPAWNS[client.role], layout: FIXED_LAYOUT,
+      matchDuration: MATCH_DURATION_S, token: client.token,
+      players: [...this.clients.values()]
+        .filter((c) => c.id !== id && c.connected)
+        .map((c) => this._publicState(c)),
+    });
+    console.log(`[room] reconectou ${id} como ${client.role} (${this.clients.size} na sala)`);
+
+    ws.on('message', (raw) => this._onMessage(client, raw));
+    ws.on('close', () => this._onDisconnect(client));
+    return true;
+  }
+
+  _freshJoin(ws) {
+    // Conta TODO mundo na sala, não só quem está `connected` agora — um cliente
+    // caído mas ainda dentro da janela de tolerância continua "ocupando" a vaga e
+    // o papel dele, senão um 3º dispositivo poderia roubar o papel de quem só
+    // teve uma queda de wifi de alguns segundos.
+    const holders = [...this.clients.values()];
+    if (holders.length >= MAX_PLAYERS) {
       this._send(ws, { type: S2C.MATCH_OVER, winner: null, reason: 'sala cheia' });
       ws.close(4001, 'sala cheia');
       return;
     }
 
     const id = randomUUID();
-    const takenRoles = new Set(active.map((c) => c.role));
+    const token = randomUUID();
+    const takenRoles = new Set(holders.map((c) => c.role));
     const role = takenRoles.has(ROLE.HUNTER) ? ROLE.CHAMELEON : ROLE.HUNTER;
     const spawn = SPAWNS[role];
 
     const client = {
-      id, ws, role, connected: true,
+      id, token, ws, role, connected: true,
       pos: { ...spawn }, yaw: 0, state: 'grounded',
       crouched: false, prone: false, statue: false, moving: false,
       color: [0xeef0f2, 0xeef0f2],
       eliminated: false,
       nextFireAt: 0,
       lastInputAt: Date.now(),
+      disconnectedAt: 0,
       // Munição: valores por padrão, corrigidos por _handleJoin() assim que o JOIN
       // chegar (sempre antes do primeiro tiro possível — ver protocol.js C2S.JOIN).
       // Só importa pra quem é HUNTER; o Camaleão nunca lê os próprios.
@@ -85,9 +147,10 @@ export class Room {
     };
     this.clients.set(id, client);
 
-    if (active.length === 0) {
-      // Primeiro jogador da sala: começa a partida (v1 não tem lobby/contagem — spec
-      // §4 fica para uma próxima fase, ver plano).
+    const connectedBefore = holders.filter((c) => c.connected).length;
+    if (connectedBefore === 0) {
+      // Primeiro jogador de verdade na sala: começa a partida (v1 não tem
+      // lobby/contagem — spec §4 fica para uma próxima fase, ver plano).
       this._matchStartAt = Date.now();
       this._over = false;
     }
@@ -95,7 +158,7 @@ export class Room {
     this._send(ws, {
       type: S2C.WELCOME,
       id, role, spawn, layout: FIXED_LAYOUT,
-      matchDuration: MATCH_DURATION_S,
+      matchDuration: MATCH_DURATION_S, token,
       players: [...this.clients.values()]
         .filter((c) => c.id !== id && c.connected)
         .map((c) => this._publicState(c)),
@@ -105,15 +168,32 @@ export class Room {
     console.log(`[room] entrou ${id} como ${role} (${this.clients.size} na sala)`);
 
     ws.on('message', (raw) => this._onMessage(client, raw));
-    ws.on('close', () => this._onLeave(client));
+    ws.on('close', () => this._onDisconnect(client));
   }
 
-  _onLeave(client) {
+  // NÃO remove o cliente nem avisa o outro lado ainda — só marca a queda. A
+  // remoção de verdade (com PLAYER_LEAVE) é _purgeStale(), chamado a cada tick,
+  // quando RECONNECT_GRACE_MS esgota sem uma reconexão. Chamado tanto por um
+  // 'close' limpo do WebSocket quanto pelo timeout silencioso em _tick() — este
+  // último passa `at` = último input visto (não "agora"), senão uma morte
+  // silenciosa só detectada CLIENT_TIMEOUT_MS depois já gastaria metade da janela
+  // de tolerância antes mesmo de começarmos a contar.
+  _onDisconnect(client, at = Date.now()) {
+    if (!client.connected) return; // já tratado (ex.: 'close' duplicado do ws.terminate())
     client.connected = false;
-    this.clients.delete(client.id);
-    this._broadcast({ type: S2C.PLAYER_LEAVE, id: client.id });
-    console.log(`[room] saiu ${client.id} (${this.clients.size} na sala)`);
-    if (this.clients.size === 0) this._over = false; // sala esvaziou: próxima entrada reinicia
+    client.disconnectedAt = at;
+    console.log(`[room] ${client.id} caiu — segurando a vaga por ${(RECONNECT_GRACE_MS / 1000).toFixed(0)}s`);
+  }
+
+  // Chamado a cada tick: remove de vez quem caiu e não voltou dentro da janela.
+  _purgeStale(now) {
+    for (const [id, c] of this.clients) {
+      if (c.connected || now - c.disconnectedAt < RECONNECT_GRACE_MS) continue;
+      this.clients.delete(id);
+      this._broadcast({ type: S2C.PLAYER_LEAVE, id });
+      console.log(`[room] ${id} não reconectou a tempo, saiu de vez (${this.clients.size} na sala)`);
+      if (this.clients.size === 0) this._over = false; // sala esvaziou: próxima entrada reinicia
+    }
   }
 
   _onMessage(client, raw) {
@@ -249,13 +329,15 @@ export class Room {
     const now = Date.now();
 
     // Timeout de cliente silencioso (aba fechada sem close limpo, wifi caiu etc.)
+    // — marca a queda (não deleta: _purgeStale cuida disso depois de
+    // RECONNECT_GRACE_MS sem uma reconexão bem-sucedida).
     for (const c of this.clients.values()) {
       if (c.connected && now - c.lastInputAt > CLIENT_TIMEOUT_MS) {
-        c.connected = false;
         try { c.ws.terminate(); } catch (_) {}
-        this._onLeave(c);
+        this._onDisconnect(c, c.lastInputAt);
       }
     }
+    this._purgeStale(now);
 
     if (!this._over && this._matchStartAt && this.clients.size > 0) {
       const elapsed = (now - this._matchStartAt) / 1000;

@@ -382,8 +382,25 @@ export class Game {
       this.net.on(S2C.PLAYER_LEAVE, (msg) => { this._removeRemotePlayer(msg.id); this._updateOnlineHint(); });
       this.net.on(S2C.PLAYER_HIT, (msg) => this._onPlayerHit(msg));
       this.net.on(S2C.MATCH_OVER, (msg) => this._onMatchOver(msg));
+
+      // Reconexão (Net.js): uma queda não encerra mais a partida na hora — o
+      // próprio Net tenta reconectar sozinho (backoff, até RECONNECT_GRACE_MS) e
+      // o servidor segura papel/munição/eliminado da sessão por esse tanto de
+      // tempo (room.js:_onDisconnect/_purgeStale). Posição/câmera não são tocadas
+      // aqui: numa reconexão na mesma página elas nunca pararam de rodar
+      // localmente (Débito 1 — o cliente sempre se auto-simula, com ou sem rede);
+      // e num reload de página completo, o construtor do Game já cuida disso do
+      // zero antes mesmo deste handler existir.
+      this.net.on('_reconnecting', () => {
+        if (this._hintEl) this._hintEl.textContent = '🔄 Conexão perdida — reconectando...';
+      });
+      this.net.on('_reconnected', () => this._updateOnlineHint());
+
+      // Só chega aqui depois que Net.js DESISTIU de vez (grace period esgotado ou
+      // fechamento explícito) — não mais na primeira queda, então isto agora
+      // significa "reconexão não deu certo", não "internet piscou".
       this.net.on('_close', () => {
-        if (!this.over && !this.won) this._gameOver('Conexão com o servidor perdida.');
+        if (!this.over && !this.won) this._gameOver('Conexão com o servidor perdida — não foi possível reconectar.');
       });
     } catch (err) {
       console.error('❌ Game: falha ao conectar no modo online', err);

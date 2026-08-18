@@ -16,8 +16,10 @@ room.start();
 
 const wss = new WebSocketServer({ port: PORT });
 
-wss.on('connection', (ws) => {
-  room.addClient(ws);
+wss.on('connection', (ws, req) => {
+  // `req` (o upgrade HTTP original) carrega a query string — é onde uma tentativa
+  // de reconexão manda `?rejoin=<id>:<token>` (ver room.js:_parseRejoin/Net.js).
+  room.addClient(ws, req);
 });
 
 wss.on('listening', () => {

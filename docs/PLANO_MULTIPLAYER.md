@@ -56,8 +56,9 @@ navegador (WebSocket nativo)                    Node + ws (server/)
 | Hitreg compartilhado | `src/net/hittest.js` | Cone de mira + alcance, sem imports |
 | Cliente de rede | `src/Net.js` | Conecta, envia input/tiro, expõe eventos |
 | Avatar remoto | `src/RemotePlayer.js` | Interpola snapshots (buffer 100ms), escolhe animação pelo estado recebido |
-| Servidor | `server/index.js` + `server/room.js` | Sala única, papel por ordem de entrada, tick 20Hz, valida tiro, decide fim de partida |
+| Servidor | `server/index.js` + `server/room.js` | Sala única, papel por ordem de entrada, tick 20Hz, valida tiro, decide fim de partida, segura vaga de quem reconecta |
 | Integração no jogo | `src/Game.js` (`this.mode === 'online'`) | 3º modo ao lado de `chameleon`/`hunter`; reaproveita `HunterCamera` p/ o papel Caçador |
+| Reconexão | `src/Net.js` + `server/room.js` (`_reattach`/`_purgeStale`) | Backoff automático + retomada via `sessionStorage` — ver §3.2 |
 
 **Papel → câmera:** o Caçador do modo online usa a mesma `HunterCamera` (1ª pessoa, FOV,
 lanterna, viewmodel — `docs/MECANICA_CACADOR_VISAO.md`) do single-player. Isso não é só
@@ -66,9 +67,15 @@ jogador, então `camera.getWorldDirection()` para mirar sempre apontaria pra si 
 troca de câmera só acontece depois do `welcome` do servidor, quando o papel é conhecido
 (`Game._connectOnline()`).
 
-**Sem ammo/scanner no online:** o servidor da v1 não tem conceito de munição — só
-cooldown (300ms normal / 2600ms ao errar, mesmos valores do single-player, agora vindos
-de `protocol.js`). Scanner fica fora de escopo (fase futura).
+**Munição e Scanner têm paridade com o Caçador solo.** Munição é AUTORITATIVA no
+servidor (`room.js:_handleFire`, mesma ordem de `Game.js:fireHunterShot`) — mesmo
+princípio de "as duas abas nunca podem divergir sobre o resultado" já usado pro
+cooldown; ficar sem munição encerra a partida a favor do Camaleão. Scanner é
+100% client-side, sem participação do servidor: a posição de todo jogador já
+viaja a 20Hz no SNAPSHOT independente de camuflagem (Interest Management
+continua fora de escopo, ver tabela acima), então o Scanner não revela nada que
+o cliente não tivesse — é só a mesma affordance de radar do solo, reaproveitada
+com `RemotePlayer` no lugar de `ChameleonTarget`.
 
 ## 3.1. Bugs reais encontrados no primeiro teste em celular (corrigidos)
 
@@ -101,8 +108,51 @@ só apareceram testando em dois aparelhos de verdade pela rede/túnel:
      `body.mode-online #hint { display: block; }` (`css/style.css`) sobrepõe isso.
 
 Nenhuma das duas correções elimina o risco por completo (uma aba minimizada por muito
-tempo ainda pode ser derrubada) — é mitigação, não uma garantia. Reconexão de verdade
-(retomar a MESMA sessão/papel depois de cair) fica fora de escopo desta v1.
+tempo ainda pode ser derrubada) — é mitigação, não uma garantia. Foi essa lacuna que
+motivou a reconexão de verdade, descrita a seguir.
+
+## 3.2. Reconexão
+
+Uma queda de conexão não encerra mais a partida na hora. Cobre dois casos:
+
+1. **WS cai com a aba viva** (wifi pisca, app vai brevemente pro fundo) — `Net.js`
+   detecta o `close` inesperado e tenta reconectar sozinho (backoff 1s/2s/3s/5s...),
+   sem tocar em posição/câmera (que nunca pararam de rodar localmente — Débito 1: o
+   cliente sempre se auto-simula).
+2. **O navegador mata a aba de vez e recarrega** (mais comum no celular do que
+   parece — foi o que aconteceu nos próprios testes desta sessão com múltiplas
+   abas). `id`+`token` da sessão ficam em `sessionStorage` (mesmo padrão de
+   `eom-body`/`eom-stage`) e sobrevivem ao reload; ao entrar em Online de novo,
+   `Net.connect()` tenta retomar essa sessão antes de pedir uma nova.
+
+**Como funciona:** a identidade viaja na própria URL de upgrade do WebSocket
+(`?rejoin=<id>:<token>`), resolvida de forma síncrona em `room.js:addClient` —
+sem mensagem nova no protocolo. O servidor segura a vaga (papel, munição,
+`eliminated`) por `RECONNECT_GRACE_MS` (30s, `protocol.js`) antes de dar a sessão
+como perdida de vez (`_purgeStale`, chamado a cada tick). O `token` (gerado
+junto do `id`, nunca broadcastado — só vai pro próprio dono na mensagem
+`welcome`) impede que qualquer um que veja o `id` de outro jogador (visível pra
+todo mundo via SNAPSHOT) sequestre a sessão dele — não é segurança de verdade
+(sem TLS mútuo/assinatura), só o suficiente pra não ser trivial; mesmo nível de
+confiança do resto da v1.
+
+**Um bug real evitado ao desenhar isto:** contar só clientes `connected` pra
+decidir se a sala está cheia/qual papel sobrou deixaria um 3º dispositivo roubar
+a vaga de alguém em plena reconexão (a checagem original só olhava clientes
+ativos, e um cliente caído-mas-dentro-da-janela não contava como "ocupando" nada).
+`_freshJoin` agora conta TODO cliente ainda na sala (conectado ou em espera de
+reconexão) pra capacidade/atribuição de papel — só `_purgeStale` de fato libera a
+vaga. Verificado com um script que conecta como Caçador, mata a conexão, tenta
+entrar fresco enquanto a janela ainda está aberta (recebe Camaleão, não rouba o
+papel) e confirma que uma 4ª tentativa é recusada por sala cheia.
+
+**O que NÃO é preservado num reload completo:** posição/pose/cor exatas — o
+`Player` local também reseta pro spawn (não é só a rede que perde estado, é o
+processo JS inteiro que recomeça). Papel, munição e status de eliminado
+continuam corretos; só a posição "esquece" o último instante antes da queda —
+o jogador reaparece no spawn do seu papel, visualmente como se tivesse acabado
+de entrar, mas DENTRO da mesma partida/sessão (sem trocar de papel, sem
+resetar munição, sem reviver se já estava eliminado).
 
 ## 4. Pontos de atenção (decisões, não descuidos)
 
