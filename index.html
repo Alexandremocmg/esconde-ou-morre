@@ -32,12 +32,26 @@
   <!-- Retícula do conta-gotas: marca onde o botão Pintar amostra a cor (Fase 5a) -->
   <div id="reticle"></div>
 
+  <!-- Scanner do Caçador (Fase 3): mini-radar com a direção/distância dos Camaleões-alvo
+       vivos dentro do alcance, enquanto o pulso está ativo (docs/MECANICA_CACADOR_VISAO.md §3) -->
+  <div id="scanner-radar">
+    <div id="scanner-you"></div>
+  </div>
+
   <!-- HUD -->
   <div id="hud">
     <div id="state-badge">CHÃO</div>
     <div id="color-chip"><span></span>camuflagem</div>
     <div id="water-ammo-hud" class="water-ammo-badge" title="Munição de Jatos de Água do Caçador">
       <span class="ammo-ic">💧</span><span id="ammo-count">5</span> / <span id="ammo-max">5</span>
+    </div>
+    <!-- Modo Caçador jogável: quantos Camaleões-alvo faltam acertar -->
+    <div id="targets-hud" class="water-ammo-badge" title="Camaleões restantes">
+      <span class="ammo-ic">🎯</span><span id="targets-count">0</span> / <span id="targets-total">0</span>
+    </div>
+    <!-- Modo Caçador jogável: prontidão/cooldown do Scanner (Fase 3) -->
+    <div id="scanner-hud-badge" class="water-ammo-badge" title="Scanner: pulso de detecção">
+      <span class="ammo-ic">📡</span><span id="scanner-cd">Pronto</span>
     </div>
 
     <!-- Placar da partida: sobrevivência + tempo camuflado (Atraso de 30s anti-cheat) -->
@@ -80,6 +94,15 @@
     </button>
     <button id="btn-jump" class="glass-btn action-jump" type="button" aria-label="Pular">
       <span class="ic">🟢</span><span class="lbl">Pular</span>
+    </button>
+    <!-- Modo Caçador jogável: dispara o jato de água nos Camaleões-alvo (some no modo Camaleão) -->
+    <button id="btn-fire" class="glass-btn action-paint" type="button" aria-label="Atirar">
+      <span class="ic">💦</span><span class="lbl">Atirar</span>
+    </button>
+    <!-- Modo Caçador jogável: ativa o Scanner (Fase 3, mesmo lugar do botão Poses, que
+         some no modo Caçador) -->
+    <button id="btn-scan" class="glass-btn action-pose" type="button" aria-label="Scanner">
+      <span class="ic">📡</span><span class="lbl">Scanner</span>
     </button>
   </div>
 
@@ -142,6 +165,15 @@
         <li><span class="how-ic">👁️</span> <b>Objetivo:</b> fuja do Caçador vermelho e sobreviva até o tempo acabar.</li>
       </ul>
 
+      <div class="body-label">Escolha o modo</div>
+      <div id="mode-pick" class="body-pick">
+        <button type="button" data-mode="chameleon" class="on"><span class="bp-ic">🦎</span>Camaleão</button>
+        <button type="button" data-mode="hunter"><span class="bp-ic">🎯</span>Caçador</button>
+        <!-- Multiplayer (docs/PLANO_MULTIPLAYER.md, fatia vertical v1): sala fixa de 2,
+             papel (Caçador/Camaleão) atribuído pelo servidor — ver src/Net.js. -->
+        <button type="button" data-mode="online"><span class="bp-ic">🌐</span>Online</button>
+      </div>
+
       <div class="body-label">Escolha sua forma</div>
       <div id="body-pick" class="body-pick">
         <button type="button" data-kind="toy" class="on"><span class="bp-ic">🧍</span>Boneco</button>
@@ -181,7 +213,7 @@
   <div id="gameover">
     <div class="go-panel">
       <h2>GAME OVER</h2>
-      <p>O Caçador te pegou.</p>
+      <p id="gameover-msg">O Caçador te pegou.</p>
       <div class="go-actions">
         <button id="go-restart" class="btn-primary" type="button">Jogar Novamente</button>
         <button id="go-menu" class="btn-ghost" type="button">Voltar ao Menu</button>
@@ -193,11 +225,11 @@
   <div id="victory">
     <div class="win-panel">
       <h2>FASE CONCLUÍDA</h2>
-      <p>Você despistou o Caçador e sobreviveu.</p>
+      <p id="victory-msg">Você despistou o Caçador e sobreviveu.</p>
       <div class="win-stats">
         <div class="stat"><span id="win-time">0:45</span><small>Tempo sobrevivido</small></div>
-        <div class="stat"><span id="win-camo">0:00</span><small>Tempo camuflado</small></div>
-        <div class="stat"><span id="win-camo-pct">0%</span><small>Camuflado</small></div>
+        <div class="stat stat-camo"><span id="win-camo">0:00</span><small>Tempo camuflado</small></div>
+        <div class="stat stat-camo"><span id="win-camo-pct">0%</span><small>Camuflado</small></div>
       </div>
       <div class="win-actions">
         <button id="win-next" class="btn-primary">Próximo estágio ›</button>

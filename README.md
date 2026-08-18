@@ -1,9 +1,14 @@
 # Esconde ou Morre
 
-Protótipo mobile-first em **Three.js** (ES Modules puros, sem bundler). Você é um
-**boneco de vinil branco** (estilo art toy / Pop Mart) que **gruda em superfícies**,
-**pinta o próprio corpo com a cor do ambiente para se camuflar** e precisa
-**sobreviver ao(s) Caçador(es)** até o tempo acabar.
+Protótipo mobile-first em **Three.js** (ES Modules puros, sem bundler). No **modo
+Camaleão** (padrão) você é um **boneco de vinil branco** (estilo art toy / Pop Mart) que
+**gruda em superfícies**, **pinta o próprio corpo com a cor do ambiente para se
+camuflar** e precisa **sobreviver ao(s) Caçador(es)** até o tempo acabar. No **modo
+Caçador** (jogável) você vira o caçador: câmera em **1ª pessoa** com FOV estreito e
+lanterna, arma de água com penalidade de tiro errado, e uma habilidade de **Scanner**
+para revelar Camaleões próximos — ver `docs/MECANICA_CACADOR_VISAO.md` abaixo. Um 3º
+modo, **Online**, coloca dois jogadores de verdade na mesma sala (1 Caçador + 1
+Camaleão) via um servidor autoritativo — ver `docs/PLANO_MULTIPLAYER.md`.
 
 O visual é **toon / cel-shaded** no espírito do **Meccha Chameleon**: ambiente claro e
 legível, superfícies chapadas com paleta pop (creme, azul-céu, coral, roxo, menta,
@@ -15,9 +20,13 @@ camuflagem**. Todo o visual é **procedural** — sem assets externos.
 > A direção de arte e o histórico das fases estão em
 > [`docs/PLANO_TOON.md`](docs/PLANO_TOON.md) (virada toon, com status de implementação).
 > A especificação técnica da mecânica do Caçador (munição de água, 30s delay anti-cheat) está em
-> [`docs/MECANICA_CACADOR.md`](docs/MECANICA_CACADOR.md).
+> [`docs/MECANICA_CACADOR.md`](docs/MECANICA_CACADOR.md). A especificação de design de
+> visão/câmera, arma e scanner do Caçador (proposta, com status de implementação por item)
+> está em [`docs/MECANICA_CACADOR_VISAO.md`](docs/MECANICA_CACADOR_VISAO.md).
 > A arquitetura da mansão (andares/escada/colisão) está em
-> [`docs/PLANO_MANSAO.md`](docs/PLANO_MANSAO.md).
+> [`docs/PLANO_MANSAO.md`](docs/PLANO_MANSAO.md). Um 3º modo, **Online** (multiplayer,
+> servidor autoritativo em `server/`), está documentado em
+> [`docs/PLANO_MULTIPLAYER.md`](docs/PLANO_MULTIPLAYER.md).
 
 ## Como rodar (build estática)
 
@@ -31,6 +40,10 @@ python3 dev_server.py 8123   # outra porta
 ```
 
 Abra `http://localhost:8000` e clique em **JOGAR**.
+
+> 🌐 **Modo Online**: além do `dev_server.py`, precisa do servidor autoritativo rodando
+> (`cd server && npm install && npm start`, porta 8787). Duas abas escolhendo "Online"
+> entram na mesma sala — detalhes em `docs/PLANO_MULTIPLAYER.md`.
 
 > ⚠️ Evite `python -m http.server`: sem os headers no-store, o navegador (e um eventual
 > túnel) servem módulos ES em cache — misturando versões e podendo travar a inicialização.
@@ -63,6 +76,11 @@ Vercel, S3, etc.) — publique a raiz do repositório.
   - **Remoção de Tinta (`washPaint`):** O jato de água desbota a tinta do jogador de volta ao branco original em ~1.5s de contato, forçando o movimento e dando uma janela de fuga/esquiva.
   - **Placar com Atraso de 30s (Anti-Cheat):** O tempo camuflado exibido no HUD do Caçador possui um atraso intencional de 30 segundos, impedindo a localização de esconderijos por leitura de pontos em tempo real.
   - **Zona de Sorteio do Lobby (+50% Peso):** Anel circular emissivo demarcado no mapa do Lobby. Jogadores posicionados dentro da zona no fim da contagem recebem +50% de peso no sorteio do Caçador.
+- **Modo Caçador Jogável — Visão/Câmera, Arma e Scanner** (`docs/MECANICA_CACADOR_VISAO.md`):
+  - **Câmera 1ª Pessoa (`HunterCamera.js`):** FOV 80° (pontos cegos laterais de propósito), arma-viewmodel presa à câmera, corpo do Caçador invisível na própria visão.
+  - **Lanterna:** `SpotLight` acoplada à câmera com atenuação quadrática nativa (`decay=2`), sombra dinâmica em desktop.
+  - **Penalidade de Tiro Errado:** cada disparo que não acerta um Camaleão-alvo aplica um cooldown de "bomba de pressão" de ~2,6s (em vez do cooldown normal de 300ms), sem consumir munição extra.
+  - **Scanner (📡):** pulso de 8m (3s de duração, 20s de cooldown) que revela direção/distância dos Camaleões-alvo vivos num mini-radar, com vinheta azulada na tela.
 - **Reinício Instantâneo em Memória (0ms de Espera):** Botão **Jogar Novamente** na tela de Game Over/Vitória reseta o estado da partida instantaneamente em memória sem recarregar a página ou refazer downloads 3D.
 
 ## Estrutura
@@ -71,6 +89,7 @@ Vercel, S3, etc.) — publique a raiz do repositório.
 index.html        # HUD Glassmorphic, menus radiais, preloader 3D, overlays e importmap
 css/style.css     # Estilização Glassmorphism, botões em arco, menus radiais
 dev_server.py     # Servidor de dev com Cache-Control: no-store (use este)
+server/           # Servidor autoritativo do modo Online (docs/PLANO_MULTIPLAYER.md) — Node + ws, isolado do cliente
 public/
   animation/      # Arquivos FBX das 7 animações Mixamo (Idle, Run, Crouch, Hide, Prone, Climb, Jump)
   models/         # Modelos 3D base (FBX, OBJ, GLB)
@@ -80,8 +99,13 @@ src/
   Game.js         # Orquestra partida, menus radiais, pinch zoom e reinício em memória
   Player.js       # Física do jogador, amostragem de cor, modos de pose e pulo
   Seeker.js       # IA dos Caçadores: patrulha/caça, visão Toon, reset em memória
+  ChameleonTarget.js # Alvos-camaleão parados do modo Caçador jogável (fase 1, sem IA própria)
   Level.js        # Mansão de 2 andares, mobília e áreas de camuflagem
-  FollowCamera.js # Câmera 3ª pessoa com colisão e suporte a Pinch to Zoom
+  FollowCamera.js # Câmera 3ª pessoa (Camaleão) com colisão e suporte a Pinch to Zoom
+  HunterCamera.js # Câmera 1ª pessoa do Caçador jogável (FOV, olhar livre)
+  Net.js          # Cliente WebSocket do modo Online (WebSocket nativo, sem dependência nova)
+  RemotePlayer.js # Avatar remoto interpolado do modo Online
+  net/            # protocol.js + hittest.js — compartilhados verbatim com server/ (sem imports)
   Joystick.js     # Joystick flutuante dinâmico com vibração haptática
   ColorPicker.js  # Roda de cor HSV para ajuste fino
   Audio.js        # Efeitos de áudio procedurais (Web Audio API)

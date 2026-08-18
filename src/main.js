@@ -19,6 +19,23 @@ if (bodyPick) {
   }
 }
 
+// Seletor de modo: Camaleão (padrão, foge/camufla), Caçador (jogável, mira e atira
+// nos Camaleões-alvo) ou Online (multiplayer — docs/PLANO_MULTIPLAYER.md). Mesmo
+// padrão do seletor de forma acima.
+const VALID_MODES = ['chameleon', 'hunter', 'online'];
+const modePick = document.getElementById('mode-pick');
+if (modePick) {
+  const rawSaved = sessionStorage.getItem('eom-mode');
+  const saved = VALID_MODES.includes(rawSaved) ? rawSaved : 'chameleon';
+  for (const btn of modePick.querySelectorAll('button')) {
+    btn.classList.toggle('on', btn.dataset.mode === saved);
+    btn.addEventListener('click', () => {
+      sessionStorage.setItem('eom-mode', btn.dataset.mode);
+      for (const b of modePick.querySelectorAll('button')) b.classList.toggle('on', b === btn);
+    });
+  }
+}
+
 // Inicia o pré-carregamento de todas as animações 3D no boot da página
 animationManager.loadAll((percent, key) => {
   if (loaderFill) loaderFill.style.width = `${percent}%`;
@@ -66,6 +83,15 @@ async function enterImmersive() {
 
 startBtn.addEventListener('click', async () => {
   if (startBtn.disabled) return;
+  // O modo (Camaleão/Caçador/Online) só é lido no construtor do Game — trocar de
+  // modo depois de já ter jogado exige recarregar a página, já que o Game
+  // não tem um dispose() para desmontar o loop de render/cena anterior.
+  const rawMode = sessionStorage.getItem('eom-mode');
+  const selectedMode = VALID_MODES.includes(rawMode) ? rawMode : 'chameleon';
+  if (game && game.mode !== selectedMode) {
+    location.reload();
+    return;
+  }
   overlay.classList.add('hidden');
   if (game) {
     game.restartInPlace(false, false);

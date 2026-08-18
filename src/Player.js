@@ -52,7 +52,7 @@ function toSRGB(c) {
 }
 
 export class Player {
-  constructor(scene, level) {
+  constructor(scene, level, opts = {}) {
     this.level = level;
     this.climbables = level.climbables;
     this.state = 'grounded'; // 'grounded' | 'latched'
@@ -61,6 +61,12 @@ export class Player {
     this.crouched = false;   // agachado (o Caçador lê isto p/ reduzir o alcance de visão)
     this._crouchT = 0;       // transição suavizada de agachamento (0..1)
     this.prone = false;      // deitado no chão (P3c): camufla contra o TAPETE embaixo
+
+    // Modo Caçador jogável (Game.js): reaproveita a física/câmera do Camaleão
+    // para o avatar do Caçador, só trocando a prioridade de animação (pose de
+    // tiro) via triggerShootPose(). Não afeta o Camaleão (isHunter fica false).
+    this.isHunter = !!opts.isHunter;
+    this._shootHold = 0;
 
     this.velocity = new THREE.Vector3();
     this.wallNormal = new THREE.Vector3(0, 0, 1);
@@ -166,6 +172,7 @@ export class Player {
     this._camo = false;
     this._eyeHide = 0;
     this._glow = 0;
+    this._shootHold = 0;
     const BASE = 0xeef0f2;
     for (const z of this.zones) {
       z.mat.color.setHex(BASE);
@@ -191,6 +198,12 @@ export class Player {
     }
     // Normaliza: distância máxima possível no espaço RGB = sqrt(3) ≈ 1.73
     return totalDist / (this.zones.length * 1.732);
+  }
+
+  // Chamado pelo Game a cada disparo do Caçador jogável: segura a pose de tiro
+  // por um instante (mesma ideia do Seeker._shootHold, ver Seeker.js).
+  triggerShootPose(dur = 0.35) {
+    this._shootHold = dur;
   }
 
   get position() { return this.object.position; }
@@ -418,7 +431,14 @@ export class Player {
 
     if (this.animInstance) {
       const moving = dist > 1e-3;
-      if (this.isJumping || this.velocity.y > 0.5) {
+      // Caçador jogável: pose de tiro tem prioridade por uma janela curta após
+      // o disparo (Game.fireHunterShot → triggerShootPose). No Camaleão,
+      // isHunter é sempre false e este ramo nunca entra — zero mudança de
+      // comportamento fora do modo Caçador.
+      this._shootHold = Math.max(0, this._shootHold - dt);
+      if (this.isHunter && this._shootHold > 0 && this.animInstance.actions['shoot']) {
+        this.animInstance.playAnimation('shoot');
+      } else if (this.isJumping || this.velocity.y > 0.5) {
         this.animInstance.playAnimation('jump');
       } else if (this.state === 'latched') {
         this.animInstance.playAnimation(moving ? 'climb' : 'hide');
@@ -427,7 +447,8 @@ export class Player {
       } else if (this.crouched) {
         this.animInstance.playAnimation('crouch');
       } else if (moving) {
-        this.animInstance.playAnimation('run');
+        const runClip = this.isHunter && this.animInstance.actions['rifleRun'] ? 'rifleRun' : 'run';
+        this.animInstance.playAnimation(runClip);
       } else {
         this.animInstance.playAnimation('idle');
       }

@@ -2,6 +2,10 @@
 
 Documentação oficial da arquitetura, regras de combate, condições de vitória/derrota, gestão de munição de água, placa anti-cheat e sorteio do Caçador no *Esconde ou Morre*.
 
+> Para a especificação de visão/câmera, mecânica de disparo e scanner (design-alvo, com
+> status de implementação por item), ver
+> [`docs/MECANICA_CACADOR_VISAO.md`](MECANICA_CACADOR_VISAO.md).
+
 ---
 
 ## 1. Resumo do Papel (Overview)

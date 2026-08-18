@@ -1,0 +1,14 @@
+{
+  "name": "esconde-ou-morre-server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Servidor autoritativo da fatia vertical multiplayer (docs/PLANO_MULTIPLAYER.md). Isolado do cliente — o jogo em si continua sem bundler.",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}
