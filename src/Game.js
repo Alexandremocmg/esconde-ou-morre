@@ -159,6 +159,12 @@ export class Game {
       this._onlineConnected = false;
       this._hunterViewAttached = false; // reaproveitado por _updateHunterFPSRig() se o papel for Caçador
       this._hunterMuzzle = null;
+      // Scanner (só usado se o papel acabar sendo Caçador — ver _tick). Mesmos
+      // três campos que o bloco 'hunter' já tem: sem eles _updateScanner() quebra
+      // em this._scannerDots[i] na primeira chamada.
+      this._scannerActiveUntil = 0;
+      this._scannerReadyAt = 0;
+      this._scannerDots = [];
       this.net = new Net(this._wsUrl());
       this._connectOnline(); // assíncrono de propósito — não bloqueia o boot da cena
     } else {
@@ -502,7 +508,7 @@ export class Game {
       if (this.mode === 'hunter') {
         this._updateHunterFPSRig();
         for (const t of this.targets) t.update(dt);
-        this._updateScanner();
+        this._updateScanner(this.targets);
       }
       // Papel Caçador no modo online: mesma câmera 1ª pessoa/viewmodel do single-
       // player (ver _connectOnline, que troca this.follow pra HunterCamera assim
@@ -510,6 +516,13 @@ export class Game {
       // próprio corpo (câmera de 3ª pessoa sempre "lookAt" o próprio jogador).
       if (this.mode === 'online' && this.onlineRole === ROLE.HUNTER) {
         this._updateHunterFPSRig();
+        // Scanner não precisa de dado extra do servidor: a posição de todo
+        // RemotePlayer já chega a cada SNAPSHOT independente de camuflagem (ver
+        // docs/PLANO_MULTIPLAYER.md — Interest Management fica fora de escopo).
+        // Aqui é só a mesma affordance de radar do modo solo.
+        this._updateScanner(
+          [...this.remotePlayers.values()].filter((rp) => rp.role === ROLE.CHAMELEON)
+        );
       }
 
       if (this.mode === 'online') {
@@ -826,7 +839,10 @@ export class Game {
 
   // Por frame: desliga o pulso quando o tempo acaba, atualiza o badge de cooldown do HUD
   // e posiciona os pontos do radar (direção/distância dos alvos vivos em SCANNER_RANGE).
-  _updateScanner() {
+  // `targets` é qualquer lista de objetos com `.position`/`.eliminated` — os
+  // ChameleonTarget do modo solo ou os RemotePlayer (papel Camaleão) do online,
+  // já filtrados pelo chamador (ver _tick).
+  _updateScanner(targets) {
     const now = performance.now();
     const active = now < this._scannerActiveUntil;
 
@@ -847,7 +863,7 @@ export class Game {
     const camDir = this.camera.getWorldDirection(this._scanDir).setY(0).normalize();
     const dial = 40; // raio do radar em CSS px (metade de #scanner-radar menos a margem do ponto)
     let i = 0;
-    for (const t of this.targets) {
+    for (const t of targets) {
       if (t.eliminated) continue;
       const toT = this._scanTo.copy(t.position).sub(this.camera.position);
       const dist = Math.hypot(toT.x, toT.z);
@@ -1225,6 +1241,12 @@ export class Game {
         rp._fade = 0;
         rp.group.scale.setScalar(1);
       }
+      // Mesmo reset do Scanner que o bloco 'hunter' já faz abaixo — o online
+      // reusa a mesma UI/estado (ver _tick), então precisa do mesmo cuidado.
+      this._scannerActiveUntil = 0;
+      this._scannerReadyAt = 0;
+      if (this._vignette) this._vignette.classList.remove('scanning');
+      if (this._scannerRadar) this._scannerRadar.classList.remove('active');
     }
 
     // Modo Caçador jogável: replanta os Camaleões-alvo. NÃO zera _hunterViewAttached/

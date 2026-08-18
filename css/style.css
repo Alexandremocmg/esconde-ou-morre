@@ -396,12 +396,15 @@ body.mode-hunter #btn-scan { display: flex; }
 body.mode-hunter #scanner-hud-badge { display: flex; }
 
 /* ---------- Modo Online (docs/PLANO_MULTIPLAYER.md) ----------
-   Sem munição/scanner/alvos-boneco (não existem no servidor da v1) — só o botão de
-   tiro, e só para quem o servidor atribuiu o papel de Caçador. */
+   Sem alvos-boneco (o Camaleão é um jogador de verdade) — munição e Scanner têm
+   paridade com o Caçador solo (munição é autoritativa no servidor; Scanner é só
+   uma affordance de UI, sem contraparte no servidor — ver Game.js:_updateScanner). */
 body.mode-online #water-ammo-hud { display: none; }
 body.mode-online.online-hunter #btn-fire { display: flex; }
 body.mode-online.online-hunter #btn-paint,
 body.mode-online.online-hunter #btn-pose { display: none; }
+body.mode-online.online-hunter #btn-scan { display: flex; }
+body.mode-online.online-hunter #scanner-hud-badge { display: flex; }
 
 /* #hint some em telas estreitas (@media acima) — mas no online ele é a ÚNICA forma de
    avisar "você está sozinho na sala" (ver Game._updateOnlineHint()), e celular é

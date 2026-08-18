@@ -35,6 +35,10 @@ export class RemotePlayer {
     this.pushSnapshot({ pos: spawn, yaw: 0, state: 'grounded', crouched: false, prone: false, statue: false, moving: false, color: [0xeef0f2, 0xeef0f2], eliminated: false }, Date.now());
   }
 
+  // Mesma interface pública de Player.js/ChameleonTarget.js — deixa o Scanner
+  // (Game.js:_updateScanner) tratar alvo local e remoto sem `if` espalhado.
+  get position() { return this.group.position; }
+
   _checkAnimInstance() {
     if (this.animInstance || !animationManager.isLoaded) return;
     const inst = animationManager.createInstance(this.bodyMat, HEIGHT);
