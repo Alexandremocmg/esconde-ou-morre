@@ -858,12 +858,60 @@ export class Game {
     if (!vm) return;
     // createBlaster() normaliza a arma para ARMA_COMPRIMENTO (0.55) em unidades de MUNDO —
     // certo para pendurar num osso da mão distante, grande demais tão perto da câmera.
-    // Encolhe para o viewmodel não dominar a tela.
-    vm.group.scale.multiplyScalar(0.4);
-    vm.group.position.set(0.26, -0.24, -0.6);
+    // Encolhe para o viewmodel não dominar a tela. 0.62 (era 0.4): a arma pequena
+    // demais lia como uma mancha indistinta no canto — aumentada até dar pra
+    // reconhecer a forma do lançador sem tampar o centro da mira.
+    vm.group.scale.multiplyScalar(0.62);
+    vm.group.position.set(0.30, -0.28, -0.62);
     vm.group.rotation.set(0, Math.PI, 0); // cano apontando pra frente da câmera (-Z)
     this.camera.add(vm.group);
     this._hunterMuzzle = vm.muzzle;
+
+    this._buildHunterViewArm();
+  }
+
+  // Braço em 1ª pessoa segurando o lançador (docs/MECANICA_CACADOR_VISAO.md §1): antes
+  // só a arma flutuava sozinha na câmera, sem mão nem antebraço — lia como um objeto
+  // solto, não como algo empunhado. Duas cápsulas simples (mesmo estilo "art toy" sem
+  // dedos de Character.js/buildBody) entrando do canto inferior direito até o punho da
+  // arma. Reaproveita this.player.zones[0].mat (cor "upper" do próprio jogador) em vez
+  // de um material novo: o braço fica com a MESMA cor de camuflagem que o resto do
+  // corpo, e muda sozinho se o jogador repintar — é o mesmo objeto de material, não uma
+  // cópia. Chamado uma única vez por _updateHunterFPSRig (mesma trava _hunterViewAttached).
+  _buildHunterViewArm() {
+    const mat = this.player.zones[0].mat;
+    const arm = new THREE.Group();
+
+    // Cápsula que preenche EXATAMENTE o segmento entre dois pontos em espaço da
+    // câmera: comprimento do cilindro = distância menos as duas calotas, e
+    // orientação = rotação de (0,1,0) — eixo nativo de CapsuleGeometry — até a
+    // direção do segmento. Sem isto (cápsula de comprimento fixo só apontada na
+    // direção certa) ela nunca alcança de fato o ponto de destino.
+    const capsuleBetween = (from, to, radius) => {
+      const a = new THREE.Vector3(...from), b = new THREE.Vector3(...to);
+      const dist = a.distanceTo(b);
+      const len = Math.max(0.01, dist - 2 * radius);
+      const mesh = new THREE.Mesh(new THREE.CapsuleGeometry(radius, len, 4, 10), mat);
+      mesh.position.copy(a).add(b).multiplyScalar(0.5);
+      mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize());
+      mesh.castShadow = false;
+      mesh.frustumCulled = false;
+      arm.add(mesh);
+      return mesh;
+    };
+
+    // Cotovelo fora de quadro (baixo-direita) → punho → empunhadura, por BAIXO do corpo
+    // da arma (que fica em ~0.30,-0.28,-0.62 — _updateHunterFPSRig) pra não se misturar
+    // visualmente com ela — separação em Y clara, não só profundidade.
+    const elbow = [0.56, -0.58, -0.78];
+    const wrist = [0.30, -0.40, -0.60];
+    const grip = [0.20, -0.33, -0.50];
+    capsuleBetween(elbow, wrist, 0.055);       // antebraço
+    capsuleBetween(wrist, grip, 0.070);        // mão — curta e mais grossa, sem dedos
+
+    arm.frustumCulled = false;
+    this.camera.add(arm);
+    this._hunterViewArm = arm;
   }
 
   // Disparo do Caçador jogável (botão 💦). Mira por cone a partir do centro da

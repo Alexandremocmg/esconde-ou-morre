@@ -7,9 +7,10 @@ camuflar** e precisa **sobreviver ao(s) Caçador(es)** até o tempo acabar. No *
 Caçador** (jogável) você vira o caçador: câmera em **1ª pessoa** com FOV estreito e
 lanterna, arma de água com penalidade de tiro errado, e uma habilidade de **Scanner**
 para revelar Camaleões próximos — ver `docs/MECANICA_CACADOR_VISAO.md` abaixo. Um 3º
-modo, **Online**, coloca dois jogadores de verdade na mesma sala (1 Caçador + 1
-Camaleão) via um servidor autoritativo, com munição/Scanner e reconexão automática
-(troca de app, queda de rede ou reload da página) — ver `docs/PLANO_MULTIPLAYER.md`.
+modo, **Online**, coloca jogadores de verdade na mesma sala (1 Caçador + até 4
+Camaleões) via um servidor autoritativo, com munição/Scanner e reconexão automática
+(troca de app, queda de rede ou reload da página) — ver `docs/PLANO_MULTIPLAYER.md` e
+`docs/PLANO_LOBBY_MULTIPLAYER.md`.
 
 O visual é **toon / cel-shaded** no espírito do **Meccha Chameleon**: ambiente claro e
 legível, superfícies chapadas com paleta pop (creme, azul-céu, coral, roxo, menta,
@@ -27,8 +28,10 @@ camuflagem**. Todo o visual é **procedural** — sem assets externos.
 > A arquitetura da mansão (andares/escada/colisão) está em
 > [`docs/PLANO_MANSAO.md`](docs/PLANO_MANSAO.md). Um 3º modo, **Online** (multiplayer,
 > servidor autoritativo em `server/`), está documentado em
-> [`docs/PLANO_MULTIPLAYER.md`](docs/PLANO_MULTIPLAYER.md). O pipeline que gera o
-> personagem 3D (Mixamo → Blender → GLB único) está em
+> [`docs/PLANO_MULTIPLAYER.md`](docs/PLANO_MULTIPLAYER.md) — a evolução da sala fixa de
+> 2 para 1 Caçador + até 4 Camaleões na mesma partida está em
+> [`docs/PLANO_LOBBY_MULTIPLAYER.md`](docs/PLANO_LOBBY_MULTIPLAYER.md). O pipeline que
+> gera o personagem 3D (Mixamo → Blender → GLB único) está em
 > [`docs/PIPELINE_PERSONAGEM.md`](docs/PIPELINE_PERSONAGEM.md).
 
 ## Como rodar (build estática)
@@ -45,8 +48,9 @@ python3 dev_server.py 8123   # outra porta
 Abra `http://localhost:8000` e clique em **JOGAR**.
 
 > 🌐 **Modo Online**: além do `dev_server.py`, precisa do servidor autoritativo rodando
-> (`cd server && npm install && npm start`, porta 8787). Duas abas escolhendo "Online"
-> entram na mesma sala — detalhes em `docs/PLANO_MULTIPLAYER.md`.
+> (`cd server && npm install && npm start`, porta 8787). Até 5 abas escolhendo "Online"
+> entram na mesma sala (1º = Caçador, os próximos até 4 = Camaleão) — detalhes em
+> `docs/PLANO_MULTIPLAYER.md` e `docs/PLANO_LOBBY_MULTIPLAYER.md`.
 
 > ⚠️ Evite `python -m http.server`: sem os headers no-store, o navegador (e um eventual
 > túnel) servem módulos ES em cache — misturando versões e podendo travar a inicialização.
@@ -84,9 +88,9 @@ Fora do modo Online, qualquer host de arquivos estáticos serve a pasta como est
   - **Munição Contada (`💧 5/5` Padrão):** O Caçador inicia com 5 jatos de água (configurável de 1 a 30 no menu, com toggle de munição infinita). Cada disparo no vazio perde 1 jato. Se os jatos chegarem a 0 e restarem Camaleões vivos, dispara **Vitória dos Camaleões**! Vale para o Caçador solo **e** para o modo Online (autoritativo no servidor, ver `docs/PLANO_MULTIPLAYER.md`).
   - **Remoção de Tinta (`washPaint`):** O jato de água desbota a tinta do jogador de volta ao branco original em ~1.5s de contato, forçando o movimento e dando uma janela de fuga/esquiva.
   - **Placar com Atraso de 30s (Anti-Cheat):** O tempo camuflado exibido no HUD do Caçador possui um atraso intencional de 30 segundos, impedindo a localização de esconderijos por leitura de pontos em tempo real.
-  - **Anel do Lobby:** anel circular emissivo demarcado no mapa do Lobby (`Level.js: isInsideLobbyZone`). Hoje é só um marcador visual — a escolha de quem vira Caçador **não** usa essa zona (no modo Online é simplesmente o primeiro a entrar na sala; ver `docs/MECANICA_CACADOR.md`).
+  - **Anel do Lobby:** anel circular emissivo demarcado no mapa do Lobby (`Level.js: isInsideLobbyZone`). Hoje é só um marcador visual — a escolha de quem vira Caçador **não** usa essa zona (no modo Online é simplesmente o primeiro a entrar na sala; os próximos, até 4, viram Camaleão — ver `docs/MECANICA_CACADOR.md` e `docs/PLANO_LOBBY_MULTIPLAYER.md`).
 - **Modo Caçador Jogável — Visão/Câmera, Arma e Scanner** (`docs/MECANICA_CACADOR_VISAO.md`):
-  - **Câmera 1ª Pessoa (`HunterCamera.js`):** FOV 80° (pontos cegos laterais de propósito), arma-viewmodel presa à câmera, corpo do Caçador invisível na própria visão.
+  - **Câmera 1ª Pessoa (`HunterCamera.js`):** FOV 80° (pontos cegos laterais de propósito), arma-viewmodel + antebraço/mão presos à câmera (cor acompanha a camuflagem do jogador), corpo do Caçador invisível na própria visão.
   - **Lanterna:** `SpotLight` acoplada à câmera com atenuação quadrática nativa (`decay=2`), sombra dinâmica em desktop.
   - **Penalidade de Tiro Errado:** cada disparo que não acerta um Camaleão-alvo aplica um cooldown de "bomba de pressão" de ~2,6s (em vez do cooldown normal de 300ms), sem consumir munição extra.
   - **Scanner (📡):** pulso de 8m (3s de duração, 20s de cooldown) que revela direção/distância dos Camaleões-alvo vivos num mini-radar, com vinheta azulada na tela. Disponível no Caçador solo e no Caçador Online.

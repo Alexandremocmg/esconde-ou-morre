@@ -108,7 +108,9 @@ posicionamento fica com `clone.position.y = 0` e o offset do chamador
 
 Esse bug passou por uma verificação minha justamente porque conferi os pés com
 `Box3`, que reportava `min_y = 0` (bind pose) enquanto os ossos dos pés estavam
-em 0,45. **Confira altura de personagem sempre pelos ossos:**
+em 0,45 (`GROUND_Y` na época — `Player.js` usava `SCALE=0.5`; hoje `SCALE=0.8`
+e `GROUND_Y=0,72`, os números deste incidente ficaram como estavam quando ele
+aconteceu, não os atualize). **Confira altura de personagem sempre pelos ossos:**
 
 ```js
 const pes = [];
@@ -136,6 +138,19 @@ que leva `inst.modelScale`. Um filho do osso sai `modelScale`× maior; divida po
 ela (`multiplyScalar(1/modelScale)`, nunca `setScalar`, que jogaria fora a
 normalização de tamanho do próprio objeto). Offsets de posição em espaço de osso
 também precisam ser divididos para valerem em metros de mundo.
+
+**`GROUND_Y`/`HEIGHT` derivados de `SCALE` viram cópias soltas, não constantes
+compartilhadas.** `protocol.js` não pode importar de `Player.js` (regra de ouro do
+arquivo — precisa rodar sem `three`/DOM tanto no cliente quanto no servidor Node), e
+`RemotePlayer.js`/`ChameleonTarget.js` guardavam sua própria cópia de "altura do
+jogador" em vez de recalcular. Quando `SCALE` subiu duas vezes em `Player.js`
+(0.5→0.65→0.8), essas três cópias ficaram presas no valor antigo por duas rodadas de
+aumento — avatares remotos e bonecos-alvo renderizavam ~40% menores que o jogador de
+verdade, e ninguém percebeu até alguém comparar visualmente os dois lado a lado.
+`FollowCamera.js` já documentava o mesmo risco pra `DIST`/`HEIGHT` da câmera. **Sempre
+que `SCALE` mudar em `Player.js`, procure por `HEIGHT`/`GROUND_Y` em
+`RemotePlayer.js`, `ChameleonTarget.js` e `net/protocol.js`** — não tem como o
+compilador pegar isso, é uma cópia manual por design.
 
 ## 6. Defeito herdado da fonte
 

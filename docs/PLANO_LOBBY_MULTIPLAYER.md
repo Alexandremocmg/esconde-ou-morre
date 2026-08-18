@@ -186,3 +186,18 @@ espectador local (`_eliminatedSpectating`), o texto do hint e o contador de HUD 
 cliente foram implementados e revisados linha a linha, mas não exercitados numa sessão
 de navegador real (Playwright multi-aba ou dispositivos físicos). Recomendado antes de
 considerar esta fase fechada de vez.
+
+## 9. Em produção
+
+Commit `337e281` subiu pra `main` a pedido do usuário e os dois lados autodeployaram:
+Vercel promoveu o cliente em produção (`target: "production"`, sem cair na pegadinha
+`target:null` de [[production-hosting-status]]) e o Render serviu o código novo pouco
+depois — confirmado ao vivo por um script `ws` cru contra
+`wss://esconde-ou-morre-server.onrender.com`: 5 conexões entram (1 Caçador + 4
+Camaleões, spawns no anel exatamente nos pontos calculados por `_chameleonSpawn`), a 6ª
+é recusada por "sala cheia".
+
+Verificação visual adicional (Playwright, local, duas abas em modo Online) confirma
+papel/spawn corretos. O fluxo de eliminação → espectador (§3.2) especificamente
+**continua não testado num navegador real** — é o item mais importante pra fechar antes
+de considerar o lobby maior 100% validado.

@@ -4,6 +4,12 @@
 > usuário (servidor autoritativo, sincronização de camuflagem, hitreg validado,
 > anti-cheat). A spec original citava Photon Fusion/Mirror (exclusivos de Unity) e UDP
 > (indisponível no navegador) — este documento registra o que foi adaptado e por quê.
+>
+> **Atualização:** a sala fixa de 2 (1 Caçador + 1 Camaleão) descrita aqui evoluiu para
+> 1 Caçador + até 4 Camaleões na MESMA partida — ver
+> [`docs/PLANO_LOBBY_MULTIPLAYER.md`](PLANO_LOBBY_MULTIPLAYER.md). Arquitetura, protocolo
+> e hospedagem abaixo continuam valendo; só a capacidade da sala (§3.1 "O que existe
+> hoje" e a tabela de avaliação §1) mudou.
 
 ---
 
@@ -224,8 +230,11 @@ cd server && npm install && npm start   # servidor autoritativo, porta 8787
 python3 dev_server.py                   # cliente, porta 8000 (noutro terminal)
 ```
 
-Abra `http://localhost:8000` em duas abas, escolha o modo **Online** nas duas, clique
-**JOGAR**. O servidor atribui Caçador ao 1º que entrar, Camaleão ao 2º.
+Abra `http://localhost:8000` em até 5 abas, escolha o modo **Online** em todas, clique
+**JOGAR**. O servidor atribui Caçador ao 1º que entrar, Camaleão aos próximos (até 4) —
+sala de 1 Caçador + N Camaleões desde `docs/PLANO_LOBBY_MULTIPLAYER.md`, que evoluiu a
+sala fixa de 2 desta v1 original (tabela §1 abaixo reflete a avaliação da ÉPOCA, antes
+dessa evolução).
 
 `?ws=host:porta` na URL do cliente aponta pra outro servidor sem editar código (ex.:
 testar celular + PC na mesma rede: `?ws=192.168.x.x:8787`).

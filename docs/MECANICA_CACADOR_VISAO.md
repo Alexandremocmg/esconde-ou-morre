@@ -37,9 +37,12 @@
   descartado por conforto). O corpo do Caçador fica invisível em 1ª pessoa
   (`Game._updateHunterFPSRig()`, `this.player.animInstance.group.visible = false`) — no lugar,
   uma arma-viewmodel (`animationManager.createBlaster()`, uma 2ª instância independente do
-  protótipo) fica pendurada na câmera, ao estilo FPS clássico. Limitação conhecida: sem passo
-  de render separado para o viewmodel, a arma pode cravar visualmente numa parede se o
-  jogador chegar bem perto dela.
+  protótipo) fica pendurada na câmera, ao estilo FPS clássico, junto de um antebraço+mão
+  (`Game._buildHunterViewArm()`, duas cápsulas sem dedos entrando do canto inferior direito —
+  mesmo material "upper" do jogador, então acompanha a cor de camuflagem escolhida) pra não
+  parecer uma arma flutuando sozinha. Limitação conhecida: sem passo de render separado para
+  o viewmodel, a arma (e o braço) podem cravar visualmente numa parede se o jogador chegar
+  bem perto dela.
 * **Campo de Visão (FOV):** FOV estreito de 80° (dentro do range 75°–85° pedido), gerando
   pontos cegos intencionais nas laterais — em contraste com o FOV de 60° que o Camaleão
   continua usando em 3ª pessoa. Aplicado no construtor de `HunterCamera` via `camera.fov =
