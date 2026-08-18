@@ -20,7 +20,13 @@ import {
   makeInputPayload,
   S2C,
   ROLE,
+  PROD_WS_URL,
 } from './net/protocol.js?v=3';
+
+// Mesmo padrão de detecção de localhost/LAN usado em main.js (EM_DESENVOLVIMENTO) —
+// duplicado aqui porque main.js não exporta nada (é só o boot) e um módulo de rede
+// não devia depender do bootstrapper pra saber se está em dev.
+const HOST_LOCAL_OU_LAN = /^(localhost|127\.0\.0\.1|\[::1\]|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/;
 
 // Mira do Caçador jogável (Game.fireHunterShot): cone de mira a partir do
 // centro da câmera, não pixel-perfect — evita o problema de raycast contra o
@@ -338,11 +344,16 @@ export class Game {
   //
   // wss:// obrigatório quando a página é servida por https (o túnel sempre é) — um
   // navegador bloqueia ws:// (inseguro) chamado de uma página https (conteúdo misto).
+  //
+  // Fora de localhost/LAN e sem `?ws=`, cai no servidor de produção (PROD_WS_URL) —
+  // é o caso do cliente hospedado na Vercel, que mora num domínio diferente do
+  // servidor (Render) e não pode assumir a porta 8787 do próprio host.
   _wsUrl() {
     const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
     const override = new URLSearchParams(location.search).get('ws');
     if (override) return /^wss?:\/\//.test(override) ? override : `${scheme}://${override}`;
-    return `${scheme}://${location.hostname}:8787`;
+    if (HOST_LOCAL_OU_LAN.test(location.hostname)) return `${scheme}://${location.hostname}:8787`;
+    return PROD_WS_URL;
   }
 
   // Conecta à sala, resolve o papel (servidor decide) e liga os handlers de rede.

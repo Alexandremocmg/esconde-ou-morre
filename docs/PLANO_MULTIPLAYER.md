@@ -188,9 +188,26 @@ cliente relata, em vez de confiar cegamente.
 
 Lag compensation/rewind, lobby e matchmaking 4-10 jogadores, as 4 fases de partida da
 spec original (hoje a partida começa assim que o 1º jogador entra), Interest Management,
-validação server-side de amostragem de cor, hospedagem em produção (a v1 roda em
-`localhost` — nenhum dos alvos que `README.md` cita hoje, GitHub Pages/Netlify/Vercel
-estático/S3, roda processo com estado).
+validação server-side de amostragem de cor.
+
+## Hospedagem (produção)
+
+Cliente e servidor moram em plataformas diferentes, porque só o servidor precisa de
+processo persistente (estado da sala em memória) — os alvos estáticos que o README
+cita (GitHub Pages/Netlify/Vercel/S3) não seguram isso.
+
+- **Servidor** → Render.com, via Blueprint (`render.yaml` na raiz do repo):
+  `rootDir: server`, `npm install` / `npm start`, plano free. Free tier dorme após
+  15min de inatividade — primeira conexão depois disso demora ~30-50s pra acordar
+  (o `#hint` já mostra "Conectando à sala..." nesse meio tempo, `Game.js`).
+- **Cliente** → Vercel, projeto ligado ao repo do GitHub (branch `main`), deploy
+  automático a cada push. `.vercelignore` na raiz exclui os artefatos brutos do
+  Tripo em `public/models/` que não são carregados em runtime.
+- **Como o cliente acha o servidor:** `_wsUrl()` (`Game.js`) continua aceitando
+  `?ws=host` pra testes (LAN/túnel), mas fora de localhost/LAN cai em
+  `PROD_WS_URL` (`net/protocol.js`) — a URL fixa do serviço no Render. Precisa
+  ficar em sincronia manual com a URL real que o Render atribuir ao criar o
+  serviço (só muda se o serviço for recriado com outro nome).
 
 ## Como rodar
 

@@ -1,0 +1,14 @@
+# Blueprint do Render.com para o servidor autoritativo do modo Online
+# (docs/PLANO_MULTIPLAYER.md). O cliente (estático) é hospedado separadamente na
+# Vercel — este arquivo cobre só o processo Node com estado em memória (server/).
+#
+# Deploy: render.com → New → Blueprint → conectar este repositório. Render lê este
+# arquivo e cria o serviço sozinho.
+services:
+  - type: web
+    name: esconde-ou-morre-server
+    runtime: node
+    rootDir: server
+    buildCommand: npm install
+    startCommand: npm start
+    plan: free

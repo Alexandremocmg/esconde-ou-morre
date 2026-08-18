@@ -41,6 +41,13 @@ export const CLIENT_TIMEOUT_MS = 20000;
 // janela em algo que o cliente já não está fazendo há tempo.
 export const RECONNECT_GRACE_MS = 30000;
 
+// Servidor autoritativo em produção (Render.com — docs/PLANO_MULTIPLAYER.md, seção
+// "Hospedagem"). Usado por Game.js._wsUrl() como fallback quando a página não está
+// em localhost/LAN e não há `?ws=` explícito na URL — o cliente hospedado (Vercel)
+// não tem como adivinhar o host do servidor sozinho, já que moram em domínios
+// diferentes e o servidor não escuta a porta 8787 publicamente.
+export const PROD_WS_URL = 'wss://esconde-ou-morre-server.onrender.com';
+
 // ------------------------------------------------------------------ mensagens
 // Cliente → servidor
 export const C2S = {

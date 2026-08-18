@@ -1,0 +1,13 @@
+# Artefatos brutos do Tripo/Mixamo em public/models/ que não são carregados em
+# runtime (só character_animated.glb e water_gun.glb são — src/AnimationManager.js).
+# Excluídos do deploy pra não subir ~44MB de exports intermediários sem uso.
+public/models/*.fbx
+public/models/*.obj
+public/models/*.zip
+public/models/*.JPEG
+public/models/*.mtl
+public/models/*_download_url.txt
+
+# Servidor multiplayer — hospedado separadamente no Render (render.yaml), não faz
+# parte do cliente estático.
+server/
