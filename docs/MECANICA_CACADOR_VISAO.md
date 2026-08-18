@@ -9,6 +9,11 @@
 > Cada item abaixo é marcado como **✅ implementado** (existe no código hoje, como está) ou
 > **🔲 proposto** (design-alvo deste documento, ainda não construído), com referência ao
 > arquivo/linha equivalente ou ao gap exato.
+>
+> Escrito olhando pro Caçador **solo** (`this.mode === 'hunter'`), mas câmera, arma, munição
+> e Scanner são os mesmos componentes reusados pelo Caçador do **modo Online**
+> (`this.onlineRole === ROLE.HUNTER`, ver `Game.js:373`) — a única diferença é que ali a
+> munição é autoritativa no servidor em vez de só local (`docs/PLANO_MULTIPLAYER.md`).
 
 ---
 

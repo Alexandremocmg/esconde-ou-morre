@@ -38,6 +38,11 @@ Para evitar que o Caçador atire desordenadamente por todo o mapa, ele opera com
 * **Parâmetros Configuráveis no Menu (`index.html` / `Game.js`):**
   * `waterAmmo`: Quantidade inicial de disparos (min: 1, max: 30; **padrão: 5 jatos**).
   * `infiniteAmmo`: Booleano (true/false) para liberar munição ilimitada em treinos.
+* **Modo Online:** as mesmas regras de munição valem para o Caçador Online, mas a
+  contagem é **autoritativa no servidor** (`server/room.js:_handleFire`), não só no
+  cliente — evita que editar o JS local dê munição infinita e garante que as duas
+  pontas concordem sobre o fim da partida por falta de água. Ver
+  [`docs/PLANO_MULTIPLAYER.md`](PLANO_MULTIPLAYER.md).
 
 ---
 
@@ -57,10 +62,17 @@ Para evitar que o Caçador atire desordenadamente por todo o mapa, ele opera com
 
 ---
 
-## 6. Lógica de Sorteio no Lobby (Matchmaking Setup)
+## 6. Escolha do Caçador
 
-* **Zona Demarcada no Lobby (`lobbyZone`):** Anel circular emissivo translúcido (raio 4.0 m) projetado no chão do mapa do Lobby.
-* **Regra de Peso Ponderado (`+50% Weight`):**
-  * Jogadores dentro da zona demarcada ao encerrar a contagem regressiva recebem peso `1.5` (+50% de chance).
-  * Jogadores fora da zona recebem peso `1.0`.
-  * A função matemática de sorteio seleciona o Caçador por roleta ponderada (`weighted random`).
+* **Anel do Lobby (`Level.js: isInsideLobbyZone`):** existe um anel circular emissivo
+  (raio 4.0 m) desenhado no chão do mapa do Lobby, e um método que testa se uma
+  posição está dentro dele. **Isto é só o marcador visual** — nenhum código chama
+  `isInsideLobbyZone` hoje, ou seja, a zona não influencia quem vira Caçador. Não
+  existe sorteio ponderado por peso implementado.
+* **Modo Online (o que de fato decide o papel):** o primeiro jogador a entrar na
+  sala vira Caçador; o segundo vira Camaleão (`server/room.js:_freshJoin`,
+  `role = takenRoles.has(ROLE.HUNTER) ? ROLE.CHAMELEON : ROLE.HUNTER`). Sem
+  contagem regressiva nem sorteio — é ordem de chegada. Ver
+  [`docs/PLANO_MULTIPLAYER.md`](PLANO_MULTIPLAYER.md).
+* **Modos solo (`chameleon`/`hunter`):** o papel é escolhido direto no menu inicial,
+  não há lobby compartilhado nem sorteio — o jogador escolhe o próprio papel.

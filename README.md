@@ -8,7 +8,8 @@ Caçador** (jogável) você vira o caçador: câmera em **1ª pessoa** com FOV e
 lanterna, arma de água com penalidade de tiro errado, e uma habilidade de **Scanner**
 para revelar Camaleões próximos — ver `docs/MECANICA_CACADOR_VISAO.md` abaixo. Um 3º
 modo, **Online**, coloca dois jogadores de verdade na mesma sala (1 Caçador + 1
-Camaleão) via um servidor autoritativo — ver `docs/PLANO_MULTIPLAYER.md`.
+Camaleão) via um servidor autoritativo, com munição/Scanner e reconexão automática
+(troca de app, queda de rede ou reload da página) — ver `docs/PLANO_MULTIPLAYER.md`.
 
 O visual é **toon / cel-shaded** no espírito do **Meccha Chameleon**: ambiente claro e
 legível, superfícies chapadas com paleta pop (creme, azul-céu, coral, roxo, menta,
@@ -26,7 +27,9 @@ camuflagem**. Todo o visual é **procedural** — sem assets externos.
 > A arquitetura da mansão (andares/escada/colisão) está em
 > [`docs/PLANO_MANSAO.md`](docs/PLANO_MANSAO.md). Um 3º modo, **Online** (multiplayer,
 > servidor autoritativo em `server/`), está documentado em
-> [`docs/PLANO_MULTIPLAYER.md`](docs/PLANO_MULTIPLAYER.md).
+> [`docs/PLANO_MULTIPLAYER.md`](docs/PLANO_MULTIPLAYER.md). O pipeline que gera o
+> personagem 3D (Mixamo → Blender → GLB único) está em
+> [`docs/PIPELINE_PERSONAGEM.md`](docs/PIPELINE_PERSONAGEM.md).
 
 ## Como rodar (build estática)
 
@@ -59,7 +62,7 @@ Vercel, S3, etc.) — publique a raiz do repositório.
 
 ## Recursos Principais e Mecânicas
 
-- **Personagem 3D Rigged + 7 Animações FBX (Mixamo):** Modelo 3D com skinning Toon e 7 animações sanitizadas *In-Place* (`Idle`, `Running`, `Crouch`, `Sleeping Idle`, `Laying Sleeping`, `Climbing Up Wall`, `Jump`).
+- **Personagem 3D Rigged + 9 Animações num GLB único:** Modelo 3D com skinning Toon carregado de `public/models/character_animated.glb` (uma malha, um esqueleto, 9 clipes embutidos: `idle`, `run`, `crouch`, `hide`, `prone`, `climb`, `jump`, `rifleRun`, `shoot`). Os FBX originais do Mixamo continuam versionados em `public/animation/` como fonte, mas o jogo não os baixa mais — ver `docs/PIPELINE_PERSONAGEM.md`.
 - **Pré-carregador 3D em Tempo Real:** Tela inicial com barra de progresso (`0% → 100%`) garantindo entrada instantânea na partida sem troca de modelo.
 - **Controles Mobile em Arco Ergonômico (Glassmorphism):**
   - **Joystick Flutuante Dinâmico:** Invisível em repouso; surge exatamente sob o polegar esquerdo ao tocar na tela.
@@ -71,16 +74,17 @@ Vercel, S3, etc.) — publique a raiz do repositório.
   - **Escalar (🧱):** Botão contextual com brilho ativado ao aproximar-se de superfícies escaláveis.
   - **Pular (🟢):** Salto físico responsivo com animação `Jump.fbx`.
 - **Mecânica do Caçador (Estilo Meccha Chameleon):**
-  - **Arma de Água 3D (Water Blaster):** Caçador equipado com arma 3D que dispara jatos de água com feixe de partículas e som de pressão.
-  - **Munição Contada (`💧 5/5` Padrão):** O Caçador inicia com 5 jatos de água (configurável de 1 a 30 no menu, com toggle de munição infinita). Cada disparo no vazio perde 1 jato. Se os jatos chegarem a 0 e restarem Camaleões vivos, dispara **Vitória dos Camaleões**!
+  - **Arma de Água 3D:** modelo `water_gun.glb` preso ao osso da mão direita do Caçador (não é mais um cilindro procedural), disparando jatos de água com feixe de partículas e som de pressão.
+  - **Munição Contada (`💧 5/5` Padrão):** O Caçador inicia com 5 jatos de água (configurável de 1 a 30 no menu, com toggle de munição infinita). Cada disparo no vazio perde 1 jato. Se os jatos chegarem a 0 e restarem Camaleões vivos, dispara **Vitória dos Camaleões**! Vale para o Caçador solo **e** para o modo Online (autoritativo no servidor, ver `docs/PLANO_MULTIPLAYER.md`).
   - **Remoção de Tinta (`washPaint`):** O jato de água desbota a tinta do jogador de volta ao branco original em ~1.5s de contato, forçando o movimento e dando uma janela de fuga/esquiva.
   - **Placar com Atraso de 30s (Anti-Cheat):** O tempo camuflado exibido no HUD do Caçador possui um atraso intencional de 30 segundos, impedindo a localização de esconderijos por leitura de pontos em tempo real.
-  - **Zona de Sorteio do Lobby (+50% Peso):** Anel circular emissivo demarcado no mapa do Lobby. Jogadores posicionados dentro da zona no fim da contagem recebem +50% de peso no sorteio do Caçador.
+  - **Anel do Lobby:** anel circular emissivo demarcado no mapa do Lobby (`Level.js: isInsideLobbyZone`). Hoje é só um marcador visual — a escolha de quem vira Caçador **não** usa essa zona (no modo Online é simplesmente o primeiro a entrar na sala; ver `docs/MECANICA_CACADOR.md`).
 - **Modo Caçador Jogável — Visão/Câmera, Arma e Scanner** (`docs/MECANICA_CACADOR_VISAO.md`):
   - **Câmera 1ª Pessoa (`HunterCamera.js`):** FOV 80° (pontos cegos laterais de propósito), arma-viewmodel presa à câmera, corpo do Caçador invisível na própria visão.
   - **Lanterna:** `SpotLight` acoplada à câmera com atenuação quadrática nativa (`decay=2`), sombra dinâmica em desktop.
   - **Penalidade de Tiro Errado:** cada disparo que não acerta um Camaleão-alvo aplica um cooldown de "bomba de pressão" de ~2,6s (em vez do cooldown normal de 300ms), sem consumir munição extra.
-  - **Scanner (📡):** pulso de 8m (3s de duração, 20s de cooldown) que revela direção/distância dos Camaleões-alvo vivos num mini-radar, com vinheta azulada na tela.
+  - **Scanner (📡):** pulso de 8m (3s de duração, 20s de cooldown) que revela direção/distância dos Camaleões-alvo vivos num mini-radar, com vinheta azulada na tela. Disponível no Caçador solo e no Caçador Online.
+- **Reconexão automática (modo Online):** queda de conexão (troca de app, rede instável) ou até um reload de página são recuperados sozinhos — o servidor segura a vaga por 30s (`RECONNECT_GRACE_MS`) e o cliente reconecta com backoff reaproveitando a mesma identidade (`?rejoin=id:token`). Posição/pose não sobrevivem a um reload de página; papel, munição e status de eliminado sim — ver `docs/PLANO_MULTIPLAYER.md`.
 - **Reinício Instantâneo em Memória (0ms de Espera):** Botão **Jogar Novamente** na tela de Game Over/Vitória reseta o estado da partida instantaneamente em memória sem recarregar a página ou refazer downloads 3D.
 
 ## Estrutura
@@ -91,11 +95,13 @@ css/style.css     # Estilização Glassmorphism, botões em arco, menus radiais
 dev_server.py     # Servidor de dev com Cache-Control: no-store (use este)
 server/           # Servidor autoritativo do modo Online (docs/PLANO_MULTIPLAYER.md) — Node + ws, isolado do cliente
 public/
-  animation/      # Arquivos FBX das 7 animações Mixamo (Idle, Run, Crouch, Hide, Prone, Climb, Jump)
-  models/         # Modelos 3D base (FBX, OBJ, GLB)
+  animation/      # FBX originais do Mixamo (fonte do GLB — o jogo não os baixa mais)
+  models/         # character_animated.glb (personagem + 9 clipes) e water_gun.glb (arma do Caçador)
+scripts/
+  gerar_personagem_glb.py # Pipeline Mixamo FBX → Blender → character_animated.glb (docs/PIPELINE_PERSONAGEM.md)
 src/
   main.js         # Boot, preloader 3D, gestos e fullscreen
-  AnimationManager.js # Loader, sanitizador In-Place e gerenciador de instâncias FBX
+  AnimationManager.js # Loader do GLB único, instancia/clona o personagem e a arma (createBlaster)
   Game.js         # Orquestra partida, menus radiais, pinch zoom e reinício em memória
   Player.js       # Física do jogador, amostragem de cor, modos de pose e pulo
   Seeker.js       # IA dos Caçadores: patrulha/caça, visão Toon, reset em memória
@@ -110,10 +116,3 @@ src/
   ColorPicker.js  # Roda de cor HSV para ajuste fino
   Audio.js        # Efeitos de áudio procedurais (Web Audio API)
 ```
-
-## Como rodar
-
-```bash
-python dev_server.py        # porta 8000
-```
-Abra `http://localhost:8000` no navegador ou dispositivo mobile.
