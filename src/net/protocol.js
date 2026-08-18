@@ -14,11 +14,18 @@ export const TICK_HZ = 20;              // taxa de snapshot do servidor (spec: 2
 export const TICK_MS = 1000 / TICK_HZ;
 
 // Altura do CENTRO da cápsula acima do chão — mesma constante de Player.js (GROUND_Y =
-// RADIUS + LENGTH/2, com SCALE=0.5). `Player.position` (o que viaja na rede) já é essa
-// altura, não uma altura relativa ao chão — spawns/avatares remotos usam isto para não
-// ficar somando a mesma correção duas vezes (bug real, corrigido: RemotePlayer chegou a
-// renderizar avatares flutuando 2×GROUND_Y acima do chão).
-export const GROUND_Y = 0.45;
+// RADIUS + LENGTH/2, com SCALE=0.8 — Player.js:14-17). `Player.position` (o que viaja
+// na rede) já é essa altura, não uma altura relativa ao chão — spawns/avatares remotos
+// usam isto para não ficar somando a mesma correção duas vezes (bug real, corrigido:
+// RemotePlayer chegou a renderizar avatares flutuando 2×GROUND_Y acima do chão).
+//
+// NÃO pode importar de Player.js (regra de ouro deste arquivo, ver cabeçalho) — então
+// este valor é uma CÓPIA manual e precisa ser recalculado à mão sempre que `SCALE`
+// mudar em Player.js (mesma pegadinha documentada em FollowCamera.js:4-9, onde SCALE
+// subiu duas vezes — 0.5→0.65→0.8 — sem que quem dependia dele fosse atualizado
+// junto: aqui, e em ChameleonTarget.js/RemotePlayer.js's HEIGHT, ficaram presos no
+// valor de SCALE=0.5 por duas rodadas de aumento até serem padronizados de volta).
+export const GROUND_Y = 0.72;
 
 // Buffer de interpolação de entidades (spec §1: 50-100ms). Renderizamos os avatares
 // remotos ATRASADOS neste tanto, para sempre ter dois snapshots entre os quais

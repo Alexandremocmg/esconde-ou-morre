@@ -10,7 +10,11 @@ import { toonGradient } from './textures.js?v=3';
 // achá-los, não de fugir de um algoritmo de patrulha.
 
 const EYE_Y = 1.1;  // mesma referência de pés de Seeker.js (routes já vêm nessa altura)
-const HEIGHT = 0.9; // mesma altura do Camaleão jogável (Player.js: SCALE 0.5 → HALF_EXTENT*2)
+// Mesma altura do Camaleão jogável (Player.js: HALF_EXTENT*2, SCALE=0.8). Ficou presa
+// em 0.9 (o valor de quando Player.js usava SCALE=0.5) por duas rodadas de aumento do
+// jogador — os bonecos-alvo do modo Caçador solo renderizavam ~40% menores que o
+// próprio jogador. Padronizado de volta pra bater com Player.js.
+const HEIGHT = 1.44;
 
 export class ChameleonTarget {
   constructor(scene, level, point, color = 0x5fbf6e) {

@@ -3,7 +3,11 @@ import { animationManager } from './AnimationManager.js?v=3';
 import { GUN_OFFSET, GUN_ROT } from './Seeker.js?v=3';
 import { INTERP_DELAY_MS, GROUND_Y } from './net/protocol.js?v=3';
 
-const HEIGHT = 0.9; // altura total do avatar (Player.js: HALF_EXTENT*2)
+// Altura total do avatar (Player.js: HALF_EXTENT*2, SCALE=0.8). Ficou presa em 0.9
+// (o valor de quando Player.js usava SCALE=0.5) por duas rodadas de aumento do jogador
+// sem ninguém atualizar aqui — Caçador/Camaleão remotos renderizavam ~40% menores que
+// o jogador local. Padronizado de volta pra bater com Player.js.
+const HEIGHT = 1.44;
 
 // Avatar de um jogador REMOTO (modo online — docs/PLANO_MULTIPLAYER.md). Nunca roda
 // física própria: só interpola os snapshots que chegam do servidor (buffer de
