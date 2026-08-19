@@ -15,6 +15,18 @@ const MAX_RADIUS = 56; // px de deslocamento máximo do knob
 const DEADZONE = 0.12;
 const CURVE = 2;
 
+// KNEE: sem isto, só um toque EXATAMENTE nos 56px de MAX_RADIUS dava corrida
+// máxima — na prática um "empurrão até o talo" de verdade num touchscreen
+// raramente bate o limite geométrico exato (a 90% de deflexão física, a
+// curva pura só dava ~79% de velocidade — sentia como "corrida lenta",
+// feedback real depois de jogar). A partir de KNEE (85% do curso PÓS-
+// deadzone) a curva satura em 1 — "perto da borda" já é sprint completo,
+// sem precisar do pixel exato. CURVE_AT_KNEE reescala a mesma curva pra
+// caber antes do knee; a forma pra controle fino perto do centro (< 50%)
+// muda pouco.
+const KNEE = 0.85;
+const CURVE_AT_KNEE = Math.pow(KNEE, CURVE);
+
 export class Joystick {
   constructor() {
     this.zone = document.getElementById('joystick-zone');
@@ -66,7 +78,7 @@ export class Joystick {
     let outMag = 0;
     if (rawMag > DEADZONE) {
       const rescaled = (rawMag - DEADZONE) / (1 - DEADZONE); // [DEADZONE..1] → [0..1] sem salto
-      outMag = Math.pow(rescaled, CURVE);
+      outMag = Math.min(1, Math.pow(rescaled, CURVE) / CURVE_AT_KNEE);
     }
     const dirX = rawMag > 1e-4 ? dx / dist : 0;
     const dirY = rawMag > 1e-4 ? dy / dist : 0;
