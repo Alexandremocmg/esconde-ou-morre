@@ -129,9 +129,12 @@ que já é o caso.
   1ª pessoa pensada pra um Caçador só), munição/scanner por Caçador, HUD, e a própria
   atribuição de papel (`takenRoles.has(HUNTER)`) precisariam de redesenho. Fica como
   possível próxima fase, não parte desta.
-- Lobby com fases / "pronto?" antes de começar (spec original §4) — a mitigação do §3.3
-  (só começar o timer quando o 1º Camaleão entrar) resolve o caso prático sem precisar
-  disso.
+- ~~Lobby com fases / "pronto?" antes de começar (spec original §4) — a mitigação do
+  §3.3 (só começar o timer quando o 1º Camaleão entrar) resolve o caso prático sem
+  precisar disso.~~ **Parcialmente endereçado depois** — ver
+  [`docs/PLANO_LOBBY_COUNTDOWN.md`](PLANO_LOBBY_COUNTDOWN.md): a contagem regressiva de
+  12s antes da partida ficar ativa é justamente uma "fase de espera" leve, sem ir até o
+  lobby completo com "pronto?" por jogador que a spec original pedia.
 - Várias salas simultâneas (pares independentes jogando ao mesmo tempo) — descartado
   explicitamente nesta rodada; a pergunta que abriu esta sessão já filtrou por isso.
 - Validação server-side de amostragem de cor, lag compensation/rewind — mesma posição do

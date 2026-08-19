@@ -182,6 +182,11 @@ export class Game {
       // a escala 0) na tela de todo mundo. `true` congela o loop de update deste
       // cliente (ver _tick) até o MATCH_OVER de verdade chegar.
       this._eliminatedSpectating = false;
+      // Lobby/matchmaking (docs/PLANO_LOBBY_COUNTDOWN.md): espelha a semântica do
+      // `_matchStartAt` do servidor — 0 = sala ainda não formada, timestamp futuro =
+      // contando regressivamente, timestamp passado = partida ativa de verdade.
+      this._onlineMatchStartAt = 0;
+      this._lastLobbyCountdownShown = null; // dedupe: não reescrever o #hint a 20Hz
       this._hunterViewAttached = false; // reaproveitado por _updateHunterFPSRig() se o papel for Caçador
       this._hunterMuzzle = null;
       // Scanner (só usado se o papel acabar sendo Caçador — ver _tick). Mesmos
@@ -373,6 +378,7 @@ export class Game {
       const welcome = await this.net.connect({ ammo: this.maxWaterAmmo, infiniteAmmo: this.infiniteAmmo });
       this._onlineConnected = true;
       this.onlineRole = welcome.role;
+      this._onlineMatchStartAt = welcome.matchStartAt || 0; // docs/PLANO_LOBBY_COUNTDOWN.md
       this.player.isHunter = welcome.role === ROLE.HUNTER;
       this.player.position.set(welcome.spawn.x, this.player.position.y, welcome.spawn.z);
 
@@ -443,6 +449,10 @@ export class Game {
     // de "você foi flagrado" — só o fim de partida de verdade (_win/_gameOver) muda o
     // que está na tela depois disso.
     if (this._eliminatedSpectating) return;
+    // Mesma prioridade: um PLAYER_JOIN/LEAVE no meio da contagem de lobby não pode
+    // apagar o texto da contagem — quem atualiza isto é só _onSnapshot, quando o
+    // countdown realmente muda ou termina (docs/PLANO_LOBBY_COUNTDOWN.md).
+    if (this._onlineMatchStartAt && Date.now() < this._onlineMatchStartAt) return;
     if (this.remotePlayers.size === 0) {
       this._hintEl.textContent = '⏳ Sozinho na sala — aguardando outro jogador entrar (mesmo link, outra aba/aparelho).';
       return;
@@ -450,6 +460,29 @@ export class Game {
     this._hintEl.textContent = this.onlineRole === ROLE.HUNTER
       ? 'Modo Online — Caçador: mire e toque em 💦 para atirar no outro jogador.'
       : 'Modo Online — Camaleão: pinte-se e se esconda do outro jogador.';
+  }
+
+  // Lobby/matchmaking (docs/PLANO_LOBBY_COUNTDOWN.md): mostra "Partida começa em Ns..."
+  // enquanto `_onlineMatchStartAt` está no futuro, usando `msg.t` (hora do SERVIDOR, já
+  // vem em todo SNAPSHOT) em vez de `Date.now()` local — evita que um relógio de
+  // aparelho dessincronizado mostre um número errado. `_lastLobbyCountdownShown` evita
+  // reescrever o mesmo texto no DOM a 20Hz; só troca quando o segundo inteiro muda.
+  _updateLobbyCountdown(msg) {
+    if (Number.isFinite(msg.matchStartAt)) this._onlineMatchStartAt = msg.matchStartAt;
+    if (!this._hintEl || this._eliminatedSpectating) return;
+
+    const remainingMs = this._onlineMatchStartAt - msg.t;
+    if (this._onlineMatchStartAt && remainingMs > 0) {
+      const s = Math.ceil(remainingMs / 1000);
+      if (s !== this._lastLobbyCountdownShown) {
+        this._lastLobbyCountdownShown = s;
+        this._hintEl.textContent = `⏳ Partida começa em ${s}s...`;
+      }
+    } else if (this._lastLobbyCountdownShown !== null) {
+      // Acabou de virar: devolve o #hint pro texto normal de papel/instrução.
+      this._lastLobbyCountdownShown = null;
+      this._updateOnlineHint();
+    }
   }
 
   _spawnRemotePlayer(p) {
@@ -466,6 +499,7 @@ export class Game {
   }
 
   _onSnapshot(msg) {
+    this._updateLobbyCountdown(msg);
     for (const p of msg.players) {
       if (p.id === this.net.id) {
         // Munição AUTORITATIVA: o servidor é quem decide de verdade (room.js:
@@ -534,6 +568,10 @@ export class Game {
   // otimista de UI; quem manda de verdade é o servidor (room.js).
   _fireOnline() {
     if (this.over || this.won || this.onlineRole !== ROLE.HUNTER) return;
+    // Contagem de lobby ainda rolando (docs/PLANO_LOBBY_COUNTDOWN.md) — o servidor já
+    // recusa o FIRE de qualquer forma (room.js:_handleFire), isto é só pra não gastar
+    // uma viagem de rede à toa nem tocar som de tiro antes da partida ficar ativa.
+    if (this._onlineMatchStartAt && Date.now() < this._onlineMatchStartAt) return;
     if (!this.net || !this.net.connected) return;
     const now = performance.now();
     if (now < this._nextFireAt) return;
@@ -1356,6 +1394,7 @@ export class Game {
     this.over = false;
     this.won = false;
     this._eliminatedSpectating = false;
+    this._lastLobbyCountdownShown = null; // evita flash de texto velho — _onRevive reinicia na hora (sem contagem)
     this._heartTimer = 0;
     this._lastWinTick = -1;
 

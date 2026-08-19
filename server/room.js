@@ -27,6 +27,7 @@ import {
   GROUND_Y,
   HUNTER_AMMO_DEFAULT,
   MAX_CHAMELEONS,
+  LOBBY_COUNTDOWN_MS,
 } from '../src/net/protocol.js';
 import { coneCandidates, normalize } from '../src/net/hittest.js';
 
@@ -120,6 +121,7 @@ export class Room {
       type: S2C.WELCOME,
       id: client.id, role: client.role, spawn: client.spawn, layout: FIXED_LAYOUT,
       matchDuration: MATCH_DURATION_S, token: client.token, eliminated: client.eliminated,
+      matchStartAt: this._matchStartAt,
       players: [...this.clients.values()]
         .filter((c) => c.id !== id && c.connected)
         .map((c) => this._publicState(c)),
@@ -179,10 +181,23 @@ export class Room {
       (c) => c.connected && c.role === ROLE.CHAMELEON,
     ).length;
     if (role === ROLE.CHAMELEON && chameleonsConnectedBefore === 0) {
-      // Só o 1º CAMALEÃO de verdade arma o timer — não o Caçador sozinho
+      // Só o 1º CAMALEÃO de verdade arma a contagem — não o Caçador sozinho
       // (docs/PLANO_LOBBY_MULTIPLAYER.md §3.3). Antes disso o Caçador podia ficar
       // esperando na sala vazia queimando os 180s da partida à toa; agora o hint
       // "Sozinho na sala" (Game.js) cobre essa espera sem custar tempo de partida.
+      //
+      // Lobby/matchmaking (docs/PLANO_LOBBY_COUNTDOWN.md): `_matchStartAt` vira um
+      // timestamp FUTURO (`+ LOBBY_COUNTDOWN_MS`) em vez de instantâneo — dá uma
+      // janela pra mais gente entrar pelo link compartilhado antes do Caçador poder
+      // atirar. `_tick()` calcula `elapsed` contra este mesmo campo; enquanto ele
+      // está no futuro, `elapsed` é negativo e o fim-por-tempo nunca dispara sozinho
+      // — nenhuma mudança necessária lá. `_handleFire` ganha o gate correspondente.
+      this._matchStartAt = Date.now() + LOBBY_COUNTDOWN_MS;
+    }
+
+    // Sala cheia ANTES da contagem acabar: pula direto pro início — com todo mundo já
+    // presente não faz sentido esperar o resto dos 12s à toa (docs/PLANO_LOBBY_COUNTDOWN.md).
+    if (this._matchStartAt > Date.now() && this.clients.size === ROOM_CAPACITY) {
       this._matchStartAt = Date.now();
     }
 
@@ -190,6 +205,7 @@ export class Room {
       type: S2C.WELCOME,
       id, role, spawn, layout: FIXED_LAYOUT,
       matchDuration: MATCH_DURATION_S, token, eliminated: client.eliminated, // sempre false aqui (join novo), por simetria com _reattach
+      matchStartAt: this._matchStartAt,
       players: [...this.clients.values()]
         .filter((c) => c.id !== id && c.connected)
         .map((c) => this._publicState(c)),
@@ -266,6 +282,10 @@ export class Room {
     client.eliminated = false;
     if (this._over) {
       this._over = false;
+      // Proposital: revanche instantânea, SEM a contagem de lobby
+      // (docs/PLANO_LOBBY_COUNTDOWN.md) — quem já estava jogando junto não precisa
+      // esperar de novo, a contagem só faz sentido pra uma sala se formando do zero.
+      // Não "consertar" isto pra `Date.now() + LOBBY_COUNTDOWN_MS` sem querer.
       this._matchStartAt = Date.now();
       for (const c of this.clients.values()) {
         c.eliminated = false;
@@ -292,9 +312,13 @@ export class Room {
 
   // --------------------------------------------------------------- disparo
   _handleFire(client, msg) {
-    if (this._over || client.role !== ROLE.HUNTER || client.eliminated) return;
-
     const now = Date.now();
+    // `!this._matchStartAt`: sala não formada ainda (Caçador sozinho). `now <
+    // this._matchStartAt`: contagem de lobby ainda rolando (docs/PLANO_LOBBY_COUNTDOWN.md)
+    // — mesmo campo, os dois estados possíveis antes da partida ficar ativa de verdade.
+    if (this._over || client.role !== ROLE.HUNTER || client.eliminated) return;
+    if (!this._matchStartAt || now < this._matchStartAt) return;
+
     if (now < client.nextFireAt) return; // spam silenciosamente ignorado (cooldown já corre no cliente)
 
     const origin = msg.origin, dirIn = msg.dir;
@@ -383,7 +407,10 @@ export class Room {
     const players = [...this.clients.values()]
       .filter((c) => c.connected)
       .map((c) => this._publicState(c));
-    this._broadcast({ type: S2C.SNAPSHOT, t: now, players });
+    // matchStartAt junto de `t` (hora do servidor) deixa o cliente calcular "quantos
+    // segundos faltam" contra o RELÓGIO DO SERVIDOR, sem depender do Date.now() local
+    // (que pode estar dessincronizado) — docs/PLANO_LOBBY_COUNTDOWN.md.
+    this._broadcast({ type: S2C.SNAPSHOT, t: now, matchStartAt: this._matchStartAt, players });
   }
 
   _publicState(c) {

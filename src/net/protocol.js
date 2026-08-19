@@ -48,6 +48,14 @@ export const CLIENT_TIMEOUT_MS = 20000;
 // janela em algo que o cliente já não está fazendo há tempo.
 export const RECONNECT_GRACE_MS = 30000;
 
+// Lobby/matchmaking (docs/PLANO_LOBBY_COUNTDOWN.md): janela de espera ADICIONAL entre
+// "sala formada" (1 Caçador + o 1º Camaleão) e a partida ficar realmente ativa (Caçador
+// pode atirar, o relógio de MATCH_DURATION_S começa a valer). Não desconta dos 180s de
+// caçada — `room.js` arma `_matchStartAt` no FUTURO (`Date.now() + LOBBY_COUNTDOWN_MS`)
+// em vez de instantâneo; enquanto esse timestamp não chega, o tempo decorrido da
+// partida (calculado contra ele) é negativo, então o fim-por-tempo nunca dispara sozinho.
+export const LOBBY_COUNTDOWN_MS = 12000;
+
 // Servidor autoritativo em produção (Render.com — docs/PLANO_MULTIPLAYER.md, seção
 // "Hospedagem"). Usado por Game.js._wsUrl() como fallback quando a página não está
 // em localhost/LAN e não há `?ws=` explícito na URL — o cliente hospedado (Vercel)
@@ -67,8 +75,8 @@ export const C2S = {
 
 // Servidor → cliente
 export const S2C = {
-  WELCOME: 'welcome',     // { id, role, spawn, layout, matchDuration, players[], token, eliminated }
-  SNAPSHOT: 'snapshot',   // { t, players[] }
+  WELCOME: 'welcome',     // { id, role, spawn, layout, matchDuration, players[], token, eliminated, matchStartAt }
+  SNAPSHOT: 'snapshot',   // { t, players[], matchStartAt }
   PLAYER_JOIN: 'playerJoin',
   PLAYER_LEAVE: 'playerLeave',
   SHOT: 'shot',           // resultado do disparo (broadcast): { hunterId, hit, targetId, from, to }

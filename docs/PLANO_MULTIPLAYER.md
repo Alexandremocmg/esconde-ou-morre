@@ -9,7 +9,10 @@
 > 1 Caçador + até 4 Camaleões na MESMA partida — ver
 > [`docs/PLANO_LOBBY_MULTIPLAYER.md`](PLANO_LOBBY_MULTIPLAYER.md). Arquitetura, protocolo
 > e hospedagem abaixo continuam valendo; só a capacidade da sala (§3.1 "O que existe
-> hoje" e a tabela de avaliação §1) mudou.
+> hoje" e a tabela de avaliação §1) mudou. Depois disso, a partida ganhou uma contagem
+> regressiva de 12s antes de ficar ativa (endereça parte do item "Lobby 4-10 jogadores,
+> 4 fases de partida" da tabela §1) — ver
+> [`docs/PLANO_LOBBY_COUNTDOWN.md`](PLANO_LOBBY_COUNTDOWN.md).
 
 ---
 
