@@ -348,6 +348,18 @@ export class Room {
     });
     const best = hits[0] || null;
 
+    // Jato visível (docs/PLANO_LOBBY_MULTIPLAYER.md nunca cobriu isto — era uma lacuna
+    // real: o online não tinha NENHUM efeito 3D de tiro, só som+HUD). `S2C.SHOT` já
+    // existia no protocolo (nunca usado) com exatamente esta forma. Broadcast pra TODO
+    // MUNDO, inclusive o próprio Caçador — ninguém desenha o jato otimisticamente antes
+    // disso chegar, então o servidor é a ÚNICA fonte do efeito visual (mesmo padrão de
+    // autoridade do resto do disparo). `to`: posição real do alvo se acertou, ou o
+    // ponto no fim do alcance na direção mirada se errou.
+    const shotTo = best
+      ? best.pos
+      : { x: origin.x + dir.x * JET_RANGE, y: origin.y + dir.y * JET_RANGE, z: origin.z + dir.z * JET_RANGE };
+    this._broadcast({ type: S2C.SHOT, hunterId: client.id, hit: !!best, targetId: best?.id ?? null, from: origin, to: shotTo });
+
     if (best) {
       client.nextFireAt = now + HUNTER_FIRE_COOLDOWN_MS;
       const target = this.clients.get(best.id);

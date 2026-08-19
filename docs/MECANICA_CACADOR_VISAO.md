@@ -80,9 +80,16 @@
   degToRad(9)`, ~18° de cone total, `Game.js:18`) contra a posição conhecida de cada alvo
   (`JET_RANGE = 15`, `Game.js:20`) — não uma dispersão física real de partículas. O comentário
   em `Game.js:543-545` explica a escolha: evita raycast contra a malha animada (`SkinnedMesh`
-  usa bind pose no raycast). O efeito visual (`Effects.waterJetBeam`, `Effects.js:54-78`) já
-  desenha 4 gotículas ao longo do trajeto com leve espalhamento — reaproveitável como base do
-  visual de "splatter" mesmo mantendo o hit-test por cone.
+  usa bind pose no raycast). O efeito visual (`Effects.waterJetBeam`) desenha um traço
+  instantâneo cobrindo o trajeto inteiro (leitura imediata do disparo) + 12 gotículas
+  viajando atrás dele + um respingo de impacto ao acertar — reaproveitável como base do
+  visual de "splatter" mesmo mantendo o hit-test por cone. Antes eram só 4 gotículas
+  espalhadas sem traço, quase imperceptíveis (fix real: "não dá pra ver o jato saindo da
+  arma"). No modo Online, o efeito não existia (só som+HUD, `_fireOnline` nunca chamava
+  `waterJetBeam`) — agora o servidor faz broadcast de `S2C.SHOT` (`{hunterId, hit,
+  targetId, from, to}`, já estava no protocolo, nunca tinha sido usado) pra todo mundo
+  na sala, e cada cliente desenha o mesmo jato localmente ao receber — Caçador e
+  Camaleões veem o mesmo tiro, não só quem atirou.
 * **Sistema de Pressão/Cartucho:** tanque de 5 a 8 cargas. **Já implementado com folga maior**:
   `waterAmmo` é configurável no menu (`#ammo-select`, `Game.js:131-134`) de 1 a 30, com padrão
   5 (dentro do range 5-8 pedido), mais um toggle `infiniteAmmo` para treino
@@ -141,7 +148,7 @@ sinal não existe hoje e fica para quando os alvos ganharem comportamento própr
   sem checagem de oclusão (o ponto no radar É a informação "tem alguém ali", oclusão
   visual não se aplica a um HUD). Pontos reaproveitam um pool de `<div class="scanner-dot">`
   (`this._scannerDots`), criado sob demanda e escondido/reposicionado por frame — mesmo
-  espírito de reaproveitamento do `Effects.waterJetBeam` (`Effects.js:54-78`), só que em DOM
+  espírito de reaproveitamento do `Effects.waterJetBeam` (`Effects.js`), só que em DOM
   em vez de malhas Three.js.
 * **Duração / Cooldown:** `SCANNER_DURATION_MS=3000`, `SCANNER_COOLDOWN_MS=20000` — timers
   próprios em `performance.now()`, mesmo padrão de `_nextFireAt` do disparo. O badge

@@ -412,6 +412,7 @@ export class Game {
       this.net.on(S2C.PLAYER_JOIN, (msg) => { this._spawnRemotePlayer(msg.player); this._updateOnlineHint(); });
       this.net.on(S2C.PLAYER_LEAVE, (msg) => { this._removeRemotePlayer(msg.id); this._updateOnlineHint(); });
       this.net.on(S2C.PLAYER_HIT, (msg) => this._onPlayerHit(msg));
+      this.net.on(S2C.SHOT, (msg) => this._onShot(msg));
       this.net.on(S2C.MATCH_OVER, (msg) => this._onMatchOver(msg));
 
       // Reconexão (Net.js): uma queda não encerra mais a partida na hora — o
@@ -518,6 +519,19 @@ export class Game {
       if (!rp) { this._spawnRemotePlayer(p); rp = this.remotePlayers.get(p.id); }
       rp.pushSnapshot(p, msg.t);
     }
+  }
+
+  // Jato de água visível no Online (antes não existia NENHUM efeito 3D de tiro nesse
+  // modo — só som pro próprio atirador e vinheta pra quem levava o tiro; o "jato saindo
+  // da arma" que dá pra ver no Caçador solo nunca foi ligado aqui). O servidor é a
+  // ÚNICA fonte do efeito (broadcast pra todo mundo, `room.js:_handleFire`) — ninguém
+  // desenha nada otimisticamente antes disso chegar, então só existe UM jato por tiro,
+  // igual pra quem atirou e pra quem só está vendo.
+  _onShot(msg) {
+    this.effects.waterJetBeam(msg.from, msg.to, !!msg.hit);
+    // O atirador já ouviu o próprio waterBlast() na hora (_fireOnline, otimista) —
+    // só toca de novo pra quem NÃO foi quem atirou, senão soa duplicado pro Caçador.
+    if (msg.hunterId !== this.net.id) this.audio.waterBlast();
   }
 
   // O acerto em si já chega via snapshot (`eliminated`, lido por RemotePlayer) — este
