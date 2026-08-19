@@ -982,7 +982,7 @@ export class Level {
 
     // Materializa oclusores de VISÃO (grudáveis + lajes: o 2º andar bloqueia a
     // linha de visão entre andares) e colisores de CÂMERA (idem, p/ a câmera não
-    // atravessar o piso). Game._updateOcclusion continua usando climbables direto.
+    // atravessar o piso). Game._updateOcclusion usa este `occluders`.
     this.occluders = this.climbables.concat(this._slabs);
     this.cameraColliders = this.climbables.concat(this._slabs);
   }

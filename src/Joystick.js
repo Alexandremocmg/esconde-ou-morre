@@ -4,6 +4,17 @@
 
 const MAX_RADIUS = 56; // px de deslocamento máximo do knob
 
+// Zona morta + curva de resposta: antes a leitura era 100% linear (qualquer
+// toque acima de ~1% de deflexão em Player.js já virava corrida máxima — não
+// havia controle analógico nenhum). DEADZONE engole jitter do polegar perto do
+// centro; a magnitude pós-deadzone é REESCALADA de volta pra [0..1] (não um
+// clamp-pra-zero-e-pulo, que sentiria como um "degrau" no dedo) e elevada a
+// CURVE — fino perto do centro (microajuste), converge rápido perto do máximo.
+// Full-tilt sempre dá magnitude exatamente 1 (rescaled=1 → 1^CURVE=1), então o
+// teto de velocidade (MOVE_SPEED, Player.js) não muda, só a rampa até ele.
+const DEADZONE = 0.12;
+const CURVE = 2;
+
 export class Joystick {
   constructor() {
     this.zone = document.getElementById('joystick-zone');
@@ -47,10 +58,21 @@ export class Joystick {
       dx = (dx / dist) * MAX_RADIUS;
       dy = (dy / dist) * MAX_RADIUS;
     }
+    // O botão visual acompanha o dedo 1:1, SEMPRE cru — só o `value` lógico que
+    // o jogo consome ganha deadzone/curva (ver constantes no topo do arquivo).
     this._moveKnob(dx, dy);
+
+    const rawMag = dist > MAX_RADIUS ? 1 : dist / MAX_RADIUS;
+    let outMag = 0;
+    if (rawMag > DEADZONE) {
+      const rescaled = (rawMag - DEADZONE) / (1 - DEADZONE); // [DEADZONE..1] → [0..1] sem salto
+      outMag = Math.pow(rescaled, CURVE);
+    }
+    const dirX = rawMag > 1e-4 ? dx / dist : 0;
+    const dirY = rawMag > 1e-4 ? dy / dist : 0;
     // y da tela cresce para baixo → invertemos para que "para cima" seja +1
-    this.value.x = dx / MAX_RADIUS;
-    this.value.y = -dy / MAX_RADIUS;
+    this.value.x = dirX * outMag;
+    this.value.y = -dirY * outMag;
   };
 
   _onUp = (e) => {

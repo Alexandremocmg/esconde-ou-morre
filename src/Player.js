@@ -46,8 +46,10 @@ const PIN_RANGE = PIN_PROBE + RADIUS + 0.4 * SCALE; // alcance máx. antes de so
 // pendurado de cabeça para baixo — e a câmera, que fica na direção da normal,
 // mergulharia para dentro do piso (tela preta). Ver docs/PLANO_MANSAO.md.
 const MIN_LATCH_NY = -0.3;
-const TURN_SPEED = 6;               // suavização de rotação (menor = giro mais suave/lento).
-                                    // Usado como taxa em 1 - exp(-TURN_SPEED*dt): independente de FPS.
+const TURN_SPEED = 4;               // suavização de rotação (menor = giro mais suave/lento).
+                                    // Usado como taxa em 1 - exp(-TURN_SPEED*dt): independente de FPS
+                                    // (tempo até ~95% de convergência = ln(0.05)/-TURN_SPEED, ~0.75s
+                                    // aqui — era 6/~0.5s, ficou mais suave sem virar "barco").
 const COLOR_LERP = 10;              // suavização da troca de cor (camuflagem)
 const PUPIL_MAX = 0.075 * SCALE;    // deslocamento máx. da pupila (olhar)
 const EYE_LERP = 12;                // suavização do olhar
@@ -551,7 +553,13 @@ export class Player {
     const move = this._axZ.set(0, 0, 0)
       .addScaledVector(right, joy.x)
       .addScaledVector(fwd, joy.y);
-    const moving = move.lengthSq() > 1e-4;
+    // Magnitude ANTES de normalizar: Joystick.js já entrega deadzone+curva
+    // aplicadas em joy.x/y, então rawLen (0..1) É o controle analógico de
+    // velocidade — antes disso a direção sempre virava corrida máxima, sem
+    // microajuste fino possível perto de quinas.
+    const rawLen = move.length();
+    const moving = rawLen > 1e-4;
+    const speedScale = moving ? Math.min(1, rawLen) : 0;
     if (moving) move.normalize();
 
     // Cooldown de re-latch: após soltar da parede, deixa o cd correr (usado só
@@ -560,7 +568,7 @@ export class Player {
 
     // Movimento horizontal (grudar NÃO é mais automático: andar rente à parede
     // não cola mais; use o botão Grudar). Agachado anda mais devagar.
-    const speed = MOVE_SPEED * (this.crouched ? CROUCH_SPEED_MULT : 1);
+    const speed = MOVE_SPEED * (this.crouched ? CROUCH_SPEED_MULT : 1) * speedScale;
     if (moving) this.position.addScaledVector(move, speed * dt);
 
     // Colisão horizontal: empurra a cápsula para fora das paredes/móveis e desliza
@@ -586,9 +594,11 @@ export class Player {
     const move = this._axZ.set(0, 0, 0)
       .addScaledVector(side, joy.x)
       .addScaledVector(up, joy.y);
-    if (move.lengthSq() > 1e-4) {
+    const rawLen = move.length(); // mesmo controle analógico de _updateGrounded — ajuda a
+    if (rawLen > 1e-4) {          // travar poses de camuflagem/posicionar rente a quinas na parede
+      const speedScale = Math.min(1, rawLen);
       move.normalize();
-      this.position.addScaledVector(move, CLIMB_SPEED * dt);
+      this.position.addScaledVector(move, CLIMB_SPEED * speedScale * dt);
     }
 
     // Re-pin: sonda a partir de um ponto à frente da superfície, de volta pra parede.
@@ -642,6 +652,9 @@ export class Player {
     // atravessava a laje até ficar pendurado sob ela.
     const feetY = this.position.y - HALF_EXTENT * newUp.y;
     const floorY = this._supportTopBelow(this.position.x, this.position.z, feetY + 0.3);
+    // -0.05 é menor que a deadzone do joystick (0.12, Joystick.js) — quem empurra
+    // "pra baixo" o suficiente pra soltar já passou da deadzone de qualquer forma,
+    // então a curva analógica não muda este gesto (revisado, sem ajuste necessário).
     if (joy.y < -0.05 && feetY <= floorY + 0.02) this._detachToGround(floorY);
   }
 
@@ -815,8 +828,11 @@ export class Player {
   }
 
   // Deitado: imóvel; empurrar o joystick levanta (UX). Sem gravidade (já assentado).
+  // 0.20 (era 0.35): com a curva quadrática de Joystick.js, a magnitude bruta que
+  // antes dava 0.35 agora chega bem menor no joy.x/y recebido aqui — reduzido pra
+  // manter o mesmo "empurrão deliberado, mas não precisa ir até o talo" de antes.
   _updateProne(dt, joy) {
-    if (Math.hypot(joy.x, joy.y) > 0.35) this.toggleProne();
+    if (Math.hypot(joy.x, joy.y) > 0.20) this.toggleProne();
   }
 
   // Cor do tapete/superfície colorável logo ABAIXO do jogador (pose deitada).

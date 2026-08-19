@@ -170,6 +170,22 @@ de cena com `colorable:false`.
 regressão — centro de L2/L3 segue em 0.25 (penumbra) apesar das 8 luminárias novas.
 
 ## Pendências / próximos passos
+- **Escala do personagem vs. altura das paredes** (feedback de gameplay, investigado
+  e ADIADO por decisão do usuário — sem mudança de código nesta rodada). Proporção
+  pedida: boneco ≈45-50% da altura de parede em cômodo normal, ≈25-30% num salão de
+  pé-direito alto. Achado real: a proporção da SALA NORMAL já bate exatamente
+  (1,44m / `ROOM_H`=3,2m = 45%) — mas o prédio tem um **teto único** (`WALL_H`=7,8m)
+  pro edifício inteiro; as paredes de cômodo (`ROOM_H`) são divisórias PARCIAIS,
+  abertas por cima até esse mesmo teto — então olhando pra cima em qualquer cômodo o
+  teto real está a 7,8m (18,5%), não a 3,2m. É provável que essa "janela" pro teto
+  alto seja a causa da sensação de desproporção relatada, não o `ROOM_H` em si.
+  Baixar `WALL_H` pra bater com os 25-30% pedidos no salão central tira a folga que
+  o mezanino (`MEZZ3_Y`=5,2, ver linha 90 acima) precisa por cima — mudança
+  estrutural, não um número solto. Reavaliar depois de ver o efeito da correção de
+  oclusão de câmera e do joystick — se a sensação persistir, os dois caminhos são:
+  (a) fechar o topo das paredes de cômodo com um teto de verdade por área (some o
+  sightline pro teto alto, geometria nova por cômodo), ou (b) redesenhar o circuito
+  vertical do mezanino pra caber com um `WALL_H` mais baixo.
 - **Fino de dificuldade por playtest**: `BASE_SURVIVE=60`/`+15` por estágio e
   `DIFF_PER_STAGE=0.12` seguem os valores antigos, de quando o estágio 1 tinha **um**
   Caçador. Agora tem dois — pode estar duro no começo. Isso é sensação, não medição:

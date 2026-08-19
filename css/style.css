@@ -819,8 +819,18 @@ body.mode-online #hint { display: block; }
 }
 
 /* Retícula do conta-gotas (Fase 5a): anel fino + ponto central, no meio da tela.
-   Marca onde o botão Pintar (🎨) amostra a cor. Não intercepta toques. */
+   Originalmente marcava só onde o botão Pintar (🎨) amostra a cor no Camaleão —
+   nasceu quando o jogo só tinha câmera em 3ª pessoa (FollowCamera). Quando o
+   Caçador em 1ª pessoa chegou depois, a retícula foi reaproveitada pra mirar o
+   jato de água também — e nesse caso faz sentido (a câmera fica no próprio
+   olho, sem sobreposição). No Camaleão, porém, `FollowCamera.update()`
+   centraliza o boneco na tela TODO frame (`camera.lookAt(pos)`) — a retícula
+   sempre caía em cima do próprio personagem, parecendo uma mira nele (confuso
+   pra quem está jogando ou assistindo). Escondida por padrão (Camaleão); as
+   regras de modo reativam só nos casos em que a câmera não sobrepõe o boneco
+   (Caçador solo e Caçador Online, 1ª pessoa nos dois). */
 #reticle {
+  display: none;
   position: fixed;
   left: 50%; top: 50%;
   width: 26px; height: 26px;
@@ -831,6 +841,8 @@ body.mode-online #hint { display: block; }
   pointer-events: none;
   z-index: 5;
 }
+body.mode-hunter #reticle,
+body.mode-online.online-hunter #reticle { display: block; }
 #reticle::after {
   content: "";
   position: absolute;

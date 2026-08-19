@@ -727,8 +727,17 @@ export class Game {
     const dist = dir.length();
     dir.multiplyScalar(1 / Math.max(dist, 1e-3));
     this._occRay.set(this.camera.position, dir);
-    this._occRay.far = Math.max(0, dist - 0.8); // não conta o bloco onde ele gruda
-    const hits = this._occRay.intersectObjects(this.level.climbables, false);
+    // A folga de 0.8m só faz sentido GRUDADO (não contar o bloco onde ele gruda,
+    // a ~RADIUS de distância do centro). Aplicada sempre, ela também cortava o
+    // raio antes de testar um pilar/móvel que o jogador estivesse encostado NO
+    // CHÃO (não grudado) a menos de 0.8m — o oclusor nunca era testado e o
+    // personagem sumia 100% atrás dele (bug real, não falta de cobertura de alvo).
+    // No chão, só uma folga mínima pra não autointersectar a própria cápsula.
+    const skip = this.player.state === 'latched' ? 0.8 : 0.15;
+    this._occRay.far = Math.max(0, dist - skip);
+    // `occluders` (Level.js) = climbables + lajes do 2º andar — climbables sozinho
+    // não bloqueava a visão entre andares no fade (via só a colisão de câmera).
+    const hits = this._occRay.intersectObjects(this.level.occluders, false);
 
     const nowFaded = new Set();
     for (const h of hits) {
