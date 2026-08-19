@@ -64,11 +64,11 @@ Para evitar que o Caçador atire desordenadamente por todo o mapa, ele opera com
 
 ## 6. Escolha do Caçador
 
-* **Anel do Lobby (`Level.js: isInsideLobbyZone`):** existe um anel circular emissivo
-  (raio 4.0 m) desenhado no chão do mapa do Lobby, e um método que testa se uma
-  posição está dentro dele. **Isto é só o marcador visual** — nenhum código chama
-  `isInsideLobbyZone` hoje, ou seja, a zona não influencia quem vira Caçador. Não
-  existe sorteio ponderado por peso implementado.
+* **Sem sorteio ponderado por zona:** houve um anel decorativo no chão do hall que
+  sugeria uma "zona de sorteio" (+50% de chance de virar Caçador para quem estivesse
+  dentro dele), mas o método que testaria isso nunca foi ligado a nada — foi removido
+  (atrapalhava a leitura do hall central, ver commit que tira `Level.js:_lobbyRing`).
+  Não existe sorteio ponderado por peso implementado.
 * **Modo Online (o que de fato decide o papel):** o primeiro jogador a entrar na
   sala vira Caçador; o segundo vira Camaleão (`server/room.js:_freshJoin`,
   `role = takenRoles.has(ROLE.HUNTER) ? ROLE.CHAMELEON : ROLE.HUNTER`). Sem

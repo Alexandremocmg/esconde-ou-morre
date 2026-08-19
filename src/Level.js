@@ -96,22 +96,6 @@ export class Level {
     this._roomDoors = []; // {x,z} dos vãos de cômodo → mantidos livres no espalhamento
 
     this._build();
-
-    // Zona de Sorteio do Lobby (Trigger Zone de +50% peso para ser Caçador)
-    const ringGeo = new THREE.RingGeometry(3.6, 4.0, 32);
-    const ringMat = new THREE.MeshBasicMaterial({
-      color: 0x59c1e8, side: THREE.DoubleSide, transparent: true, opacity: 0.45, depthWrite: false
-    });
-    this._lobbyRing = new THREE.Mesh(ringGeo, ringMat);
-    this._lobbyRing.rotation.x = Math.PI / 2;
-    this._lobbyRing.position.set(0, 0.02, 0);
-    this.scene.add(this._lobbyRing);
-  }
-
-  // Verifica se o jogador está dentro da Zona de Sorteio do Lobby (+50% de peso)
-  isInsideLobbyZone(pos) {
-    if (!pos) return false;
-    return Math.hypot(pos.x, pos.z) <= 4.0;
   }
 
   // Estimativa BARATA de luz em pos (0..1) para a mecânica de PENUMBRA (Fase 5):
