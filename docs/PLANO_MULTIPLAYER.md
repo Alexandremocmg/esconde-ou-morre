@@ -27,7 +27,7 @@
 | `ChameleonState` (pos/rot/pose/cores/isLocked) | ✅ Adotado, com 2 zonas de cor (upper/lower — `Player.js:99`), não 4 quadrantes |
 | `roughness`/`metallic` no payload | ❌ Descartado: `MeshToonMaterial` ignora ambos (`Player.setFinish()` já é no-op) |
 | Cor só por evento pontual, não por frame | ✅ Já é assim: o input carrega a cor corrente a cada tick, mas ela só muda quando o jogador pinta |
-| Hitreg validado no servidor | ✅ **Núcleo desta v1** |
+| Hitreg validado no servidor | ✅ **Núcleo desta v1** — inclui oclusão de parede (`src/net/occluders.js`, ver §4.2) |
 | Lag compensation / rewind | ⚠️ Fora de escopo — compensado por uma tolerância angular fixa (ver §4) |
 | Lobby 4-10 jogadores, 4 fases de partida | ⚠️ Fora de escopo — v1 é sala fixa de 2 |
 | Interest Management (anti-ESP) | ⚠️ Fora de escopo — a arquitetura (payload pequeno, servidor dono do papel) já reserva o ponto de corte |
@@ -173,6 +173,22 @@ resetar munição, sem reviver se já estava eliminado).
    interpolado e atrasado** (`INTERP_DELAY_MS`), enquanto o servidor valida contra a
    última posição que conhece. Sem essa folga, tiros honestos na borda do cone seriam
    recusados — é o substituto barato do lag compensation/rewind da spec original.
+   **Recalibrado de 6° pra 2.5°**: por ser um ÂNGULO compensando uma DERIVA em METROS
+   fixa (`INTERP_DELAY_MS` × velocidade ≈ 0,83m, não muda com a distância), o perdão
+   que ele dava crescia com o alcance do tiro — a 15m (`JET_RANGE`) chegava a ~1,64m,
+   quase o dobro do necessário, lido como "acertei sem estar mirando, de longe". Em
+   2.5° o perdão no alcance máximo cai pra ~0,67m.
+   2.1. **Oclusão de parede** (`src/net/occluders.js`, novo): antes disso, o servidor
+        não tinha NENHUMA noção de geometria da mansão — um Camaleão atrás de parede
+        dentro do cone/alcance contava como acerto (`hittest.js` já documentava essa
+        lacuna como pendência do servidor). `LAYOUT_1_OCCLUDERS` é um snapshot estático
+        (AABBs de `level.climbables`, layout 1 — o único do Online) extraído uma vez
+        via harness Playwright headless; `isOccluded()` faz o teste ray-AABB pelo
+        método dos slabs, sem `three`/DOM (mesma regra de zero-imports de
+        `protocol.js`/`hittest.js`). `server/room.js:_handleFire` filtra os candidatos
+        de `coneCandidates` por isto antes de escolher o `best`. Fragilidade registrada
+        no próprio arquivo: se a geometria do layout 1 mudar em `Level.js`, o snapshot
+        fica desatualizado em silêncio — precisa ser regerado manualmente.
 3. **Layout fixo (`FIXED_LAYOUT` em protocol.js).** `Level` é função pura do número do
    layout, com PRNG semeado (`mulberry32`, `Level.js`) — os dois clientes produzem
    geometria/`solids`/cores idênticos sem o servidor precisar rodar `Level.js` (que

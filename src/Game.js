@@ -413,6 +413,7 @@ export class Game {
       this.net.on(S2C.PLAYER_LEAVE, (msg) => { this._removeRemotePlayer(msg.id); this._updateOnlineHint(); });
       this.net.on(S2C.PLAYER_HIT, (msg) => this._onPlayerHit(msg));
       this.net.on(S2C.SHOT, (msg) => this._onShot(msg));
+      this.net.on(S2C.FIRE_DENIED, (msg) => this._onFireDenied(msg));
       this.net.on(S2C.MATCH_OVER, (msg) => this._onMatchOver(msg));
 
       // Reconexão (Net.js): uma queda não encerra mais a partida na hora — o
@@ -528,10 +529,39 @@ export class Game {
   // desenha nada otimisticamente antes disso chegar, então só existe UM jato por tiro,
   // igual pra quem atirou e pra quem só está vendo.
   _onShot(msg) {
-    this.effects.waterJetBeam(msg.from, msg.to, !!msg.hit);
+    // `msg.from` é a câmera de quem atirou (ápice do cone validado, ver comentário em
+    // _fireOnline) — desenhar o traço exatamente ali faz o jato nascer no centro da
+    // tela, não na arma renderizada no canto (bug real: "o jato não parece sair do
+    // cano da arma"). Só na TELA DE QUEM ATIROU dá pra corrigir isso de graça: o
+    // viewmodel da arma só existe no cliente do próprio Caçador (1ª pessoa), então só
+    // ele tem `_hunterMuzzle` pra substituir o ponto de partida sem mexer no que foi
+    // validado. Pra quem só está assistindo o tiro de outro jogador, mantém `msg.from`
+    // (aproximação aceitável, mesmo espírito do fim do traço numa errada em modo solo).
+    let from = msg.from;
+    if (msg.hunterId === this.net.id && this._hunterMuzzle) {
+      this._tmpMuzzlePos = this._tmpMuzzlePos || new THREE.Vector3();
+      this._hunterMuzzle.getWorldPosition(this._tmpMuzzlePos);
+      from = this._tmpMuzzlePos;
+    }
+    this.effects.waterJetBeam(from, msg.to, !!msg.hit);
     // O atirador já ouviu o próprio waterBlast() na hora (_fireOnline, otimista) —
     // só toca de novo pra quem NÃO foi quem atirou, senão soa duplicado pro Caçador.
     if (msg.hunterId !== this.net.id) this.audio.waterBlast();
+  }
+
+  // Bug real corrigido: o servidor recusa um FIRE fora do cooldown DE VERDADE
+  // (room.js:_handleFire), que depois de um ERRO é HUNTER_MISS_COOLDOWN_MS (2.6s),
+  // bem mais longo que o cooldown otimista de 300ms que _fireOnline já arma sempre.
+  // Sem ouvir isto, o cliente achava que já podia atirar de novo, mandava o FIRE, e o
+  // servidor descartava em silêncio total (sem broadcast nenhum) — o jato simplesmente
+  // não aparecia, sem nenhum aviso de por quê ("nem toda vez o jato saiu"). Reajusta
+  // _nextFireAt pro valor real do servidor, convertendo de relógio: nextFireAt do
+  // servidor é Date.now()-based (hora de parede), _nextFireAt do cliente é
+  // performance.now()-based (monotônico desde a navegação) — dois relógios diferentes.
+  _onFireDenied(msg) {
+    if (!Number.isFinite(msg.nextFireAt)) return;
+    const delayMs = msg.nextFireAt - Date.now();
+    this._nextFireAt = Math.max(this._nextFireAt, performance.now() + Math.max(0, delayMs));
   }
 
   // O acerto em si já chega via snapshot (`eliminated`, lido por RemotePlayer) — este
@@ -603,6 +633,14 @@ export class Game {
     this.audio.waterBlast();
     if (this.player.triggerShootPose) this.player.triggerShootPose();
 
+    // `origin` continua sendo a câmera, DE PROPÓSITO — é o ápice do cone que o
+    // servidor usa pra decidir acerto (room.js:_handleFire → hittest.js:coneCandidates),
+    // e a mira precisa ficar exatamente onde a retícula (centro da tela) aponta. Trocar
+    // isto pela ponta do cano deslocaria o cone de verdade (~0.3-0.6m fora do eixo da
+    // câmera) — inofensivo a longa distância, mas jogaria a mira fora perto do alvo. O
+    // ajuste visual (fazer o jato PARECER sair da arma) é só cosmético — ver _onShot(),
+    // que troca o ponto de partida do traço SÓ na tela de quem atirou, sem tocar no
+    // que foi validado.
     const origin = this.camera.position;
     this._tmpFireDir = this._tmpFireDir || new THREE.Vector3();
     this.camera.getWorldDirection(this._tmpFireDir);

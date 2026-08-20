@@ -30,6 +30,7 @@ import {
   LOBBY_COUNTDOWN_MS,
 } from '../src/net/protocol.js';
 import { coneCandidates, normalize } from '../src/net/hittest.js';
+import { LAYOUT_1_OCCLUDERS, isOccluded } from '../src/net/occluders.js';
 
 // Lobby maior (docs/PLANO_LOBBY_MULTIPLAYER.md): a sala inteira é 1 Caçador +
 // MAX_CHAMELEONS Camaleões — a atribuição de papel (mais abaixo) já dava HUNTER só pro
@@ -342,10 +343,15 @@ export class Room {
     // atrasado pelo buffer de interpolação; o servidor só conhece a última posição
     // reportada. Sem folga, tiros honestos seriam recusados na borda do cone — ver
     // protocol.js.
+    // Oclusão de parede: coneCandidates devolve a lista ordenada por ângulo de
+    // propósito (comentário em hittest.js já esperava por isto) — percorre e fica
+    // com o primeiro que não tem uma caixa de LAYOUT_1_OCCLUDERS no meio do caminho.
+    // Sem isto, um Camaleão atrás de uma parede dentro do cone/alcance contava como
+    // acerto: lia como "acertei sem nem estar mirando nele, de longe".
     const hits = coneCandidates(origin, dir, candidates, {
       range: JET_RANGE,
       halfAngleDeg: HUNTER_AIM_HALF_ANGLE_DEG + AIM_TOLERANCE_DEG,
-    });
+    }).filter((h) => !isOccluded(origin, h.pos, LAYOUT_1_OCCLUDERS));
     const best = hits[0] || null;
 
     // Jato visível (docs/PLANO_LOBBY_MULTIPLAYER.md nunca cobriu isto — era uma lacuna

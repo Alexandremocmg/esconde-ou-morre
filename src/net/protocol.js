@@ -110,7 +110,16 @@ export const HUNTER_AMMO_DEFAULT = 5;
 // conhece — então os dois nunca concordam ao pixel. Sem esta folga, tiros honestos
 // seriam recusados. É o substituto barato do lag compensation/rewind da spec §3, que
 // ficou fora do escopo da v1.
-export const AIM_TOLERANCE_DEG = 6;
+//
+// Era 6° — bug real de balanceamento: o atraso que isto compensa é uma DISTÂNCIA fixa
+// (INTERP_DELAY_MS=100ms × TUNE.moveSpeed≈8m/s ≈ 0,83m de deriva possível, não muda
+// com a distância do tiro), mas a tolerância aqui é um ÂNGULO — o perdão em METROS
+// que ele dá cresce com a distância (perdão = alcance × tan(ângulo)). A 5m já dava
+// ~0,55m de perdão (proporcional), mas a 15m (JET_RANGE) virava ~1,64m — quase o
+// dobro do que precisava compensar, lido como "acertei sem estar mirando, de longe".
+// 2.5° mantém folga suficiente na distância típica de engajamento e cai pra ~0,67m de
+// perdão extra no alcance máximo — mais alinhado com a deriva real que existe pra compensar.
+export const AIM_TOLERANCE_DEG = 2.5;
 
 export const MATCH_DURATION_S = 180; // 3 min (spec §4: 3-5 min)
 
