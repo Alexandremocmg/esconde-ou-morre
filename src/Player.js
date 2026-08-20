@@ -51,6 +51,21 @@ const PIN_RANGE = PIN_PROBE + RADIUS + 0.4 * SCALE; // alcance máx. antes de so
 // pendurado de cabeça para baixo — e a câmera, que fica na direção da normal,
 // mergulharia para dentro do piso (tela preta). Ver docs/PLANO_MANSAO.md.
 const MIN_LATCH_NY = -0.3;
+// Margem de segurança antes da borda REAL (AABB) de uma parede grudável, nas duas
+// direções tangenciais (não na normal — essa é a espessura, onde o personagem já
+// fica afastado por RADIUS). Dois motivos pra este valor (não só o raio do bisel
+// arredondado, ~0.22 no máximo — Level.js:200, `Math.min(0.22, ...)`):
+// 1) Sem folga NENHUMA, mover ao longo da parede podia CONTORNAR o bisel da
+//    PRÓPRIA caixa (RoundedBoxGeometry) e grudar na face de FORA dela, ejetando o
+//    personagem da mansão num canto (bug real).
+// 2) Com folga pequena (~0.25), o personagem ainda ficava embutido na espessura da
+//    parede PERPENDICULAR (0.6m, `t` em Level.js) antes do canto disparar a busca —
+//    a sonda de virar o canto então partia de DENTRO da parede adjacente, achando a
+//    face de FORA dela em vez da face de dentro (mesmo sintoma, outra causa).
+// 0.7 > espessura de parede (0.6) garante que o personagem para ANTES de sequer
+// tocar a parede perpendicular — a sonda de canto (abaixo) sempre parte de espaço
+// aberto de verdade.
+const EDGE_MARGIN = 0.7;
 // TURN_SPEED (suavização de rotação — menor = giro mais suave/lento) agora
 // vive em TUNE.turnSpeed (Tuning.js), lido ao vivo em _orientTo — mesmo
 // motivo do MOVE_SPEED acima. Usado como taxa em 1 - exp(-TURN_SPEED*dt):
@@ -182,6 +197,11 @@ export class Player {
     this._axX = new THREE.Vector3();
     this._axY = new THREE.Vector3();
     this._axZ = new THREE.Vector3();
+    // Extensão REAL (AABB) da parede atualmente grudada — cacheada por objeto, só
+    // recalculada quando `latchedObject` muda (ver _updateLatched). Usada pra travar
+    // o personagem antes do BISEL arredondado da própria caixa (RoundedBoxGeometry).
+    this._latchedBounds = new THREE.Box3();
+    this._latchedBoundsObj = null;
   }
 
   reset() {
@@ -614,23 +634,78 @@ export class Player {
     const up = this._tangentUp(N, this._axY);  // "cima" ao longo da parede
     const side = this._axX.copy(up).cross(N).normalize(); // "direita" na parede
 
+    // AABB real da parede atual, cacheada por objeto (só recalcula ao trocar de
+    // parede) — usada abaixo pra travar ANTES do bisel arredondado da própria caixa.
+    if (this.latchedObject && this._latchedBoundsObj !== this.latchedObject) {
+      this._latchedBounds.setFromObject(this.latchedObject);
+      this._latchedBoundsObj = this.latchedObject;
+    }
+    const boundsValid = this._latchedBoundsObj === this.latchedObject;
+
     // Move no plano da parede
     const move = this._axZ.set(0, 0, 0)
       .addScaledVector(side, joy.x)
       .addScaledVector(up, joy.y);
     const rawLen = move.length(); // mesmo controle analógico de _updateGrounded — ajuda a
+    let hitEdge = false;
     if (rawLen > 1e-4) {          // travar poses de camuflagem/posicionar rente a quinas na parede
       const speedScale = Math.min(1, rawLen);
       move.normalize();
       this.position.addScaledVector(move, CLIMB_SPEED * speedScale * dt);
+
+      // Trava nas duas direções TANGENCIAIS (não na normal — essa é a espessura da
+      // parede, onde o personagem já fica afastado por RADIUS, não pela AABB dela)
+      // antes de alcançar o bisel arredondado da própria caixa (RoundedBoxGeometry,
+      // Level.js). Sem isto, mover ao longo da parede podia CONTORNAR o bisel da
+      // MESMA caixa e grudar na face de FORA dela — ejetando o personagem da mansão
+      // num canto mesmo sem a sonda de re-pin nunca "falhar" de verdade (bug real:
+      // a normal só ia mudando aos poucos, de dentro pra fora da MESMA parede).
+      if (boundsValid) {
+        const b = this._latchedBounds;
+        for (const ax of ['x', 'y', 'z']) {
+          if (Math.abs(N[ax]) > 0.7) continue; // eixo da espessura (a normal) — não trava aqui
+          const lo = b.min[ax] + EDGE_MARGIN, hi = b.max[ax] - EDGE_MARGIN;
+          if (this.position[ax] < lo) { this.position[ax] = lo; hitEdge = true; }
+          else if (this.position[ax] > hi) { this.position[ax] = hi; hitEdge = true; }
+        }
+      }
     }
 
-    // Re-pin: sonda a partir de um ponto à frente da superfície, de volta pra parede.
-    const probeOrigin = this._tmpDir.copy(this.position).addScaledVector(N, PIN_PROBE);
-    const back = this._axZ.copy(N).multiplyScalar(-1);
-    this._raycaster.set(probeOrigin, back);
-    this._raycaster.far = PIN_RANGE;
-    const hit = this._raycaster.intersectObjects(this.climbables, false)[0];
+    // Re-pin. Se acabou de bater na borda travada (hitEdge), tenta achar a parede
+    // PERPENDICULAR primeiro — normal ao longo de `side`, não de N — pra virar o
+    // canto suavemente em vez de ficar preso na quina.
+    //
+    // Sonda DIRETA (mesmo padrão de toggleLatch: origem em espaço aberto, sem
+    // offset), não o padrão "sonda à frente da superfície, raio de volta" do re-pin
+    // normal abaixo — aquele padrão pressupõe que já se está ENCOSTADO numa
+    // superfície conhecida; aqui é uma busca "a frio" por uma parede ainda
+    // desconhecida. Com EDGE_MARGIN >= espessura da parede, `this.position` (já
+    // travado na borda) ainda está em espaço aberto de verdade, então o raio direto
+    // acerta a face de DENTRO da parede adjacente (não atravessa ela pra achar a
+    // face de fora — bug real que o padrão de offset causava). Ignora
+    // `this.latchedObject` nos resultados (não pode voltar a grudar numa face
+    // diferente da MESMA parede via o bisel arredondado).
+    let hit;
+    if (hitEdge) {
+      const selfObj = this.latchedObject;
+      for (const cand of [side, this._tmpV.copy(side).multiplyScalar(-1)]) {
+        this._raycaster.set(this.position, cand);
+        this._raycaster.far = PIN_RANGE;
+        const cHits = this._raycaster.intersectObjects(this.climbables, false);
+        hit = cHits.find((h) => h.object !== selfObj);
+        if (hit) break;
+      }
+    }
+
+    if (!hit) {
+      // Parede atual: sonda a partir de um ponto à frente da superfície, de volta
+      // pra parede (posição já travada com segurança fora do bisel, se hitEdge).
+      const probeOrigin = this._tmpDir.copy(this.position).addScaledVector(N, PIN_PROBE);
+      const back = this._axZ.copy(N).multiplyScalar(-1);
+      this._raycaster.set(probeOrigin, back);
+      this._raycaster.far = PIN_RANGE;
+      hit = this._raycaster.intersectObjects(this.climbables, false)[0];
+    }
 
     if (!hit) {
       // Saiu da superfície → gravidade volta e ele cai.
@@ -679,7 +754,16 @@ export class Player {
     // -0.05 é menor que a deadzone do joystick (0.12, Joystick.js) — quem empurra
     // "pra baixo" o suficiente pra soltar já passou da deadzone de qualquer forma,
     // então a curva analógica não muda este gesto (revisado, sem ajuste necessário).
-    if (joy.y < -0.05 && feetY <= floorY + 0.02) this._detachToGround(floorY);
+    if (joy.y < -0.05 && feetY <= floorY + 0.02) { this._detachToGround(floorY); return; }
+    // Subir DIRETO numa laje/saliência (bug real reportado: escalar até a laje do 2º
+    // andar atravessava ela): a parede do perímetro é uma caixa contínua do chão até
+    // o teto, sem quebra na altura da laje — nada detectava isso, e o único código de
+    // piso acima era só pra DESCER. `floorY` já é o topo sólido mais alto alcançável
+    // (a mesma busca de cima); se ele ficou ACIMA dos pés, o personagem acabou de
+    // subir pra dentro de um sólido — emerge em cima dele em vez de atravessar.
+    // `floorY > feetY` já filtra sozinho o chão distante lá embaixo (topo 0, sempre
+    // menor que os pés positivos aqui), sem precisar de outra guarda.
+    if (floorY > feetY + 0.02) this._detachToGround(floorY);
   }
 
   // Topo do apoio sólido logo abaixo de (x,z) — piso do andar atual. `maxY`
