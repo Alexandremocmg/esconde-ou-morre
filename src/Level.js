@@ -24,13 +24,13 @@ const HALF = 14.5;     // meia-largura do piso (mansão 29×29 por andar)
 // propaga para a borda interna (= face frontal da laje) e o centro da faixa.
 const RING_DEPTH = 4.0;                    // profundidade da faixa útil (alcovas + janelas E/W)
 const RING_IN = HALF - RING_DEPTH;         // 10.5 — topo das escadarias + face onde os poços da laje terminam
-const WALL_H = 7.8;    // pé-direito do salão (triplo); teto do salão em WALL_H
-const ROOM_H = 3.2;    // altura das paredes de cômodo (abaixo da laje do 2º andar)
-const ROOM2_H = 2.4;   // altura das divisórias dos quartos do 2º andar (sobre a laje)
+const WALL_H = 10.8;   // pé-direito do salão (triplo); teto do salão em WALL_H — +3m (sensação de baixo p/ extensão da área)
+const ROOM_H = 6.2;    // altura das paredes de cômodo (abaixo da laje do 2º andar) — +3m, acompanha o salão
+const ROOM2_H = 4.4;   // altura das divisórias dos quartos do 2º andar (sobre a laje) — +2m, pedido específico pro piso superior
 const ROUTE_Y = 1.1;   // altura dos waypoints (= EYE_Y do Caçador)
 const DOOR_MIN = 3.2;  // vão mínimo de porta: o Caçador (BODY_R=0.6 + desvio) atravessa
-const FLOOR2_Y = 3.4;  // topo da laje do 2º andar (anel de quartos sobre o hall)
-const MEZZ3_Y = 5.2;   // topo da sacada (3º nível) sobre a faixa W — "varanda dupla"
+const FLOOR2_Y = 6.4;  // topo da laje do 2º andar (anel de quartos sobre o hall) — +3m, acompanha o salão
+const MEZZ3_Y = 8.2;   // topo da sacada (3º nível) sobre a faixa W — "varanda dupla" — +3m, acompanha o salão
 const EYE_Y = 1.1;     // altura dos olhos do Caçador (= Seeker EYE_Y) — p/ routeY do andar
 
 // Paleta ASSINATURA da MANSÃO — os ALVOS FORTES de camuflagem (corpos grudáveis).
@@ -716,7 +716,8 @@ export class Level {
     this._addSlab(HW * 2, HALF - IN, 0, -(HALF + IN) / 2, FLOOR2_Y);   // centro-N: z∈[-14.5,-10.5]
     // Guarda-corpo SÓLIDO dos dois poços: BALAUSTRADA BAIXA (PH=0.6), não parede.
     // Ainda bloqueia a queda — a colisão só ignora sólidos com topo <= pés+STEP_UP
-    // (3.4+0.30=3.70) e o topo daqui é 4.00 — mas agora se enxerga POR CIMA: do
+    // (FLOOR2_Y+0.30) e o topo daqui é FLOOR2_Y+PH=FLOOR2_Y+0.6, sempre 0.3 acima do
+    // limite — mas agora se enxerga POR CIMA: do
     // corredor central você vê o vão e os degraus, e a escada se lê como escada.
     // Com PH=1.0 as três murets formavam um U opaco de frente para o corredor e o
     // 2º andar parecia ter "paredes tampando as escadas" (relato do playtest).
@@ -746,10 +747,16 @@ export class Level {
     // do tempo) você encara os DEGRAUS, convidativos. Inverter o lance põe o costado
     // maciço de 3.4 m de frente para o hall — vira um paredão que tapa a escada
     // (testado e revertido; a legibilidade do térreo pesa mais que a do 2º andar).
-    const sS = this._addStairFlight(0, 3, 5, IN, 0, FLOOR2_Y, 20);
+    // `steps` recalibrado pro FLOOR2_Y atual: cada degrau sobe FLOOR2_Y/steps, e isso
+    // PRECISA ficar abaixo de STEP_UP=0.30 (Player.js/Seeker.js) — senão o jogador
+    // trava no meio da escada (o degrau seguinte fica alto demais pra subir andando).
+    // Com FLOOR2_Y=6.4, 20 degraus dava 0.32 (> 0.30, quebrava a subida); 28 dá ≈0.229,
+    // com folga. Se FLOOR2_Y mudar nesta linha de novo, recalcular `stairSteps`.
+    const stairSteps = 28;
+    const sS = this._addStairFlight(0, 3, 5, IN, 0, FLOOR2_Y, stairSteps);
     // ESCADARIA NORTE (x=0): rota alternativa, espelhada. Sem ela, a escada única
     // era um gargalo — jogador e Caçador sempre no mesmo ponto de subida.
-    const sN = this._addStairFlight(0, 3, -5, -IN, 0, FLOOR2_Y, 20);
+    const sN = this._addStairFlight(0, 3, -5, -IN, 0, FLOOR2_Y, stairSteps);
     this._stairBot = sS.bot; this._stairTop = wp(0, IN + 0.3);
     this._stairBotN = sN.bot; this._stairTopN = wp(0, -(IN + 0.3));
 
