@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { buildBody, Gait } from './Character.js?v=3';
 import { toonGradient } from './textures.js?v=3';
 import { animationManager } from './AnimationManager.js?v=3';
+import { TUNE } from './Tuning.js?v=1';
 
 const WORLD_UP = new THREE.Vector3(0, 1, 0);
 const DOWN = new THREE.Vector3(0, -1, 0); // amostra/checagem do chão na pose deitada (P3c)
@@ -32,8 +33,12 @@ const PRONE_DROP = 0.60;
 // clipe 'prone' mudar.
 const WALL_PRONE_PULL = 0.13;
 // Velocidades NÃO escalam: MOVE_SPEED é o teto de justiça do Caçador
-// (PLAYER_GROUND_SPEED em Seeker.js). Menor + mesma velocidade = mais ágil.
-const MOVE_SPEED = 7.0;             // m/s no chão
+// (PLAYER_GROUND_SPEED em Seeker.js, valor fixo lá — não lê TUNE). Menor +
+// mesma velocidade = mais ágil.
+// MOVE_SPEED agora vive em TUNE.moveSpeed (Tuning.js) — lido AO VIVO nos
+// pontos de uso abaixo, não copiado aqui, pro painel de ajuste (⚙️, ?tune=1)
+// poder mudar sem reload. CLIMB_SPEED continua fixo (fora do escopo do
+// feedback que motivou o painel — só "corrida"/"giro" foram citados).
 const CLIMB_SPEED = 5.5;            // m/s na parede
 const GRAVITY = 22.0;
 const STEP_UP = 0.30;              // degrau máximo que o jogador sobe andando (escadaria da mansão: ~0.17/degrau)
@@ -46,10 +51,10 @@ const PIN_RANGE = PIN_PROBE + RADIUS + 0.4 * SCALE; // alcance máx. antes de so
 // pendurado de cabeça para baixo — e a câmera, que fica na direção da normal,
 // mergulharia para dentro do piso (tela preta). Ver docs/PLANO_MANSAO.md.
 const MIN_LATCH_NY = -0.3;
-const TURN_SPEED = 4;               // suavização de rotação (menor = giro mais suave/lento).
-                                    // Usado como taxa em 1 - exp(-TURN_SPEED*dt): independente de FPS
-                                    // (tempo até ~95% de convergência = ln(0.05)/-TURN_SPEED, ~0.75s
-                                    // aqui — era 6/~0.5s, ficou mais suave sem virar "barco").
+// TURN_SPEED (suavização de rotação — menor = giro mais suave/lento) agora
+// vive em TUNE.turnSpeed (Tuning.js), lido ao vivo em _orientTo — mesmo
+// motivo do MOVE_SPEED acima. Usado como taxa em 1 - exp(-TURN_SPEED*dt):
+// independente de FPS (tempo até ~95% de convergência = ln(0.05)/-TURN_SPEED).
 const COLOR_LERP = 10;              // suavização da troca de cor (camuflagem)
 const PUPIL_MAX = 0.075 * SCALE;    // deslocamento máx. da pupila (olhar)
 const EYE_LERP = 12;                // suavização do olhar
@@ -462,8 +467,16 @@ export class Player {
     // Caminhada: a fase avança pela distância REAL percorrida (chão ou parede),
     // ignorando saltos de latch/teleporte para não disparar um passo fantasma.
     let dist = this.object.position.distanceTo(this._prevPos);
-    dist = Math.min(dist, MOVE_SPEED * dt * 1.6);
+    dist = Math.min(dist, TUNE.moveSpeed * dt * 1.6);
     this._prevPos.copy(this.object.position);
+    // Quão perto da velocidade máxima o jogador está DE VERDADE neste frame
+    // (0..1) — usado abaixo pra escalar o timeScale do clipe de corrida/escalada,
+    // senão as pernas animam na cadência cheia mesmo com o corpo mal saindo do
+    // lugar (bug real: "corre e parece que não sai do lugar", joystick em
+    // deflexão parcial). Base em DISTÂNCIA REAL percorrida, não no
+    // speedScale "pretendido" de _updateGrounded — assim também reage certo
+    // se colisão contra parede reduzir o deslocamento de verdade.
+    const speedRatio = Math.min(1, dist / Math.max(1e-6, TUNE.moveSpeed * dt));
 
     if (this.animInstance) {
       const moving = dist > 1e-3;
@@ -498,6 +511,11 @@ export class Player {
         // personagem deitando contra a parede).
         this.animInstance.playAnimation('climb');
         freeze = !moving;
+        // Movendo na parede: mesma correção de timeScale do 'run' abaixo —
+        // sem isto as mãos "escalam" na cadência cheia mesmo deslizando devagar.
+        if (moving && this.animInstance.actions.climb) {
+          this.animInstance.actions.climb.timeScale = Math.max(0.15, speedRatio);
+        }
       } else if (this.prone) {
         this.animInstance.playAnimation('prone');
       } else if (this.crouched) {
@@ -505,6 +523,12 @@ export class Player {
       } else if (moving) {
         const runClip = this.isHunter && this.animInstance.actions['rifleRun'] ? 'rifleRun' : 'run';
         this.animInstance.playAnimation(runClip);
+        // Bug real corrigido: o clipe sempre tocava na cadência cheia (timeScale
+        // 1 implícito) mesmo com o corpo mal se deslocando em deflexão parcial
+        // do joystick — lia como "correndo sem sair do lugar". Piso de 0.15 pra
+        // não virar uma pose quase congelada bem no limite da deadzone.
+        const runAction = this.animInstance.actions[runClip];
+        if (runAction) runAction.timeScale = Math.max(0.15, speedRatio);
       } else {
         this.animInstance.playAnimation('idle');
       }
@@ -568,7 +592,7 @@ export class Player {
 
     // Movimento horizontal (grudar NÃO é mais automático: andar rente à parede
     // não cola mais; use o botão Grudar). Agachado anda mais devagar.
-    const speed = MOVE_SPEED * (this.crouched ? CROUCH_SPEED_MULT : 1) * speedScale;
+    const speed = TUNE.moveSpeed * (this.crouched ? CROUCH_SPEED_MULT : 1) * speedScale;
     if (moving) this.position.addScaledVector(move, speed * dt);
 
     // Colisão horizontal: empurra a cápsula para fora das paredes/móveis e desliza
@@ -938,7 +962,7 @@ export class Player {
     this._tmpQuat.setFromRotationMatrix(this._tmpMat);
     // Suavização exponencial independente de FPS (mesma matemática de MathUtils.damp),
     // aplicada via slerp por ser rotação (quaternion), não escalar.
-    const t = 1 - Math.exp(-TURN_SPEED * dt);
+    const t = 1 - Math.exp(-TUNE.turnSpeed * dt);
     this.object.quaternion.slerp(this._tmpQuat, t);
   }
 }

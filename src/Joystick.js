@@ -1,31 +1,20 @@
 // Joystick virtual em HTML/CSS/Pointer Events, sobreposto ao canvas.
 // Aparece onde o dedo toca (dentro da zona) e retorna um vetor normalizado
 // { x, y } com y positivo = "para cima/frente".
+import { TUNE } from './Tuning.js?v=1';
 
 const MAX_RADIUS = 56; // px de deslocamento máximo do knob
 
-// Zona morta + curva de resposta: antes a leitura era 100% linear (qualquer
-// toque acima de ~1% de deflexão em Player.js já virava corrida máxima — não
-// havia controle analógico nenhum). DEADZONE engole jitter do polegar perto do
-// centro; a magnitude pós-deadzone é REESCALADA de volta pra [0..1] (não um
-// clamp-pra-zero-e-pulo, que sentiria como um "degrau" no dedo) e elevada a
-// CURVE — fino perto do centro (microajuste), converge rápido perto do máximo.
-// Full-tilt sempre dá magnitude exatamente 1 (rescaled=1 → 1^CURVE=1), então o
-// teto de velocidade (MOVE_SPEED, Player.js) não muda, só a rampa até ele.
-const DEADZONE = 0.12;
-const CURVE = 2;
-
-// KNEE: sem isto, só um toque EXATAMENTE nos 56px de MAX_RADIUS dava corrida
-// máxima — na prática um "empurrão até o talo" de verdade num touchscreen
-// raramente bate o limite geométrico exato (a 90% de deflexão física, a
-// curva pura só dava ~79% de velocidade — sentia como "corrida lenta",
-// feedback real depois de jogar). A partir de KNEE (85% do curso PÓS-
-// deadzone) a curva satura em 1 — "perto da borda" já é sprint completo,
-// sem precisar do pixel exato. CURVE_AT_KNEE reescala a mesma curva pra
-// caber antes do knee; a forma pra controle fino perto do centro (< 50%)
-// muda pouco.
-const KNEE = 0.85;
-const CURVE_AT_KNEE = Math.pow(KNEE, CURVE);
+// Zona morta + curva de resposta + knee de saturação — valores em TUNE
+// (Tuning.js), lidos AO VIVO (nunca copiados pra um const de módulo) porque
+// o painel de ajuste (⚙️, ?tune=1) precisa poder mudá-los sem reload. DEADZONE
+// engole jitter do polegar perto do centro; a magnitude pós-deadzone é
+// REESCALADA de volta pra [0..1] (não um clamp-pra-zero-e-pulo, que sentiria
+// como um "degrau" no dedo) e elevada a CURVE — fino perto do centro
+// (microajuste). KNEE satura a curva em 1.0 antes dos 100% físicos do raio —
+// sem isso só um toque EXATAMENTE no limite geométrico dava corrida máxima, e
+// um "empurrão até o talo" de verdade num touchscreen raramente bate esse
+// limite exato (feedback real depois de jogar: "corrida lenta").
 
 export class Joystick {
   constructor() {
@@ -76,9 +65,10 @@ export class Joystick {
 
     const rawMag = dist > MAX_RADIUS ? 1 : dist / MAX_RADIUS;
     let outMag = 0;
-    if (rawMag > DEADZONE) {
-      const rescaled = (rawMag - DEADZONE) / (1 - DEADZONE); // [DEADZONE..1] → [0..1] sem salto
-      outMag = Math.min(1, Math.pow(rescaled, CURVE) / CURVE_AT_KNEE);
+    if (rawMag > TUNE.deadzone) {
+      const rescaled = (rawMag - TUNE.deadzone) / (1 - TUNE.deadzone); // [deadzone..1] → [0..1] sem salto
+      const curveAtKnee = Math.pow(TUNE.knee, TUNE.curve); // recalculado aqui: TUNE muda em runtime, não dá pra cachear
+      outMag = Math.min(1, Math.pow(rescaled, TUNE.curve) / curveAtKnee);
     }
     const dirX = rawMag > 1e-4 ? dx / dist : 0;
     const dirY = rawMag > 1e-4 ? dy / dist : 0;

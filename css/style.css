@@ -950,3 +950,79 @@ body.mode-online.online-hunter #reticle { display: block; }
   border-color: rgba(159, 232, 255, 0.75);
   color: #eaffff;
 }
+
+/* ── Painel de ajuste ao vivo (⚙️, ?tune=1 — TunePanel.js) ──────────────────
+   Escondido por padrão (display:none) tanto no botão quanto no painel — só
+   initTunePanel() os revela, e só depois de conferir a query string, então
+   nunca aparecem sem o parâmetro na URL. */
+#tune-btn {
+  display: none;
+  position: fixed;
+  right: max(10px, env(safe-area-inset-right));
+  bottom: max(10px, env(safe-area-inset-bottom));
+  z-index: 50;
+  width: 40px; height: 40px;
+  align-items: center; justify-content: center;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255, 255, 255, 0.25);
+  background: rgba(20, 24, 30, 0.75);
+  color: #fff;
+  font-size: 18px;
+  backdrop-filter: blur(6px);
+}
+#tune-btn:active { transform: scale(0.94); }
+
+#tune-panel {
+  position: fixed;
+  right: max(10px, env(safe-area-inset-right));
+  bottom: max(58px, calc(env(safe-area-inset-bottom) + 58px));
+  z-index: 51;
+  width: min(320px, calc(100vw - 20px));
+  max-height: 70vh;
+  overflow-y: auto;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1.5px solid rgba(255, 255, 255, 0.16);
+  background: rgba(20, 24, 30, 0.9);
+  color: #eef0f2;
+  font-size: 12px;
+  backdrop-filter: blur(8px);
+}
+#tune-panel.hidden { display: none; }
+.tune-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 8px; font-size: 13px;
+}
+.tune-header button {
+  background: none; border: none; color: #fff; font-size: 14px; padding: 2px 6px;
+}
+.tune-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.tune-row label { grid-column: 1 / -1; opacity: 0.85; font-size: 11px; }
+.tune-row input[type="range"] { width: 100%; }
+.tune-val { min-width: 34px; text-align: right; font-variant-numeric: tabular-nums; }
+.tune-footer { display: flex; gap: 8px; margin: 8px 0; }
+.tune-footer button {
+  flex: 1;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  font-size: 11px;
+}
+#tune-readout {
+  margin: 0;
+  padding: 8px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.35);
+  font-size: 10px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  user-select: text;
+}

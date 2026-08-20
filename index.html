@@ -243,6 +243,13 @@
     <div class="rotate-icon">⟳</div>
     <p>Gire o aparelho para o modo paisagem</p>
   </div>
+
+  <!-- Painel de ajuste ao vivo (⚙️): só existe com ?tune=1 na URL, ver
+       TunePanel.js. Sliders pra deadzone/curva/knee do joystick e giro/
+       velocidade do boneco — pensados pra achar por sensação, jogando de
+       verdade, em vez de chute-e-redeploy. -->
+  <button id="tune-btn" type="button" aria-label="Ajustes de movimento">⚙️</button>
+  <div id="tune-panel" class="hidden"></div>
 </div>
 
 <script type="module" src="src/main.js?v=3"></script>

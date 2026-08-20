@@ -24,7 +24,7 @@ pose (crouch já existente). A "pintura livre por textura" fica para depois (Fas
 | 2 — Cel-shading (MeshToonMaterial + gradientMap) | ✅ feito | `6fdd096` | `toonGradient()` em textures.js; troca nos choke points de Level/Player/Seeker |
 | 2c — Achatar (sem normal nas superfícies grandes) | ✅ feito | `1403cc1` | `_addWall`/`_buildRoom` sem normalMap (banda ruidosa + fill-rate) |
 | 3a — Contorno cel (inverted-hull) | ✅ feito | `1403cc1` | opção `outline` em buildHumanoid; **só Caçadores** (jogador não, p/ não denunciar camo) |
-| 5a — Conta-gotas mirado | ✅ feito | `a8ad30a` | `Player.sampleColor(camera)` substitui `paintFromWall`; retícula `#reticle` |
+| 5a — Conta-gotas mirado | ✅ feito | `a8ad30a` | `Player.sampleColor(camera)` substitui `paintFromWall`; retícula `#reticle` (depois restrita ao Caçador via CSS — no Camaleão a câmera 3ª pessoa sempre centraliza o boneco na tela, `57fb77f`) |
 | 5b — Roda de cor HSV | ✅ feito | `1b2560a` | `src/ColorPicker.js`; botão 🎛️ Cor; cor entregue em sRGB |
 | 6 — Paleta pop/viva | ✅ feito | `8e2875c` | MANSION revisado; deltas verificados (par 0.169, boneco 0.290) |
 | 7 — UI party + remover penumbra da detecção | ✅ feito | `9c53cf4` | badge removido; `_canSee` sem fator de luz; botões candy coloridos |

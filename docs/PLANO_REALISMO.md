@@ -249,13 +249,17 @@ _addCylinder(r, h, color, x, z, opts = {}) // { cast=true, map, normalMap, norma
 
 ### 3.2 Compartilhamento **SEGURO** de material (o ponto crítico)
 
-**PERIGO REAL:** `Game._updateOcclusion` (Game.js:263-292) itera `level.climbables` e muta
-`material.transparent/opacity/depthWrite` do oclusor. **Se dois climbables compartilharem
-material, desvanecer um desvanece o outro.** Portanto:
+**PERIGO REAL:** `Game._updateOcclusion` (`Game.js:_updateOcclusion`) itera
+`level.occluders` (climbables + lajes do 2º andar — era só climbables até um bug real ser
+corrigido: esconder-se encostado num pilar/móvel no chão nunca testava esse oclusor, e o
+personagem sumia 100% atrás dele) e muta `material.transparent/opacity/depthWrite` do
+oclusor. **Se dois oclusores compartilharem material, desvanecer um desvanece o outro.**
+Portanto:
 
-> **Regra:** material compartilhado **somente para meshes NÃO-climbable** (deco, esferas,
-> cones, cilindros — nenhum é oclusor). **Todo climbable mantém material único** (é o que
-> `_addBox` já faz — **não** rotear `_addBox` pela cache).
+> **Regra:** material compartilhado **somente para meshes que NUNCA entram em `occluders`**
+> (deco, esferas, cones, cilindros — nenhum é oclusor). **Todo climbable E toda laje (`_addSlab`)
+> mantêm material único** (é o que `_addBox`/`_addSlab` já fazem, chamando `_makeMat`
+> direto — **não** rotear nenhum dos dois pela cache `_sharedMat`).
 
 Camuflagem é segura sob sharing: colorables que compartilham material têm, por definição,
 a mesma cor — `isCamouflaged` lê a cor certa. E `_tryCamouflage` copia a cor (não a

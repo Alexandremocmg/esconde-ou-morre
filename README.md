@@ -32,7 +32,10 @@ camuflagem**. Todo o visual é **procedural** — sem assets externos.
 > 2 para 1 Caçador + até 4 Camaleões na mesma partida está em
 > [`docs/PLANO_LOBBY_MULTIPLAYER.md`](docs/PLANO_LOBBY_MULTIPLAYER.md). O pipeline que
 > gera o personagem 3D (Mixamo → Blender → GLB único) está em
-> [`docs/PIPELINE_PERSONAGEM.md`](docs/PIPELINE_PERSONAGEM.md).
+> [`docs/PIPELINE_PERSONAGEM.md`](docs/PIPELINE_PERSONAGEM.md). Os parâmetros de
+> movimento (deadzone/curva do joystick, giro, velocidade) são calibrados ao vivo por um
+> painel de dev (`?tune=1` na URL) documentado em
+> [`docs/PAINEL_AJUSTE.md`](docs/PAINEL_AJUSTE.md).
 
 ## Como rodar (build estática)
 
@@ -75,9 +78,10 @@ Fora do modo Online, qualquer host de arquivos estáticos serve a pasta como est
 - **Personagem 3D Rigged + 9 Animações num GLB único:** Modelo 3D com skinning Toon carregado de `public/models/character_animated.glb` (uma malha, um esqueleto, 9 clipes embutidos: `idle`, `run`, `crouch`, `hide`, `prone`, `climb`, `jump`, `rifleRun`, `shoot`). Os FBX originais do Mixamo continuam versionados em `public/animation/` como fonte, mas o jogo não os baixa mais — ver `docs/PIPELINE_PERSONAGEM.md`.
 - **Pré-carregador 3D em Tempo Real:** Tela inicial com barra de progresso (`0% → 100%`) garantindo entrada instantânea na partida sem troca de modelo.
 - **Controles Mobile em Arco Ergonômico (Glassmorphism):**
-  - **Joystick Flutuante Dinâmico:** Invisível em repouso; surge exatamente sob o polegar esquerdo ao tocar na tela.
+  - **Joystick Flutuante Dinâmico:** Invisível em repouso; surge exatamente sob o polegar esquerdo ao tocar na tela. Resposta **analógica** (zona morta + curva de potência com saturação perto do máximo, não liga/desliga) — deflexão parcial dá microajuste fino, útil pra se posicionar rente a quinas; parâmetros calibrados ao vivo, ver `docs/PAINEL_AJUSTE.md`.
   - **Botões Glassmorphism:** Vidro translúcido com `backdrop-filter: blur(8px)`, bordas brancas de 1.5px, resposta tátil (*Haptic Vibration*) e disposição em arco.
   - **Pinch to Zoom (Multitouch):** Gesto de 2 dedos para aproximar/afastar a câmera (1.8m a 7.5m) e 1 dedo para girar a visão.
+  - **Oclusão de Câmera:** pilares/móveis/lajes entre a câmera 3ª pessoa e o jogador desvanecem (`Game._updateOcclusion`) pra ele nunca sumir 100% atrás da própria geometria — cobre tanto quem está grudado numa parede quanto parado no chão encostado num obstáculo.
 - **Menus Radiais Duplos (2 Modos em 1 Botão):**
   - **Pintar (🎨):** *Toque rápido* para amostragem automática (*Quick Match*) e onda de tinta; *Segurar* para Menu Radial com Histórico de 4 Cores recentes e acabamento (Fosco/Brilhante).
   - **Poses (🧍):** *Toque rápido* para congelar no **Modo Estátua/Mimetismo**; *Segurar & Deslizar* para Roda de 6 Poses 3D.
@@ -122,7 +126,9 @@ src/
   Net.js          # Cliente WebSocket do modo Online (WebSocket nativo, sem dependência nova)
   RemotePlayer.js # Avatar remoto interpolado do modo Online
   net/            # protocol.js + hittest.js — compartilhados verbatim com server/ (sem imports)
-  Joystick.js     # Joystick flutuante dinâmico com vibração haptática
+  Joystick.js     # Joystick flutuante dinâmico com vibração haptática (resposta analógica, ver Tuning.js)
+  Tuning.js       # Parâmetros calibrados ao vivo (deadzone/curva/giro/velocidade) — docs/PAINEL_AJUSTE.md
+  TunePanel.js    # Painel ⚙️ (?tune=1) que edita Tuning.js em runtime
   ColorPicker.js  # Roda de cor HSV para ajuste fino
   Audio.js        # Efeitos de áudio procedurais (Web Audio API)
 ```
