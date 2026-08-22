@@ -1122,12 +1122,15 @@ body.mode-online.online-hunter #reticle { display: block; }
   justify-content: space-between;
   gap: 12px;
 }
-.menu-logo h1 {
-  font-size: 30px;
-  font-weight: 900;
-  letter-spacing: 0.01em;
-  color: #fff;
-  text-shadow: 0 3px 18px rgba(0, 0, 0, 0.55), 0 0 30px rgba(255, 190, 90, 0.25);
+/* Altura fixa (não largura) — a logo é um lockup bem mais "quadrado" que o
+   antigo <h1> de texto; controlar por largura deixava a topbar alta demais e
+   empurrava o resto da tela (chegava a sobrepor o JOGAR em telas baixas). */
+.menu-logo-img {
+  display: block;
+  height: 48px;
+  width: auto;
+  max-width: 46vw;
+  filter: drop-shadow(0 3px 18px rgba(0, 0, 0, 0.55)) drop-shadow(0 0 30px rgba(255, 190, 90, 0.2));
 }
 .menu-tagline {
   font-size: 11px;
@@ -1224,19 +1227,19 @@ body.mode-online.online-hunter #reticle { display: block; }
   margin-top: 4px;
 }
 .menu-bottom-nav button {
-  display: flex; flex-direction: column; align-items: center; gap: 2px;
-  min-width: 64px;
-  padding: 8px 10px;
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  min-width: 70px;
+  padding: 9px 8px;
   border-radius: 12px;
   background: rgba(10, 10, 14, 0.42);
   border: 1px solid rgba(255, 255, 255, 0.14);
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
   color: rgba(255, 255, 255, 0.85);
-  font-size: 9px; font-weight: 700; letter-spacing: 0.03em; text-transform: uppercase;
+  font-size: 9.5px; font-weight: 700; letter-spacing: 0.03em; text-transform: uppercase;
   cursor: pointer;
 }
-.menu-bottom-nav .bn-ic { font-size: 17px; }
+.menu-bottom-nav .bn-ic { font-size: 19px; }
 .menu-bottom-nav button:active { background: rgba(10, 10, 14, 0.62); }
 
 .menu-version {
@@ -1364,9 +1367,9 @@ body.mode-online.online-hunter #reticle { display: block; }
 
 /* ---------- Tela 3: Carregamento ---------- */
 .loading-logo { text-align: center; margin-top: 6px; }
-.loading-logo h1 {
-  font-size: 24px; font-weight: 900; color: #fff;
-  text-shadow: 0 3px 16px rgba(0, 0, 0, 0.6);
+.loading-logo-img {
+  margin: 0 auto;
+  width: min(46vw, 210px);
 }
 
 .loading-character {
@@ -1484,18 +1487,30 @@ body.mode-online.online-hunter #reticle { display: block; }
 
 /* ---------- Responsivo ---------- */
 @media (max-width: 720px) {
-  .menu-logo h1 { font-size: 22px; }
+  .menu-logo-img { height: 36px; }
   .menu-character-deco { display: none; } /* evita competir com o layout apertado */
   /* DICA/LEMBRE-SE são ancoradas nos cantos superiores e colidem com o título
      centralizado da tela de loading abaixo de ~720px — somem, o conteúdo
      essencial (barra de progresso, estágios) continua intacto. */
   .loading-tip { display: none; }
 }
-/* Abaixo disso a lista lateral (Continuar Partida/Instalar/Como Jogar) chegaria
-   perto demais do botão JOGAR centralizado — some, e "Como Jogar" continua
-   acessível pela tela de Escolha de Modo (.open-how no topo dela). */
+/* Abaixo disso a lista lateral chegaria perto demais do botão JOGAR
+   centralizado. Some só os 2 itens placeholder (Continuar Partida/Instalar
+   Aplicativo, ambos com [data-soon]) — "Como Jogar" (função real) fica, pra
+   não depender só da tela de Escolha de Modo pra ser encontrado. */
 @media (max-width: 480px) {
-  .menu-side-list { display: none; }
+  .menu-side-list .menu-list-row[data-soon] { display: none; }
+  /* Só sobrou 1 linha (Como Jogar), mas ancorada à esquerda + JOGAR
+     centralizado ainda colidiam horizontalmente em telas bem estreitas.
+     Empilha os dois em coluna dentro do hero — layout real em vez de
+     posicionamento absoluto "no chute" — pra garantir zero sobreposição. */
+  .menu-hero { flex-direction: column; gap: 10px; }
+  .menu-side-list {
+    position: static;
+    transform: none;
+    width: auto;
+    align-items: center;
+  }
 }
 @media (max-height: 420px) {
   .menu-play-btn { padding: 12px 40px; font-size: 16px; }
