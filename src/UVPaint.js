@@ -1,9 +1,9 @@
-// Pincel 3D por UV — Fase 1 (prova de conceito) do sistema de pintura de
-// camuflagem. Raycast contra a própria malha do personagem → UV do ponto
-// atingido → carimbo num canvas 2D usado como `.map` dinâmico do material
-// (ver AnimationManager.js, setPaintTexture). Ativo só atrás de `?paint=1`
-// (ver Player.js) — não interfere no jogo padrão nem na camuflagem de
-// verdade (2 cores hex), que continua sendo a mecânica de detecção.
+// Pincel Livre por UV — sistema de pintura de camuflagem à mão livre.
+// Raycast contra a própria malha do personagem → UV do ponto atingido →
+// carimbo num canvas 2D usado como `.map` dinâmico do material (ver
+// AnimationManager.js, setPaintTexture; Player.js, ensurePaintTexture). Não
+// interfere no jogo padrão nem na camuflagem de verdade (2 cores hex), que
+// continua sendo a mecânica de detecção.
 //
 // A UV da malha tem 6 regiões não sobrepostas numa grade 3x2 (cabeça/tronco/
 // braço esq./braço dir./perna esq./perna dir. — ver

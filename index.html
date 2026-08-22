@@ -95,6 +95,12 @@
     <button id="btn-jump" class="glass-btn action-jump" type="button" aria-label="Pular">
       <span class="ic">🟢</span><span class="lbl">Pular</span>
     </button>
+    <!-- Pincel livre por UV (Fase 5): abre/fecha o painel de pintura à mão livre.
+         Botão dedicado, separado do #btn-paint antigo (que continua fazendo o
+         sample-color de 2 zonas) — some no Caçador (só Camaleão pinta). -->
+    <button id="btn-brush" class="glass-btn action-brush" type="button" aria-label="Pincel Livre">
+      <span class="ic">🖌️</span><span class="lbl">Pincel</span>
+    </button>
     <!-- Modo Caçador jogável: dispara o jato de água nos Camaleões-alvo (some no modo Camaleão) -->
     <button id="btn-fire" class="glass-btn action-paint" type="button" aria-label="Atirar">
       <span class="ic">💦</span><span class="lbl">Atirar</span>
@@ -139,13 +145,12 @@
     </div>
   </div>
 
-  <!-- Painel de teste do pincel 3D por UV (Fase 2 — ?paint=1). Só aparece
-       via CSS com body.paint-debug (mesmo padrão do ?tune=1) — não é UI de
-       produção, é o painel de testes da spec de pintura 3D enquanto as
-       fases seguintes (rede etc.) não decidem como isso vira feature real.
-       Ver Game.js, _setupPaintDebug. -->
+  <!-- Painel do Pincel Livre por UV (Fase 5): abre/fecha no clique de
+       #btn-brush (classe body.painting-active, ver css/style.css e
+       Game.js:_setupPaintPanel). Envio pela rede é automático (ver
+       Game.js:_flushAndSendPaint) — não existe mais botão de "Enviar". -->
   <div id="paint-debug-panel">
-    <div class="pdp-title">🖌️ Pincel 3D (teste)</div>
+    <div class="pdp-title">🖌️ Pincel Livre</div>
     <label class="pdp-size-row">
       <span>Tamanho</span>
       <input id="pdp-size" type="range" min="6" max="60" value="22">
@@ -175,10 +180,6 @@
       <button id="pdp-undo" class="pdp-btn" type="button">↺ Desfazer</button>
       <button id="pdp-clear" class="pdp-btn" type="button">🗑️ Limpar</button>
       <button id="pdp-xray" class="pdp-btn" type="button">👻 Raio-X</button>
-      <!-- Fase 4 (rede): manda o lote de traços acumulado desde o último
-           envio — só funciona no modo Online (ver Game.js, _setupPaintDebug).
-           Fora dele, o botão só esvazia o buffer local sem mandar nada. -->
-      <button id="pdp-send" class="pdp-btn" type="button">📡 Enviar (Online)</button>
     </div>
   </div>
 

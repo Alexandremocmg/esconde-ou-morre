@@ -192,7 +192,7 @@ class AnimationManager {
     const group = new THREE.Group();
     group.add(clone);
 
-    // Fase 1 do pincel 3D (?paint=1): expõe o SkinnedMesh direto — o
+    // Pincel livre por UV: expõe o SkinnedMesh direto — o
     // raycast padrão do Three.js testa a BIND POSE dele, não a pose animada
     // (mesma armadilha do jato de água d'água, já documentada em
     // docs/PIPELINE_PERSONAGEM.md), então src/UVPaint.js faz seu próprio
@@ -258,7 +258,7 @@ class AnimationManager {
         }
       },
 
-      // Fase 3 (?paint=1) — canal emissivo: MeshToonMaterial suporta
+      // Canal emissivo do pincel livre: MeshToonMaterial suporta
       // emissive/emissiveIntensity nativamente, sem precisar de PBR (que
       // colidiria com a direção toon do jogo — ver avaliação da spec de
       // pintura 3D). Simula camuflagem contra lâmpada/letreiro aceso.
@@ -269,10 +269,10 @@ class AnimationManager {
         }
       },
 
-      // Fase 1 do pincel 3D por UV (ver src/UVPaint.js, ativo só atrás de
-      // ?paint=1) — troca o `.map` de todo material do GLB pela textura
-      // pintada, sem mexer em setColor/customMaterials (o jogo padrão nunca
-      // chama isto). A malha tem UV em 6 regiões não sobrepostas — ver
+      // Pincel livre por UV (ver src/UVPaint.js) — troca o `.map` de todo
+      // material do GLB pela textura pintada, sem mexer em
+      // setColor/customMaterials (o jogo padrão nunca chama isto). A malha
+      // tem UV em 6 regiões não sobrepostas — ver
       // scripts/gerar_personagem_glb.py, reunwrap_por_regiao.
       setPaintTexture(texture) {
         for (const mat of customMaterials) {
@@ -281,7 +281,7 @@ class AnimationManager {
         }
       },
 
-      // Fase 2 (?paint=1): modo raio-X do painel de teste — desliga o teste
+      // Modo raio-X do pincel livre — desliga o teste
       // de profundidade e desenha por cima de tudo, pra examinar a pintura
       // mesmo com o personagem parcialmente atrás de quina/sofá (mesmo
       // motivo do toggle da spec original). `renderOrder` alto garante que

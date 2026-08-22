@@ -234,6 +234,7 @@ export class Game {
     this._btnClimb = document.getElementById('btn-climb');
     this._btnPose = document.getElementById('btn-pose');
     this._btnPaint = document.getElementById('btn-paint');
+    this._btnBrush = document.getElementById('btn-brush');
     this._btnFire = document.getElementById('btn-fire');
     this._btnScan = document.getElementById('btn-scan');
     this._radialPoseMenu = document.getElementById('radial-pose-menu');
@@ -415,7 +416,7 @@ export class Game {
       this.net.on(S2C.SHOT, (msg) => this._onShot(msg));
       this.net.on(S2C.FIRE_DENIED, (msg) => this._onFireDenied(msg));
       this.net.on(S2C.MATCH_OVER, (msg) => this._onMatchOver(msg));
-      // Fase 4 do pincel 3D (?paint=1) — repasse de outro jogador (ver
+      // Fase 4 do pincel 3D — repasse de outro jogador (ver
       // server/room.js:_handlePaint). Só o RemotePlayer correspondente lê;
       // se ele ainda não existir por algum motivo (mensagem chegou antes do
       // PLAYER_JOIN, corrida improvável mas não impossível), ignora — não é
@@ -500,7 +501,7 @@ export class Game {
     if (this.remotePlayers.has(p.id)) return;
     const rp = new RemotePlayer(this.scene, p.id, p.role, p.pos);
     this.remotePlayers.set(p.id, rp);
-    // Fase 4 do pincel 3D (?paint=1): só existe em welcome.players (ver
+    // Fase 4 do pincel 3D: só existe em welcome.players (ver
     // server/room.js, _publicStateFull) — quem já estava pintado antes deste
     // cliente entrar. PLAYER_JOIN usa _publicState puro (sem o campo), então
     // isto vira um no-op pra quem acabou de entrar sem nada pintado ainda.
@@ -690,6 +691,20 @@ export class Game {
     }));
   }
 
+  // Fase 5: manda os traços do pincel livre acumulados desde o último envio
+  // — sem botão de "Enviar" (ver _setupPaintPanel). Chamado em dois
+  // gatilhos: na hora, quando um traço termina (toque solto), e a cada
+  // ~250ms aqui em _tick enquanto um traço longo ainda está em andamento
+  // (evita tanto lag em toques curtos quanto flood de mensagens num arrasto
+  // contínuo). Sempre via flushPaintNetBuffer() (nunca lê o buffer sem
+  // esvaziar): senão o próximo envio reenviaria os mesmos traços de novo.
+  _flushAndSendPaint() {
+    if (this.mode !== 'online' || !this.net || !this._onlineConnected) return;
+    const buf = this.player._paintNetBuffer;
+    if (!buf || !buf.length) return;
+    this.net.sendPaintStrokes(this.player.flushPaintNetBuffer());
+  }
+
   start() {
     this.audio.resume(); // dentro do gesto do usuário (botão iniciar)
     this.renderer.setAnimationLoop(this._tick);
@@ -730,6 +745,14 @@ export class Game {
       if (this.mode === 'online') {
         for (const rp of this.remotePlayers.values()) rp.update(dt);
         if (this._onlineConnected) this._sendOnlineInput();
+        // Fase 5: throttle periódico do envio automático do pincel (~250ms)
+        // — o flush imediato de fim-de-traço já acontece em _setupPaintPanel;
+        // isto só cobre um traço longo ainda em andamento.
+        this._paintSendTimer = (this._paintSendTimer || 0) + dt;
+        if (this._paintSendTimer >= 0.25) {
+          this._paintSendTimer = 0;
+          this._flushAndSendPaint();
+        }
       }
 
       // Juice: pulso + clique ao GRUDAR na parede (transição chão → parede).
@@ -1258,28 +1281,28 @@ export class Game {
     }
   }
 
-  // Fase 1 (prova de conceito) do pincel 3D por UV — só existe atrás de
-  // ?paint=1 (ver Player.js/UVPaint.js), mesmo padrão do ?tune=1
-  // (TunePanel.js). Some com joystick/look-zone enquanto ativo (classe
-  // `paint-debug` no body, ver style.css) pra não competir pelo mesmo toque —
-  // não é o fluxo de controle real do jogo, só o jeito mais simples de
-  // testar o mecanismo de raycast→UV→canvas isoladamente, sem mexer no
-  // esquema de toque em produção (isso é decisão de Fase 2, junto da UI).
-  _setupPaintDebug() {
-    const ativo = new URLSearchParams(location.search).get('paint') === '1';
-    if (!ativo || !this.player || !this.player.paintTexture) return;
+  // Pincel Livre por UV (Fase 5) — botão dedicado #btn-brush, separado do
+  // #btn-paint antigo (que continua fazendo sample-color de 2 zonas, sem
+  // nenhuma mudança). Painel some por padrão; abre/fecha no toque do botão,
+  // que também é o único lugar que liga/desliga os listeners de pintura no
+  // `canvas` (evita que qualquer toque na cena tente pintar o tempo todo —
+  // só enquanto o painel está mesmo aberto). Enquanto aberto, junto some
+  // joystick/look-zone (classe `painting-active` no body, ver style.css):
+  // pintura exige toque direto na tela, sem competir pelos controles normais.
+  _setupPaintPanel() {
+    if (!this.player || !this._btnBrush) return;
 
-    document.body.classList.add('paint-debug');
+    const painel = document.getElementById('paint-debug-panel');
+    if (!painel) return;
+
     const canvas = this.renderer.domElement;
     let pintando = false;
+    let aberto = false;
     let corAtual = '#2ec4b6';
     let raioAtual = 22;
     let modoContaGotas = false;
     let xrayLigado = false;
     const historico = []; // últimas cores amostradas pelo conta-gotas (máx. 3), só deste painel
-
-    const painel = document.getElementById('paint-debug-panel');
-    if (!painel) return; // painel é só o harness de teste — sem ele, ainda dá pra pintar via código
 
     // ---- Tamanho do pincel ----
     const sizeInput = document.getElementById('pdp-size');
@@ -1346,22 +1369,13 @@ export class Game {
       this.player.setXray(xrayLigado);
     });
 
-    // ---- Fase 4: mandar o lote acumulado (só faz sentido no modo Online —
-    // fora dele, só esvazia o buffer local mesmo, sem rede nenhuma). Sempre
-    // via flushPaintNetBuffer() (nunca lê o buffer sem esvaziar): senão um
-    // segundo clique reenviaria os mesmos traços de novo.
-    document.getElementById('pdp-send').addEventListener('click', () => {
-      const strokes = this.player.flushPaintNetBuffer();
-      if (this.mode === 'online' && this.net) this.net.sendPaintStrokes(strokes);
-    });
-
     const pintarEm = (e, down) => {
       this.player.paintAtScreenPoint(this.camera, this.renderer, e.clientX, e.clientY, {
         down, colorHex: corAtual, radiusPx: raioAtual,
       });
     };
 
-    canvas.addEventListener('pointerdown', (e) => {
+    const onPointerDown = (e) => {
       if (modoContaGotas) {
         const hex = this.player.sampleEnvironmentColor(this.camera);
         if (hex) {
@@ -1376,18 +1390,52 @@ export class Game {
       }
       pintando = true;
       pintarEm(e, true);
-    });
-    canvas.addEventListener('pointermove', (e) => {
+    };
+    const onPointerMove = (e) => {
       if (!pintando) return;
       pintarEm(e, false);
+    };
+    // Fase 5: envio automático — sem botão de "Enviar". Manda o que
+    // acumulou assim que o traço termina, em vez de esperar o throttle
+    // periódico do _tick (ver _flushAndSendPaint) — toques curtos saem na
+    // hora, e o throttle só existe pra não inundar a rede num arrasto longo.
+    const onPointerUp = () => {
+      if (!pintando) return;
+      pintando = false;
+      this.player.paintStrokeEnd();
+      this._flushAndSendPaint();
+    };
+
+    // Abre/fecha o painel no toque de #btn-brush. A textura só nasce aqui
+    // (ensurePaintTexture) — a maioria dos Camaleões nunca abre o pincel.
+    this._btnBrush.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      aberto = !aberto;
+      this._btnBrush.classList.toggle('active', aberto);
+      if (navigator.vibrate) try { navigator.vibrate(10); } catch (_) {}
+
+      if (aberto) {
+        this.player.ensurePaintTexture();
+        document.body.classList.add('painting-active');
+        canvas.addEventListener('pointerdown', onPointerDown);
+        canvas.addEventListener('pointermove', onPointerMove);
+        window.addEventListener('pointerup', onPointerUp);
+        window.addEventListener('pointercancel', onPointerUp);
+      } else {
+        document.body.classList.remove('painting-active');
+        canvas.removeEventListener('pointerdown', onPointerDown);
+        canvas.removeEventListener('pointermove', onPointerMove);
+        window.removeEventListener('pointerup', onPointerUp);
+        window.removeEventListener('pointercancel', onPointerUp);
+        pintando = false;
+        modoContaGotas = false;
+        eyedropBtn.classList.remove('active');
+      }
     });
-    const parar = () => { pintando = false; this.player.paintStrokeEnd(); };
-    window.addEventListener('pointerup', parar);
-    window.addEventListener('pointercancel', parar);
   }
 
   _setupControls() {
-    this._setupPaintDebug();
+    this._setupPaintPanel();
 
     const lookZone = document.getElementById('look-zone');
     let activePointers = new Map();

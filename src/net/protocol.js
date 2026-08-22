@@ -71,12 +71,12 @@ export const C2S = {
   FIRE: 'fire',       // { origin:{x,y,z}, dir:{x,y,z}, t }
   LEAVE: 'leave',
   REVIVE: 'revive',   // "jogar novamente" sem reconectar — ver room.js:_onRevive
-  // Fase 4 do pincel 3D (?paint=1, ver src/UVPaint.js): lote de comandos de
-  // traço acumulados localmente e mandados de uma vez (ao travar a pose/
-  // fechar o pincel — não por-tick, ao contrário de INPUT). Decisão já
-  // tomada na avaliação da spec: manda uma LISTA DE COMANDOS, não pixels —
-  // "cor nunca vai pela rede como pixels" continua valendo (ver
-  // docs/PLANO_MULTIPLAYER.md).
+  // Fase 4 do pincel 3D (ver src/UVPaint.js): lote de comandos de traço
+  // acumulados localmente e mandados automaticamente (fim de cada traço +
+  // throttle de ~250ms durante um traço longo, ver Game.js:_flushAndSendPaint
+  // — não por-tick, ao contrário de INPUT). Decisão já tomada na avaliação
+  // da spec: manda uma LISTA DE COMANDOS, não pixels — "cor nunca vai pela
+  // rede como pixels" continua valendo (ver docs/PLANO_MULTIPLAYER.md).
   PAINT: 'paint',     // { strokes: [{d, u, v, c, r}, ...] } — ver makePaintStroke
 };
 
@@ -170,7 +170,7 @@ function round3(n) {
   return Math.round(n * 1000) / 1000;
 }
 
-// Fase 4 do pincel 3D (?paint=1) — validado tanto no cliente (antes de
+// Fase 4 do pincel 3D — validado tanto no cliente (antes de
 // empacotar) quanto no servidor (room.js:_handlePaint, nunca confia só no
 // cliente). Um traço "vira uma vida inteira" bem rápido (uma sessão de
 // pintura contínua facilmente passa de centenas de pontos) — o teto existe

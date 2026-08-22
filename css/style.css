@@ -292,16 +292,16 @@ body {
   touch-action: none;
 }
 
-/* Fase 1 (prova de conceito) do pincel 3D — ?paint=1 (ver Game.js,
-   _setupPaintDebug). Joystick/look-zone somem: o dedo precisa chegar direto
-   no canvas pra tocar no próprio personagem, sem competir com os controles
-   normais. Modo de teste isolado, não é o esquema de toque de produção. */
-body.paint-debug #joystick-zone,
-body.paint-debug #look-zone {
+/* Pincel Livre por UV (Fase 5) — ligado enquanto o painel está aberto (ver
+   Game.js:_setupPaintPanel, disparado pelo clique em #btn-brush). Joystick/
+   look-zone somem: o dedo precisa chegar direto no canvas pra tocar no
+   próprio personagem, sem competir com os controles normais. */
+body.painting-active #joystick-zone,
+body.painting-active #look-zone {
   display: none;
 }
 
-/* ---------- Painel de teste do pincel 3D (Fase 2, ?paint=1) ---------- */
+/* ---------- Painel do Pincel Livre (Fase 5) ---------- */
 #paint-debug-panel {
   display: none;
   position: fixed;
@@ -311,15 +311,16 @@ body.paint-debug #look-zone {
   z-index: 12;
   width: min(220px, 42vw);
   padding: 12px;
-  border-radius: 14px;
-  border: 1.5px solid rgba(255, 255, 255, 0.18);
-  background: rgba(20, 24, 30, 0.85);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  border-radius: 20px;
+  border: 1.5px solid rgba(255, 255, 255, 0.35);
+  background: rgba(15, 23, 42, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
   color: #eef0f2;
   font-size: 11px;
 }
-body.paint-debug #paint-debug-panel { display: block; }
+body.painting-active #paint-debug-panel { display: block; }
 
 .pdp-title { font-weight: 800; font-size: 12px; margin-bottom: 8px; }
 .pdp-size-row {
@@ -438,6 +439,14 @@ body.paint-debug #paint-debug-panel { display: block; }
   background: rgba(231, 76, 60, 0.25);
   border-color: rgba(231, 76, 60, 0.6);
 }
+/* Pincel Livre (Fase 5): 5º botão do arco, perto do #btn-paint antigo. */
+.action-brush {
+  width: 56px; height: 56px;
+  right: 145px; bottom: 60px;
+  background: rgba(46, 196, 182, 0.25);
+  border-color: rgba(46, 196, 182, 0.6);
+}
+.action-brush .ic { font-size: 20px; }
 
 /* ---------- Modo Caçador jogável ----------
    btn-fire ocupa o mesmo lugar/estilo de btn-paint (herda .action-paint); os
@@ -446,7 +455,8 @@ body.paint-debug #paint-debug-panel { display: block; }
 #targets-hud { display: none; }
 body.mode-hunter #btn-fire { display: flex; }
 body.mode-hunter #btn-paint,
-body.mode-hunter #btn-pose { display: none; }
+body.mode-hunter #btn-pose,
+body.mode-hunter #btn-brush { display: none; }
 body.mode-hunter #targets-hud { display: flex; }
 body.mode-hunter .stat-camo { display: none; }
 
@@ -469,7 +479,8 @@ body.mode-online #water-ammo-hud { display: none; }
 body.mode-online.online-hunter #water-ammo-hud { display: flex; }
 body.mode-online.online-hunter #btn-fire { display: flex; }
 body.mode-online.online-hunter #btn-paint,
-body.mode-online.online-hunter #btn-pose { display: none; }
+body.mode-online.online-hunter #btn-pose,
+body.mode-online.online-hunter #btn-brush { display: none; }
 body.mode-online.online-hunter #btn-scan { display: flex; }
 body.mode-online.online-hunter #scanner-hud-badge { display: flex; }
 /* Lobby maior (docs/PLANO_LOBBY_MULTIPLAYER.md §3.4): reaproveita o mesmo badge 🎯 do

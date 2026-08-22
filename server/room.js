@@ -173,7 +173,7 @@ export class Room {
       ammo: HUNTER_AMMO_DEFAULT,
       maxAmmo: HUNTER_AMMO_DEFAULT,
       infiniteAmmo: false,
-      // Fase 4 do pincel 3D (?paint=1): acumulado de comandos de traço já
+      // Fase 4 do pincel 3D: acumulado de comandos de traço já
       // validados deste cliente — só pra um jogador que entra DEPOIS ver a
       // pintura de quem já estava (ver WELCOME/_reattach, que inclui isto
       // via _publicStateFull). NÃO vai no SNAPSHOT de todo tick — só cresceria
@@ -321,7 +321,7 @@ export class Room {
     if (Array.isArray(msg.col) && msg.col.length === 2) client.color = msg.col;
   }
 
-  // Fase 4 do pincel 3D (?paint=1) — mesmo espírito de _applyInput: confia
+  // Fase 4 do pincel 3D — mesmo espírito de _applyInput: confia
   // na FORMA dos dados (nunca visto), mas valida os TIPOS/faixas de cada
   // campo antes de guardar/repassar — um cliente malicioso não pode mandar
   // um payload gigante (MAX_PAINT_STROKES_PER_MSG) nem um hex/UV inválido

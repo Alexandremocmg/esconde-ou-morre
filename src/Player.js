@@ -6,11 +6,6 @@ import { TUNE } from './Tuning.js?v=1';
 import { createPaintTexture, strokeBetween, clearTexture, raycastAnimatedSkinnedMesh } from './UVPaint.js?v=1';
 import { makePaintStroke, MAX_PAINT_STROKES_PER_MSG } from './net/protocol.js?v=3';
 
-// Fase 1 (prova de conceito) do pincel 3D por UV — atrás de `?paint=1`,
-// mesmo padrão do painel de ajuste (`?tune=1`, ver TunePanel.js). Não muda
-// nada do jogo padrão: a camuflagem de verdade continua sendo as 2 cores hex
-// por zona (isCamouflaged/rede). Ver docs do plano de pintura 3D.
-const PAINT_DEBUG = new URLSearchParams(location.search).get('paint') === '1';
 const PAINT_THROTTLE_MS = 1000 / 45; // ~45 atualizações de textura por segundo (dentro dos 30-60 alvo)
 
 const WORLD_UP = new THREE.Vector3(0, 1, 0);
@@ -156,15 +151,15 @@ export class Player {
 
     this.object.add(toy.group);
 
-    // Fase 1 do pincel 3D (?paint=1): textura própria por jogador, aplicada
-    // ao GLB assim que ele existir (aqui ou em _checkAnimInstance, se o
-    // carregamento ainda não tiver terminado na hora do construtor).
-    this.paintTexture = PAINT_DEBUG ? createPaintTexture() : null;
+    // Fase 5: textura do pincel livre nasce sob demanda (ver ensurePaintTexture,
+    // chamado por Game.js na primeira abertura do painel) — a maioria dos
+    // Camaleões nunca abre o pincel, então não paga o custo do canvas 512² à toa.
+    this.paintTexture = null;
     this._lastPaintUV = null;
     this._lastPaintUpdate = 0;
     // Fase 4 (rede): comandos de traço acumulados localmente desde o último
-    // flushPaintNetBuffer() — ver esse método e Game.js (_setupPaintDebug,
-    // botão "Enviar").
+    // flushPaintNetBuffer() — ver esse método e Game.js (_flushAndSendPaint,
+    // enviado automaticamente, sem botão).
     this._paintNetBuffer = [];
 
     if (animationManager.isLoaded) {
@@ -484,7 +479,22 @@ export class Player {
     }
   }
 
-  // Fase 1 do pincel 3D (?paint=1): raycast da câmera através de um ponto de
+  // Fase 5: cria a textura do pincel livre na primeira abertura do painel
+  // (Game.js, clique em #btn-brush) em vez de sempre no construtor — a
+  // maioria dos Camaleões nunca pinta. Como isto pode acontecer DEPOIS do
+  // GLB já ter carregado (diferente da Fase 1, que criava tudo no
+  // construtor antes de qualquer coisa), aplica na animInstance na hora em
+  // vez de confiar em _checkAnimInstance (que só roda essa ligação na
+  // CRIAÇÃO da instância, não depois).
+  ensurePaintTexture() {
+    if (!this.paintTexture) {
+      this.paintTexture = createPaintTexture();
+      if (this.animInstance) this.animInstance.setPaintTexture(this.paintTexture.texture);
+    }
+    return this.paintTexture;
+  }
+
+  // Pincel livre: raycast da câmera através de um ponto de
   // tela (clientX/Y) contra a MALHA DO PRÓPRIO PERSONAGEM — equivalente ao
   // "Raycast da câmera até o Collider do avatar" da spec original, só que em
   // Three.js o resultado da interseção já vem com `.uv` prontinho (não
@@ -572,11 +582,11 @@ export class Player {
     return strokes;
   }
 
-  // Fase 2 (?paint=1) — pilha de Undo do pincel: um snapshot (ImageData) por
-  // traço, empurrado no início (down:true) de cada um. Deliberadamente
-  // simples (pixels, não vetor de comandos) porque isso é só o painel de
-  // teste local — a Fase 4 (rede) manda uma LISTA de comandos, não pixels,
-  // então essa pilha não precisa (e não deve) virar a fonte de verdade.
+  // Pilha de Undo do pincel: um snapshot (ImageData) por traço, empurrado no
+  // início (down:true) de cada um. Deliberadamente simples (pixels, não vetor
+  // de comandos) porque é só desfazer local — a Fase 4 (rede) manda uma
+  // LISTA de comandos, não pixels, então essa pilha não precisa (e não deve)
+  // virar a fonte de verdade.
   paintUndoPush() {
     if (!this.paintTexture) return;
     const { ctx, canvas } = this.paintTexture;
@@ -598,8 +608,8 @@ export class Player {
     if (this.animInstance && this.animInstance.setXray) this.animInstance.setXray(enabled);
   }
 
-  // Fase 3 (?paint=1) — canal emissivo do painel de teste. `intensity` em
-  // 0..1; `colorHex` normalmente é a cor de pincel selecionada no painel.
+  // Canal emissivo do pincel livre. `intensity` em 0..1; `colorHex`
+  // normalmente é a cor de pincel selecionada no painel.
   setEmissive(colorHex, intensity) {
     if (!this.animInstance || !this.animInstance.setEmissive) return;
     this._tmpEmissive = this._tmpEmissive || new THREE.Color();

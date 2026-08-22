@@ -55,14 +55,14 @@ export class RemotePlayer {
       // Caçador desarmado (mesma pegadinha de Seeker.js: a arma tem que ser
       // pendurada DEPOIS que o modelo animado existe, para achar o osso da mão).
       if (this.role === 'hunter') this._attachBlaster(inst);
-      // Fase 4 do pincel 3D (?paint=1): se comandos de traço já chegaram
+      // Fase 4 do pincel 3D: se comandos de traço já chegaram
       // ANTES do modelo animado carregar (applyPaintStrokes criou a textura
       // cedo), aplica agora que o GLB existe.
       if (this.paintTexture) inst.setPaintTexture(this.paintTexture.texture);
     }
   }
 
-  // Fase 4 do pincel 3D (?paint=1) — replay dos comandos de traço recebidos
+  // Fase 4 do pincel 3D — replay dos comandos de traço recebidos
   // via S2C.PLAYER_PAINT (Game.js) ou do acumulado de WELCOME (jogador que
   // já pintava antes deste cliente entrar). Textura criada sob demanda no
   // primeiro traço: a maioria das partidas nunca usa isto, então a maioria
