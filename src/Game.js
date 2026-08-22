@@ -1244,7 +1244,41 @@ export class Game {
     }
   }
 
+  // Fase 1 (prova de conceito) do pincel 3D por UV — só existe atrás de
+  // ?paint=1 (ver Player.js/UVPaint.js), mesmo padrão do ?tune=1
+  // (TunePanel.js). Some com joystick/look-zone enquanto ativo (classe
+  // `paint-debug` no body, ver style.css) pra não competir pelo mesmo toque —
+  // não é o fluxo de controle real do jogo, só o jeito mais simples de
+  // testar o mecanismo de raycast→UV→canvas isoladamente, sem mexer no
+  // esquema de toque em produção (isso é decisão de Fase 2, junto da UI).
+  _setupPaintDebug() {
+    const ativo = new URLSearchParams(location.search).get('paint') === '1';
+    if (!ativo || !this.player || !this.player.paintTexture) return;
+
+    document.body.classList.add('paint-debug');
+    const canvas = this.renderer.domElement;
+    let pintando = false;
+
+    const pintarEm = (e, down) => {
+      this.player.paintAtScreenPoint(this.camera, this.renderer, e.clientX, e.clientY, { down });
+    };
+
+    canvas.addEventListener('pointerdown', (e) => {
+      pintando = true;
+      pintarEm(e, true);
+    });
+    canvas.addEventListener('pointermove', (e) => {
+      if (!pintando) return;
+      pintarEm(e, false);
+    });
+    const parar = () => { pintando = false; this.player.paintStrokeEnd(); };
+    window.addEventListener('pointerup', parar);
+    window.addEventListener('pointercancel', parar);
+  }
+
   _setupControls() {
+    this._setupPaintDebug();
+
     const lookZone = document.getElementById('look-zone');
     let activePointers = new Map();
     let prevPinchDist = 0;

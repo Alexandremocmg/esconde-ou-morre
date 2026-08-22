@@ -3,6 +3,14 @@ import { buildBody, Gait } from './Character.js?v=3';
 import { toonGradient } from './textures.js?v=3';
 import { animationManager } from './AnimationManager.js?v=3';
 import { TUNE } from './Tuning.js?v=1';
+import { createPaintTexture, strokeBetween, clearTexture, raycastAnimatedSkinnedMesh } from './UVPaint.js?v=1';
+
+// Fase 1 (prova de conceito) do pincel 3D por UV — atrás de `?paint=1`,
+// mesmo padrão do painel de ajuste (`?tune=1`, ver TunePanel.js). Não muda
+// nada do jogo padrão: a camuflagem de verdade continua sendo as 2 cores hex
+// por zona (isCamouflaged/rede). Ver docs do plano de pintura 3D.
+const PAINT_DEBUG = new URLSearchParams(location.search).get('paint') === '1';
+const PAINT_THROTTLE_MS = 1000 / 45; // ~45 atualizações de textura por segundo (dentro dos 30-60 alvo)
 
 const WORLD_UP = new THREE.Vector3(0, 1, 0);
 const DOWN = new THREE.Vector3(0, -1, 0); // amostra/checagem do chão na pose deitada (P3c)
@@ -147,6 +155,13 @@ export class Player {
 
     this.object.add(toy.group);
 
+    // Fase 1 do pincel 3D (?paint=1): textura própria por jogador, aplicada
+    // ao GLB assim que ele existir (aqui ou em _checkAnimInstance, se o
+    // carregamento ainda não tiver terminado na hora do construtor).
+    this.paintTexture = PAINT_DEBUG ? createPaintTexture() : null;
+    this._lastPaintUV = null;
+    this._lastPaintUpdate = 0;
+
     if (animationManager.isLoaded) {
       const inst = animationManager.createInstance({ upper: this.zones[0].mat, lower: this.zones[1].mat }, H);
       if (inst) {
@@ -156,6 +171,7 @@ export class Player {
         inst.group.position.y = -GROUND_Y;
         this.object.add(inst.group);
         this.animInstance = inst;
+        if (this.paintTexture) inst.setPaintTexture(this.paintTexture.texture);
       }
     } else {
       this._checkAnimInstance();
@@ -450,7 +466,72 @@ export class Player {
       inst.group.position.y = -GROUND_Y;
       this.object.add(inst.group);
       this.animInstance = inst;
+      if (this.paintTexture) inst.setPaintTexture(this.paintTexture.texture);
     }
+  }
+
+  // Fase 1 do pincel 3D (?paint=1): raycast da câmera através de um ponto de
+  // tela (clientX/Y) contra a MALHA DO PRÓPRIO PERSONAGEM — equivalente ao
+  // "Raycast da câmera até o Collider do avatar" da spec original, só que em
+  // Three.js o resultado da interseção já vem com `.uv` prontinho (não
+  // precisa de nenhuma conversão extra tipo o Hit.TextureCoordinate do
+  // Unreal). `down` marca o início de um traço nesse toque específico —
+  // sem isso o primeiro carimbo de cada novo traço tentaria interpolar a
+  // partir do último ponto do traço ANTERIOR (rabisco fantasma ligando os
+  // dois toques).
+  paintAtScreenPoint(camera, renderer, clientX, clientY, { down = false, colorHex = '#2ec4b6', radiusPx = 22 } = {}) {
+    if (!this.paintTexture || !this.animInstance || !this.animInstance.skinnedMesh) return false;
+
+    const rect = renderer.domElement.getBoundingClientRect();
+    const ndcX = ((clientX - rect.left) / rect.width) * 2 - 1;
+    const ndcY = -((clientY - rect.top) / rect.height) * 2 + 1;
+    this._raycaster.setFromCamera({ x: ndcX, y: ndcY }, camera);
+
+    // Descarte barato antes do raycast manual (pesado — percorre os ~12k
+    // triângulos, ver UVPaint.js): esfera aproximada do personagem, centrada
+    // em this.position (já é o centro vertical da cápsula — GROUND_Y é a
+    // metade da altura, ver HALF_EXTENT), raio maior que HALF_EXTENT pra
+    // cobrir braços erguidos/pose animada sem folga excessiva.
+    const centro = this._tmpV.copy(this.position);
+    if (this._raycaster.ray.distanceSqToPoint(centro) > (HALF_EXTENT * 1.6) ** 2) {
+      this._lastPaintUV = null;
+      return false;
+    }
+
+    const hit = raycastAnimatedSkinnedMesh(this._raycaster, this.animInstance.skinnedMesh);
+    if (!hit) { this._lastPaintUV = null; return false; }
+
+    const { ctx, texture } = this.paintTexture;
+    if (down || !this._lastPaintUV) {
+      ctx.fillStyle = colorHex;
+      ctx.beginPath();
+      ctx.arc(hit.uv.x * ctx.canvas.width, (1 - hit.uv.y) * ctx.canvas.height, radiusPx, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      strokeBetween(ctx, this._lastPaintUV, hit.uv, colorHex, radiusPx);
+    }
+    this._lastPaintUV = hit.uv.clone();
+
+    // Throttle (30-60/s, ver PAINT_THROTTLE_MS): o carimbo no canvas 2D
+    // acontece toda vez, só o upload da textura pra GPU (needsUpdate) é que
+    // fica limitado — é o `texture.needsUpdate=true` que é caro, não o
+    // `ctx.arc`/`fill` em si.
+    const now = performance.now();
+    if (now - this._lastPaintUpdate >= PAINT_THROTTLE_MS) {
+      texture.needsUpdate = true;
+      this._lastPaintUpdate = now;
+    }
+    return true;
+  }
+
+  paintStrokeEnd() {
+    this._lastPaintUV = null;
+  }
+
+  paintClear() {
+    if (!this.paintTexture) return;
+    clearTexture(this.paintTexture.ctx);
+    this.paintTexture.texture.needsUpdate = true;
   }
 
   update(dt, joy, camera) {

@@ -192,9 +192,17 @@ class AnimationManager {
     const group = new THREE.Group();
     group.add(clone);
 
+    // Fase 1 do pincel 3D (?paint=1): expõe o SkinnedMesh direto — o
+    // raycast padrão do Three.js testa a BIND POSE dele, não a pose animada
+    // (mesma armadilha do jato de água d'água, já documentada em
+    // docs/PIPELINE_PERSONAGEM.md), então src/UVPaint.js faz seu próprio
+    // raycast manual via `applyBoneTransform` e precisa dessa referência.
+    const skinnedMesh = meshes.find((m) => m.isSkinnedMesh) || meshes[0] || null;
+
     const instanceObj = {
       group,
       mixer,
+      skinnedMesh,
       actions,
       currentActionName: 'idle',
       materials: customMaterials,
@@ -237,6 +245,18 @@ class AnimationManager {
           mat.color.copy(color);
         }
         if (matU) matU.color.copy(color);
+      },
+
+      // Fase 1 do pincel 3D por UV (ver src/UVPaint.js, ativo só atrás de
+      // ?paint=1) — troca o `.map` de todo material do GLB pela textura
+      // pintada, sem mexer em setColor/customMaterials (o jogo padrão nunca
+      // chama isto). A malha tem UV em 6 regiões não sobrepostas — ver
+      // scripts/gerar_personagem_glb.py, reunwrap_por_regiao.
+      setPaintTexture(texture) {
+        for (const mat of customMaterials) {
+          mat.map = texture;
+          mat.needsUpdate = true;
+        }
       },
 
       setEmissive(color, intensity) {

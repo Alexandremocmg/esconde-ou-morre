@@ -292,6 +292,15 @@ body {
   touch-action: none;
 }
 
+/* Fase 1 (prova de conceito) do pincel 3D — ?paint=1 (ver Game.js,
+   _setupPaintDebug). Joystick/look-zone somem: o dedo precisa chegar direto
+   no canvas pra tocar no próprio personagem, sem competir com os controles
+   normais. Modo de teste isolado, não é o esquema de toque de produção. */
+body.paint-debug #joystick-zone,
+body.paint-debug #look-zone {
+  display: none;
+}
+
 /* ---------- Botões de ação (coluna à direita, acima da área de olhar) ---------- */
 /* ---------- Botões de ação mobile em Arco Ergonômico Glassmorphism ---------- */
 #actions {
