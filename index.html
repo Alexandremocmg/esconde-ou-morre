@@ -175,6 +175,10 @@
       <button id="pdp-undo" class="pdp-btn" type="button">↺ Desfazer</button>
       <button id="pdp-clear" class="pdp-btn" type="button">🗑️ Limpar</button>
       <button id="pdp-xray" class="pdp-btn" type="button">👻 Raio-X</button>
+      <!-- Fase 4 (rede): manda o lote de traços acumulado desde o último
+           envio — só funciona no modo Online (ver Game.js, _setupPaintDebug).
+           Fora dele, o botão só esvazia o buffer local sem mandar nada. -->
+      <button id="pdp-send" class="pdp-btn" type="button">📡 Enviar (Online)</button>
     </div>
   </div>
 

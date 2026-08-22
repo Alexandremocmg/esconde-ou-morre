@@ -28,6 +28,7 @@ import {
   HUNTER_AMMO_DEFAULT,
   MAX_CHAMELEONS,
   LOBBY_COUNTDOWN_MS,
+  MAX_PAINT_STROKES_PER_MSG,
 } from '../src/net/protocol.js';
 import { coneCandidates, normalize } from '../src/net/hittest.js';
 import { LAYOUT_1_OCCLUDERS, isOccluded } from '../src/net/occluders.js';
@@ -125,7 +126,7 @@ export class Room {
       matchStartAt: this._matchStartAt,
       players: [...this.clients.values()]
         .filter((c) => c.id !== id && c.connected)
-        .map((c) => this._publicState(c)),
+        .map((c) => this._publicStateFull(c)),
     });
     console.log(`[room] reconectou ${id} como ${client.role} (${this.clients.size} na sala)`);
 
@@ -172,6 +173,13 @@ export class Room {
       ammo: HUNTER_AMMO_DEFAULT,
       maxAmmo: HUNTER_AMMO_DEFAULT,
       infiniteAmmo: false,
+      // Fase 4 do pincel 3D (?paint=1): acumulado de comandos de traço já
+      // validados deste cliente — só pra um jogador que entra DEPOIS ver a
+      // pintura de quem já estava (ver WELCOME/_reattach, que inclui isto
+      // via _publicStateFull). NÃO vai no SNAPSHOT de todo tick — só cresceria
+      // sem necessidade, o mesmo problema que a lista de comandos evita ao
+      // custo de banda de pixels.
+      paintStrokes: [],
     };
     this.clients.set(id, client);
 
@@ -209,7 +217,7 @@ export class Room {
       matchStartAt: this._matchStartAt,
       players: [...this.clients.values()]
         .filter((c) => c.id !== id && c.connected)
-        .map((c) => this._publicState(c)),
+        .map((c) => this._publicStateFull(c)),
     });
 
     this._broadcast({ type: S2C.PLAYER_JOIN, player: this._publicState(client) }, id);
@@ -257,6 +265,8 @@ export class Room {
       this._onRevive(client);
     } else if (msg.type === C2S.JOIN) {
       this._handleJoin(client, msg);
+    } else if (msg.type === C2S.PAINT) {
+      this._handlePaint(client, msg);
     }
   }
 
@@ -309,6 +319,35 @@ export class Room {
     client.statue = !!msg.k;
     client.moving = !!msg.m;
     if (Array.isArray(msg.col) && msg.col.length === 2) client.color = msg.col;
+  }
+
+  // Fase 4 do pincel 3D (?paint=1) — mesmo espírito de _applyInput: confia
+  // na FORMA dos dados (nunca visto), mas valida os TIPOS/faixas de cada
+  // campo antes de guardar/repassar — um cliente malicioso não pode mandar
+  // um payload gigante (MAX_PAINT_STROKES_PER_MSG) nem um hex/UV inválido
+  // que quebre o desenho no lado de quem recebe.
+  _handlePaint(client, msg) {
+    const strokes = msg.strokes;
+    if (!Array.isArray(strokes) || !strokes.length || strokes.length > MAX_PAINT_STROKES_PER_MSG) return;
+
+    const clean = [];
+    for (const s of strokes) {
+      if (!s || typeof s.u !== 'number' || typeof s.v !== 'number') continue;
+      if (s.u < 0 || s.u > 1 || s.v < 0 || s.v > 1) continue;
+      if (typeof s.c !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(s.c)) continue;
+      if (typeof s.r !== 'number' || !(s.r > 0) || s.r > 0.5) continue;
+      clean.push({ d: s.d ? 1 : 0, u: s.u, v: s.v, c: s.c, r: s.r });
+    }
+    if (!clean.length) return;
+
+    // Acumulado pra quem entrar depois (ver WELCOME/_publicStateFull) — teto
+    // de segurança pra não crescer sem limite numa sessão muito longa.
+    client.paintStrokes = client.paintStrokes.concat(clean);
+    if (client.paintStrokes.length > 2000) {
+      client.paintStrokes = client.paintStrokes.slice(-2000);
+    }
+
+    this._broadcast({ type: S2C.PLAYER_PAINT, id: client.id, strokes: clean }, client.id);
   }
 
   // --------------------------------------------------------------- disparo
@@ -441,6 +480,15 @@ export class Room {
       // impede o Camaleão de um dia mostrar "Caçador tem N tiros restantes" com isto.
       ammo: c.ammo, maxAmmo: c.maxAmmo, infiniteAmmo: c.infiniteAmmo,
     };
+  }
+
+  // Só pra WELCOME/_reattach (entrada/reconexão, uma vez) — NUNCA pro
+  // SNAPSHOT de todo tick (_tick usa _publicState puro): incluir
+  // paintStrokes ali reenviaria o acumulado inteiro 20x/s pra sala inteira,
+  // exatamente o custo de banda que a Fase 4 existe pra evitar. Aqui, uma
+  // vez por entrada, é só o preço de sincronizar quem já estava pintado.
+  _publicStateFull(c) {
+    return { ...this._publicState(c), paintStrokes: c.paintStrokes };
   }
 
   _send(ws, msg) {

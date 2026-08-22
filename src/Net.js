@@ -211,6 +211,15 @@ export class Net {
     this._send({ type: C2S.FIRE, origin, dir });
   }
 
+  // Fase 4 do pincel 3D (?paint=1) — um lote de comandos de traço (ver
+  // protocol.js C2S.PAINT/makePaintStroke), mandado de uma vez ao travar a
+  // pose/fechar o pincel. NÃO passa por sendInput/TICK_MS: é evento, não
+  // estado contínuo — mandar vazio seria só desperdício.
+  sendPaintStrokes(strokes) {
+    if (!strokes || !strokes.length) return;
+    this._send({ type: C2S.PAINT, strokes });
+  }
+
   // "Jogar novamente" sem reconectar — ver room.js:_onRevive.
   sendRevive() {
     this._send({ type: C2S.REVIVE });

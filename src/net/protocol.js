@@ -71,6 +71,13 @@ export const C2S = {
   FIRE: 'fire',       // { origin:{x,y,z}, dir:{x,y,z}, t }
   LEAVE: 'leave',
   REVIVE: 'revive',   // "jogar novamente" sem reconectar — ver room.js:_onRevive
+  // Fase 4 do pincel 3D (?paint=1, ver src/UVPaint.js): lote de comandos de
+  // traço acumulados localmente e mandados de uma vez (ao travar a pose/
+  // fechar o pincel — não por-tick, ao contrário de INPUT). Decisão já
+  // tomada na avaliação da spec: manda uma LISTA DE COMANDOS, não pixels —
+  // "cor nunca vai pela rede como pixels" continua valendo (ver
+  // docs/PLANO_MULTIPLAYER.md).
+  PAINT: 'paint',     // { strokes: [{d, u, v, c, r}, ...] } — ver makePaintStroke
 };
 
 // Servidor → cliente
@@ -83,6 +90,7 @@ export const S2C = {
   FIRE_DENIED: 'fireDenied', // só para o atirador: { reason, nextFireAt }
   PLAYER_HIT: 'playerHit',   // { targetId, hunterId }
   MATCH_OVER: 'matchOver',   // { winner: 'hunter'|'chameleons', reason }
+  PLAYER_PAINT: 'playerPaint', // { id, strokes[] } — repasse do C2S.PAINT de outro jogador
 };
 
 export const ROLE = {
@@ -160,4 +168,23 @@ export function makeInputPayload({ pos, yaw, state, crouched, prone, statue, mov
 // sem nenhum efeito visível (os avatares ainda são interpolados no destino).
 function round3(n) {
   return Math.round(n * 1000) / 1000;
+}
+
+// Fase 4 do pincel 3D (?paint=1) — validado tanto no cliente (antes de
+// empacotar) quanto no servidor (room.js:_handlePaint, nunca confia só no
+// cliente). Um traço "vira uma vida inteira" bem rápido (uma sessão de
+// pintura contínua facilmente passa de centenas de pontos) — o teto existe
+// pra um cliente malicioso não mandar payloads gigantes, não porque um
+// traço legítimo costume chegar perto disso.
+export const MAX_PAINT_STROKES_PER_MSG = 400;
+
+// Um comando de traço: `d` (down) marca o INÍCIO de um traço novo — o
+// receptor só interpola (liga com uma linha) entre pontos consecutivos que
+// NÃO começam um traço novo, senão um pulo entre dois traços separados sairia
+// como um risco reto ligando os dois (mesmo motivo do corte por distância em
+// UVPaint.js:strokeBetween, que só entra em jogo localmente). `u`/`v` são a
+// coordenada UV do carimbo (0-1); `r` é o raio como FRAÇÃO da textura (não
+// pixels — independe do tamanho de textura que o receptor usa).
+export function makePaintStroke({ down, uv, colorHex, radiusFrac }) {
+  return { d: down ? 1 : 0, u: round3(uv.x), v: round3(uv.y), c: colorHex, r: round3(radiusFrac) };
 }

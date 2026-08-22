@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { animationManager } from './AnimationManager.js?v=3';
 import { GUN_OFFSET, GUN_ROT } from './Seeker.js?v=3';
 import { INTERP_DELAY_MS, GROUND_Y } from './net/protocol.js?v=3';
+import { createPaintTexture, stampCircle, strokeBetween } from './UVPaint.js?v=1';
 
 // Altura total do avatar (Player.js: HALF_EXTENT*2, SCALE=0.8). Ficou presa em 0.9
 // (o valor de quando Player.js usava SCALE=0.5) por duas rodadas de aumento do jogador
@@ -54,7 +55,38 @@ export class RemotePlayer {
       // Caçador desarmado (mesma pegadinha de Seeker.js: a arma tem que ser
       // pendurada DEPOIS que o modelo animado existe, para achar o osso da mão).
       if (this.role === 'hunter') this._attachBlaster(inst);
+      // Fase 4 do pincel 3D (?paint=1): se comandos de traço já chegaram
+      // ANTES do modelo animado carregar (applyPaintStrokes criou a textura
+      // cedo), aplica agora que o GLB existe.
+      if (this.paintTexture) inst.setPaintTexture(this.paintTexture.texture);
     }
+  }
+
+  // Fase 4 do pincel 3D (?paint=1) — replay dos comandos de traço recebidos
+  // via S2C.PLAYER_PAINT (Game.js) ou do acumulado de WELCOME (jogador que
+  // já pintava antes deste cliente entrar). Textura criada sob demanda no
+  // primeiro traço: a maioria das partidas nunca usa isto, então a maioria
+  // dos avatares remotos nunca paga o custo do canvas 512² à toa.
+  applyPaintStrokes(strokes) {
+    if (!Array.isArray(strokes) || !strokes.length) return;
+    if (!this.paintTexture) {
+      this.paintTexture = createPaintTexture();
+      if (this.animInstance) this.animInstance.setPaintTexture(this.paintTexture.texture);
+    }
+    const { ctx, texture } = this.paintTexture;
+    let last = this._lastRemoteUV || null;
+    for (const s of strokes) {
+      const uv = { x: s.u, y: s.v };
+      const radiusPx = s.r * ctx.canvas.width;
+      if (s.d || !last) {
+        stampCircle(ctx, uv, s.c, radiusPx);
+      } else {
+        strokeBetween(ctx, last, uv, s.c, radiusPx);
+      }
+      last = uv;
+    }
+    this._lastRemoteUV = last;
+    texture.needsUpdate = true;
   }
 
   // Mesma calibração de Seeker.js:_attachBlaster (GUN_OFFSET/GUN_ROT importados

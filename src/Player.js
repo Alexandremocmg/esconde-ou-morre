@@ -4,6 +4,7 @@ import { toonGradient, toonGradientGloss } from './textures.js?v=3';
 import { animationManager } from './AnimationManager.js?v=3';
 import { TUNE } from './Tuning.js?v=1';
 import { createPaintTexture, strokeBetween, clearTexture, raycastAnimatedSkinnedMesh } from './UVPaint.js?v=1';
+import { makePaintStroke, MAX_PAINT_STROKES_PER_MSG } from './net/protocol.js?v=3';
 
 // Fase 1 (prova de conceito) do pincel 3D por UV — atrás de `?paint=1`,
 // mesmo padrão do painel de ajuste (`?tune=1`, ver TunePanel.js). Não muda
@@ -161,6 +162,10 @@ export class Player {
     this.paintTexture = PAINT_DEBUG ? createPaintTexture() : null;
     this._lastPaintUV = null;
     this._lastPaintUpdate = 0;
+    // Fase 4 (rede): comandos de traço acumulados localmente desde o último
+    // flushPaintNetBuffer() — ver esse método e Game.js (_setupPaintDebug,
+    // botão "Enviar").
+    this._paintNetBuffer = [];
 
     if (animationManager.isLoaded) {
       const inst = animationManager.createInstance({ upper: this.zones[0].mat, lower: this.zones[1].mat }, H);
@@ -522,6 +527,18 @@ export class Player {
     }
     this._lastPaintUV = hit.uv.clone();
 
+    // Fase 4 (rede): acumula o comando LOCALMENTE — nada é mandado ainda,
+    // isso só acontece no flush (ver flushPaintNetBuffer). Corta pela frente
+    // (mais antigo primeiro) se passar do teto de validação do servidor —
+    // uma sessão de pintura longa perder o INÍCIO é bem menos ruim do que
+    // travar o flush por estourar o limite.
+    this._paintNetBuffer.push(makePaintStroke({
+      down, uv: hit.uv, colorHex, radiusFrac: radiusPx / ctx.canvas.width,
+    }));
+    if (this._paintNetBuffer.length > MAX_PAINT_STROKES_PER_MSG) {
+      this._paintNetBuffer.splice(0, this._paintNetBuffer.length - MAX_PAINT_STROKES_PER_MSG);
+    }
+
     // Throttle (30-60/s, ver PAINT_THROTTLE_MS): o carimbo no canvas 2D
     // acontece toda vez, só o upload da textura pra GPU (needsUpdate) é que
     // fica limitado — é o `texture.needsUpdate=true` que é caro, não o
@@ -543,6 +560,16 @@ export class Player {
     clearTexture(this.paintTexture.ctx);
     this.paintTexture.texture.needsUpdate = true;
     this._paintUndoStack = [];
+  }
+
+  // Fase 4 (rede) — devolve e ESVAZIA o buffer acumulado desde o último
+  // flush. Quem chama (Game.js) decide o que fazer com o resultado (mandar
+  // por net.sendPaintStrokes se estiver em modo Online; fora dele, o buffer
+  // só fica se acumulando sem uso — sem custo real, é só um array).
+  flushPaintNetBuffer() {
+    const strokes = this._paintNetBuffer;
+    this._paintNetBuffer = [];
+    return strokes;
   }
 
   // Fase 2 (?paint=1) — pilha de Undo do pincel: um snapshot (ImageData) por

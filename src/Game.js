@@ -415,6 +415,15 @@ export class Game {
       this.net.on(S2C.SHOT, (msg) => this._onShot(msg));
       this.net.on(S2C.FIRE_DENIED, (msg) => this._onFireDenied(msg));
       this.net.on(S2C.MATCH_OVER, (msg) => this._onMatchOver(msg));
+      // Fase 4 do pincel 3D (?paint=1) — repasse de outro jogador (ver
+      // server/room.js:_handlePaint). Só o RemotePlayer correspondente lê;
+      // se ele ainda não existir por algum motivo (mensagem chegou antes do
+      // PLAYER_JOIN, corrida improvável mas não impossível), ignora — não é
+      // crítico perder um traço isolado, ao contrário de posição/tiro.
+      this.net.on(S2C.PLAYER_PAINT, (msg) => {
+        const rp = this.remotePlayers.get(msg.id);
+        if (rp) rp.applyPaintStrokes(msg.strokes);
+      });
 
       // Reconexão (Net.js): uma queda não encerra mais a partida na hora — o
       // próprio Net tenta reconectar sozinho (backoff, até RECONNECT_GRACE_MS) e
@@ -491,6 +500,11 @@ export class Game {
     if (this.remotePlayers.has(p.id)) return;
     const rp = new RemotePlayer(this.scene, p.id, p.role, p.pos);
     this.remotePlayers.set(p.id, rp);
+    // Fase 4 do pincel 3D (?paint=1): só existe em welcome.players (ver
+    // server/room.js, _publicStateFull) — quem já estava pintado antes deste
+    // cliente entrar. PLAYER_JOIN usa _publicState puro (sem o campo), então
+    // isto vira um no-op pra quem acabou de entrar sem nada pintado ainda.
+    if (p.paintStrokes && p.paintStrokes.length) rp.applyPaintStrokes(p.paintStrokes);
   }
 
   _removeRemotePlayer(id) {
@@ -1330,6 +1344,15 @@ export class Game {
       xrayLigado = !xrayLigado;
       xrayBtn.classList.toggle('active', xrayLigado);
       this.player.setXray(xrayLigado);
+    });
+
+    // ---- Fase 4: mandar o lote acumulado (só faz sentido no modo Online —
+    // fora dele, só esvazia o buffer local mesmo, sem rede nenhuma). Sempre
+    // via flushPaintNetBuffer() (nunca lê o buffer sem esvaziar): senão um
+    // segundo clique reenviaria os mesmos traços de novo.
+    document.getElementById('pdp-send').addEventListener('click', () => {
+      const strokes = this.player.flushPaintNetBuffer();
+      if (this.mode === 'online' && this.net) this.net.sendPaintStrokes(strokes);
     });
 
     const pintarEm = (e, down) => {
