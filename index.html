@@ -95,12 +95,6 @@
     <button id="btn-jump" class="glass-btn action-jump" type="button" aria-label="Pular">
       <span class="ic">🟢</span><span class="lbl">Pular</span>
     </button>
-    <!-- Pincel livre por UV (Fase 5): abre/fecha o painel de pintura à mão livre.
-         Botão dedicado, separado do #btn-paint antigo (que continua fazendo o
-         sample-color de 2 zonas) — some no Caçador (só Camaleão pinta). -->
-    <button id="btn-brush" class="glass-btn action-brush" type="button" aria-label="Pincel Livre">
-      <span class="ic">🖌️</span><span class="lbl">Pincel</span>
-    </button>
     <!-- Modo Caçador jogável: dispara o jato de água nos Camaleões-alvo (some no modo Camaleão) -->
     <button id="btn-fire" class="glass-btn action-paint" type="button" aria-label="Atirar">
       <span class="ic">💦</span><span class="lbl">Atirar</span>
@@ -127,9 +121,12 @@
 
   <!-- Menu Radial de Pintura Avançada (Hold no botão de Pintura) -->
   <div id="radial-paint-menu" class="radial-menu paint-menu hidden">
-    <div class="radial-center">
+    <!-- Fase 5 (correção): o pincel livre por UV abre por AQUI — o círculo
+         "PINCEL" que já existia no centro deste menu, em vez de um ícone
+         próprio na barra de ações. Ver Game.js:_setupPaintPanel. -->
+    <button id="btn-brush" type="button" class="radial-center" aria-label="Pincel Livre">
       <span class="radial-title">PINCEL</span>
-    </div>
+    </button>
     <div class="paint-history-ring">
       <span class="p-hist-label">Cores Recentes</span>
       <div id="paint-history-chips" class="p-chips">
@@ -145,12 +142,14 @@
     </div>
   </div>
 
-  <!-- Painel do Pincel Livre por UV (Fase 5): abre/fecha no clique de
-       #btn-brush (classe body.painting-active, ver css/style.css e
-       Game.js:_setupPaintPanel). Envio pela rede é automático (ver
-       Game.js:_flushAndSendPaint) — não existe mais botão de "Enviar". -->
+  <!-- Painel do Pincel Livre por UV (Fase 5): abre no clique do "PINCEL"
+       dentro de #radial-paint-menu (classe body.painting-active, ver
+       css/style.css e Game.js:_setupPaintPanel). Envio pela rede é
+       automático (ver Game.js:_flushAndSendPaint) — não existe mais botão
+       de "Enviar". Fecha pelo ✕ aqui (o gatilho de abertura fica escondido
+       enquanto este painel está aberto — ver nota em _setupPaintPanel). -->
   <div id="paint-debug-panel">
-    <div class="pdp-title">🖌️ Pincel Livre</div>
+    <div class="pdp-title">🖌️ Pincel Livre<button id="pdp-close" class="pdp-close" type="button" aria-label="Fechar">✕</button></div>
     <label class="pdp-size-row">
       <span>Tamanho</span>
       <input id="pdp-size" type="range" min="6" max="60" value="22">

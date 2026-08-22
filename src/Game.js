@@ -1281,14 +1281,16 @@ export class Game {
     }
   }
 
-  // Pincel Livre por UV (Fase 5) — botão dedicado #btn-brush, separado do
-  // #btn-paint antigo (que continua fazendo sample-color de 2 zonas, sem
-  // nenhuma mudança). Painel some por padrão; abre/fecha no toque do botão,
-  // que também é o único lugar que liga/desliga os listeners de pintura no
-  // `canvas` (evita que qualquer toque na cena tente pintar o tempo todo —
-  // só enquanto o painel está mesmo aberto). Enquanto aberto, junto some
-  // joystick/look-zone (classe `painting-active` no body, ver style.css):
-  // pintura exige toque direto na tela, sem competir pelos controles normais.
+  // Pincel Livre por UV (Fase 5) — abre pelo "PINCEL" no centro do menu
+  // radial de #btn-paint (segurar o botão antigo), não por um ícone
+  // próprio na barra: reaproveita o que já existia ali (ver index.html).
+  // #btn-paint continua fazendo sample-color de 2 zonas no toque rápido,
+  // sem nenhuma mudança. Abrir/fechar o painel também liga/desliga os
+  // listeners de pintura no `canvas` (evita que qualquer toque na cena
+  // tente pintar o tempo todo — só enquanto o painel está mesmo aberto).
+  // Enquanto aberto, junto some joystick/look-zone (classe `painting-active`
+  // no body, ver style.css): pintura exige toque direto na tela, sem
+  // competir pelos controles normais.
   _setupPaintPanel() {
     if (!this.player || !this._btnBrush) return;
 
@@ -1406,32 +1408,46 @@ export class Game {
       this._flushAndSendPaint();
     };
 
-    // Abre/fecha o painel no toque de #btn-brush. A textura só nasce aqui
-    // (ensurePaintTexture) — a maioria dos Camaleões nunca abre o pincel.
+    // Abre no toque do "PINCEL" — o centro de #radial-paint-menu, que já
+    // existia como rótulo estático e virou o gatilho de verdade (ver
+    // index.html). A textura só nasce aqui (ensurePaintTexture) — a maioria
+    // dos Camaleões nunca abre o pincel. Fecha o menu radial antigo (cores
+    // recentes + Fosco/Brilhante) ao abrir: os dois painéis não competem
+    // pela mesma área da tela.
+    const abrirPainel = () => {
+      if (aberto) return;
+      aberto = true;
+      this.player.ensurePaintTexture();
+      document.body.classList.add('painting-active');
+      if (this._radialPaintMenu) this._radialPaintMenu.classList.add('hidden');
+      canvas.addEventListener('pointerdown', onPointerDown);
+      canvas.addEventListener('pointermove', onPointerMove);
+      window.addEventListener('pointerup', onPointerUp);
+      window.addEventListener('pointercancel', onPointerUp);
+    };
+    // Fecha pelo ✕ do painel (#pdp-close) — o "PINCEL" que abre fica dentro
+    // do menu radial antigo, que já está escondido enquanto este painel
+    // está aberto, então não dá pra reusar o mesmo botão pra fechar.
+    const fecharPainel = () => {
+      if (!aberto) return;
+      aberto = false;
+      document.body.classList.remove('painting-active');
+      canvas.removeEventListener('pointerdown', onPointerDown);
+      canvas.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+      window.removeEventListener('pointercancel', onPointerUp);
+      pintando = false;
+      modoContaGotas = false;
+      eyedropBtn.classList.remove('active');
+    };
+
     this._btnBrush.addEventListener('pointerdown', (e) => {
       e.preventDefault();
-      aberto = !aberto;
-      this._btnBrush.classList.toggle('active', aberto);
       if (navigator.vibrate) try { navigator.vibrate(10); } catch (_) {}
-
-      if (aberto) {
-        this.player.ensurePaintTexture();
-        document.body.classList.add('painting-active');
-        canvas.addEventListener('pointerdown', onPointerDown);
-        canvas.addEventListener('pointermove', onPointerMove);
-        window.addEventListener('pointerup', onPointerUp);
-        window.addEventListener('pointercancel', onPointerUp);
-      } else {
-        document.body.classList.remove('painting-active');
-        canvas.removeEventListener('pointerdown', onPointerDown);
-        canvas.removeEventListener('pointermove', onPointerMove);
-        window.removeEventListener('pointerup', onPointerUp);
-        window.removeEventListener('pointercancel', onPointerUp);
-        pintando = false;
-        modoContaGotas = false;
-        eyedropBtn.classList.remove('active');
-      }
+      abrirPainel();
     });
+    const closeBtn = document.getElementById('pdp-close');
+    if (closeBtn) closeBtn.addEventListener('pointerdown', (e) => { e.preventDefault(); fecharPainel(); });
   }
 
   _setupControls() {

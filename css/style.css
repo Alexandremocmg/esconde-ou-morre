@@ -322,7 +322,18 @@ body.painting-active #look-zone {
 }
 body.painting-active #paint-debug-panel { display: block; }
 
-.pdp-title { font-weight: 800; font-size: 12px; margin-bottom: 8px; }
+.pdp-title {
+  font-weight: 800; font-size: 12px; margin-bottom: 8px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.pdp-close {
+  font: inherit; font-size: 13px; line-height: 1;
+  width: 22px; height: 22px; border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff; cursor: pointer;
+}
+.pdp-close:active { background: rgba(255, 255, 255, 0.25); }
 .pdp-size-row {
   display: flex; align-items: center; gap: 6px;
   margin-bottom: 10px;
@@ -439,14 +450,6 @@ body.painting-active #paint-debug-panel { display: block; }
   background: rgba(231, 76, 60, 0.25);
   border-color: rgba(231, 76, 60, 0.6);
 }
-/* Pincel Livre (Fase 5): 5º botão do arco, perto do #btn-paint antigo. */
-.action-brush {
-  width: 56px; height: 56px;
-  right: 145px; bottom: 60px;
-  background: rgba(46, 196, 182, 0.25);
-  border-color: rgba(46, 196, 182, 0.6);
-}
-.action-brush .ic { font-size: 20px; }
 
 /* ---------- Modo Caçador jogável ----------
    btn-fire ocupa o mesmo lugar/estilo de btn-paint (herda .action-paint); os
@@ -455,8 +458,7 @@ body.painting-active #paint-debug-panel { display: block; }
 #targets-hud { display: none; }
 body.mode-hunter #btn-fire { display: flex; }
 body.mode-hunter #btn-paint,
-body.mode-hunter #btn-pose,
-body.mode-hunter #btn-brush { display: none; }
+body.mode-hunter #btn-pose { display: none; }
 body.mode-hunter #targets-hud { display: flex; }
 body.mode-hunter .stat-camo { display: none; }
 
@@ -479,8 +481,7 @@ body.mode-online #water-ammo-hud { display: none; }
 body.mode-online.online-hunter #water-ammo-hud { display: flex; }
 body.mode-online.online-hunter #btn-fire { display: flex; }
 body.mode-online.online-hunter #btn-paint,
-body.mode-online.online-hunter #btn-pose,
-body.mode-online.online-hunter #btn-brush { display: none; }
+body.mode-online.online-hunter #btn-pose { display: none; }
 body.mode-online.online-hunter #btn-scan { display: flex; }
 body.mode-online.online-hunter #scanner-hud-badge { display: flex; }
 /* Lobby maior (docs/PLANO_LOBBY_MULTIPLAYER.md §3.4): reaproveita o mesmo badge 🎯 do
@@ -575,6 +576,24 @@ body.mode-online #hint { display: block; }
   align-items: center;
   justify-content: center;
   box-shadow: 0 0 25px rgba(0, 0, 0, 0.5);
+}
+/* #btn-brush (Fase 5): o centro do menu de pintura é um <button> de verdade
+   (o de poses continua sendo um <div>, só decorativo) — reset dos estilos
+   nativos de <button> + feedback de toque, mantendo o visual idêntico. */
+button.radial-center {
+  font: inherit;
+  padding: 0;
+  margin: 0;
+  color: inherit;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.12s ease;
+}
+button.radial-center:active,
+button.radial-center.active {
+  background: rgba(46, 196, 182, 0.35);
+  border-color: rgba(46, 196, 182, 0.9);
+  transform: translate(-50%, -50%) scale(0.94);
 }
 .radial-title {
   font-size: 11px;
