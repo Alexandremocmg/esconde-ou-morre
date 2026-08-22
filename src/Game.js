@@ -1258,12 +1258,87 @@ export class Game {
     document.body.classList.add('paint-debug');
     const canvas = this.renderer.domElement;
     let pintando = false;
+    let corAtual = '#2ec4b6';
+    let raioAtual = 22;
+    let modoContaGotas = false;
+    let xrayLigado = false;
+    const historico = []; // últimas cores amostradas pelo conta-gotas (máx. 3), só deste painel
+
+    const painel = document.getElementById('paint-debug-panel');
+    if (!painel) return; // painel é só o harness de teste — sem ele, ainda dá pra pintar via código
+
+    // ---- Tamanho do pincel ----
+    const sizeInput = document.getElementById('pdp-size');
+    const sizeVal = document.getElementById('pdp-size-val');
+    sizeInput.addEventListener('input', () => {
+      raioAtual = Number(sizeInput.value);
+      sizeVal.textContent = `${raioAtual}px`;
+    });
+
+    // ---- Paleta fixa ----
+    const swatches = painel.querySelectorAll('#pdp-swatches .pdp-swatch');
+    const selecionarCor = (hex, origem) => {
+      corAtual = hex;
+      swatches.forEach((b) => b.classList.toggle('on', b === origem));
+    };
+    swatches.forEach((btn) => {
+      btn.addEventListener('click', () => selecionarCor(btn.dataset.color, btn));
+    });
+
+    // ---- Histórico de amostras (conta-gotas) ----
+    const historyEl = document.getElementById('pdp-history');
+    const renderHistorico = () => {
+      historyEl.innerHTML = '';
+      for (const hex of historico) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'pdp-swatch';
+        b.style.background = hex;
+        b.dataset.color = hex;
+        b.addEventListener('click', () => selecionarCor(hex, null));
+        historyEl.appendChild(b);
+      }
+    };
+
+    // ---- Conta-gotas: só extrai a cor do ambiente mirado, não pinta nada
+    // sozinho nem mexe na camuflagem de verdade (ver Player.sampleEnvironmentColor) ----
+    const eyedropBtn = document.getElementById('pdp-eyedrop');
+    eyedropBtn.addEventListener('click', () => {
+      modoContaGotas = !modoContaGotas;
+      eyedropBtn.classList.toggle('active', modoContaGotas);
+    });
+
+    // ---- Desfazer / Limpar ----
+    document.getElementById('pdp-undo').addEventListener('click', () => this.player.paintUndo());
+    document.getElementById('pdp-clear').addEventListener('click', () => this.player.paintClear());
+
+    // ---- Raio-X ----
+    const xrayBtn = document.getElementById('pdp-xray');
+    xrayBtn.addEventListener('click', () => {
+      xrayLigado = !xrayLigado;
+      xrayBtn.classList.toggle('active', xrayLigado);
+      this.player.setXray(xrayLigado);
+    });
 
     const pintarEm = (e, down) => {
-      this.player.paintAtScreenPoint(this.camera, this.renderer, e.clientX, e.clientY, { down });
+      this.player.paintAtScreenPoint(this.camera, this.renderer, e.clientX, e.clientY, {
+        down, colorHex: corAtual, radiusPx: raioAtual,
+      });
     };
 
     canvas.addEventListener('pointerdown', (e) => {
+      if (modoContaGotas) {
+        const hex = this.player.sampleEnvironmentColor(this.camera);
+        if (hex) {
+          selecionarCor(hex, null);
+          historico.unshift(hex);
+          if (historico.length > 3) historico.length = 3;
+          renderHistorico();
+        }
+        modoContaGotas = false;
+        eyedropBtn.classList.remove('active');
+        return;
+      }
       pintando = true;
       pintarEm(e, true);
     });

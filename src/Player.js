@@ -503,6 +503,7 @@ export class Player {
 
     const { ctx, texture } = this.paintTexture;
     if (down || !this._lastPaintUV) {
+      if (down) this.paintUndoPush();
       ctx.fillStyle = colorHex;
       ctx.beginPath();
       ctx.arc(hit.uv.x * ctx.canvas.width, (1 - hit.uv.y) * ctx.canvas.height, radiusPx, 0, Math.PI * 2);
@@ -532,6 +533,47 @@ export class Player {
     if (!this.paintTexture) return;
     clearTexture(this.paintTexture.ctx);
     this.paintTexture.texture.needsUpdate = true;
+    this._paintUndoStack = [];
+  }
+
+  // Fase 2 (?paint=1) — pilha de Undo do pincel: um snapshot (ImageData) por
+  // traço, empurrado no início (down:true) de cada um. Deliberadamente
+  // simples (pixels, não vetor de comandos) porque isso é só o painel de
+  // teste local — a Fase 4 (rede) manda uma LISTA de comandos, não pixels,
+  // então essa pilha não precisa (e não deve) virar a fonte de verdade.
+  paintUndoPush() {
+    if (!this.paintTexture) return;
+    const { ctx, canvas } = this.paintTexture;
+    if (!this._paintUndoStack) this._paintUndoStack = [];
+    this._paintUndoStack.push(ctx.getImageData(0, 0, canvas.width, canvas.height));
+    if (this._paintUndoStack.length > 20) this._paintUndoStack.shift();
+  }
+
+  paintUndo() {
+    if (!this.paintTexture || !this._paintUndoStack || !this._paintUndoStack.length) return false;
+    const snapshot = this._paintUndoStack.pop();
+    this.paintTexture.ctx.putImageData(snapshot, 0, 0);
+    this.paintTexture.texture.needsUpdate = true;
+    this._lastPaintUV = null;
+    return true;
+  }
+
+  setXray(enabled) {
+    if (this.animInstance && this.animInstance.setXray) this.animInstance.setXray(enabled);
+  }
+
+  // Conta-gotas do painel de teste (Fase 2): SÓ extrai a cor renderizada da
+  // superfície mirada — ao contrário de `sampleColor`/`_stampZone` (a
+  // camuflagem de verdade), não copia a imagem da textura da superfície pra
+  // lugar nenhum nem mexe nas zonas de camuflagem. Bate com a intenção da
+  // spec original: exigir a habilidade de pintura do jogador, não deixar
+  // copiar um padrão pronto.
+  sampleEnvironmentColor(camera) {
+    this._raycaster.setFromCamera({ x: 0, y: 0 }, camera);
+    this._raycaster.far = 15;
+    const hit = this._raycaster.intersectObjects(this.level.colorables, false)[0];
+    if (!hit || !hit.object.material || !hit.object.material.color) return null;
+    return '#' + hit.object.material.color.getHexString();
   }
 
   update(dt, joy, camera) {

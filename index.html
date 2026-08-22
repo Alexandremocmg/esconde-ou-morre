@@ -139,6 +139,37 @@
     </div>
   </div>
 
+  <!-- Painel de teste do pincel 3D por UV (Fase 2 — ?paint=1). Só aparece
+       via CSS com body.paint-debug (mesmo padrão do ?tune=1) — não é UI de
+       produção, é o painel de testes da spec de pintura 3D enquanto as
+       fases seguintes (rede etc.) não decidem como isso vira feature real.
+       Ver Game.js, _setupPaintDebug. -->
+  <div id="paint-debug-panel">
+    <div class="pdp-title">🖌️ Pincel 3D (teste)</div>
+    <label class="pdp-size-row">
+      <span>Tamanho</span>
+      <input id="pdp-size" type="range" min="6" max="60" value="22">
+      <span id="pdp-size-val">22px</span>
+    </label>
+    <div class="pdp-swatches" id="pdp-swatches">
+      <button class="pdp-swatch on" type="button" data-color="#2ec4b6" style="background:#2ec4b6"></button>
+      <button class="pdp-swatch" type="button" data-color="#ff006e" style="background:#ff006e"></button>
+      <button class="pdp-swatch" type="button" data-color="#ffbe0b" style="background:#ffbe0b"></button>
+      <button class="pdp-swatch" type="button" data-color="#3a86ff" style="background:#3a86ff"></button>
+      <button class="pdp-swatch" type="button" data-color="#8338ec" style="background:#8338ec"></button>
+    </div>
+    <div class="pdp-history-row">
+      <span>Amostradas</span>
+      <div class="pdp-history" id="pdp-history"></div>
+    </div>
+    <div class="pdp-actions">
+      <button id="pdp-eyedrop" class="pdp-btn" type="button">💧 Conta-gotas</button>
+      <button id="pdp-undo" class="pdp-btn" type="button">↺ Desfazer</button>
+      <button id="pdp-clear" class="pdp-btn" type="button">🗑️ Limpar</button>
+      <button id="pdp-xray" class="pdp-btn" type="button">👻 Raio-X</button>
+    </div>
+  </div>
+
   <!-- Roda de cor HSV (Fase 5b): ajuste fino do disfarce sobre o conta-gotas -->
   <div id="palette-panel" class="hidden">
     <div class="pal-wheel-wrap">

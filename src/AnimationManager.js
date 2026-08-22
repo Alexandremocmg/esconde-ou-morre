@@ -259,6 +259,19 @@ class AnimationManager {
         }
       },
 
+      // Fase 2 (?paint=1): modo raio-X do painel de teste — desliga o teste
+      // de profundidade e desenha por cima de tudo, pra examinar a pintura
+      // mesmo com o personagem parcialmente atrás de quina/sofá (mesmo
+      // motivo do toggle da spec original). `renderOrder` alto garante que
+      // desenha DEPOIS dos opacos normais, senão `depthTest:false` sozinho
+      // ainda pode perder pra ordem natural de desenho da cena.
+      setXray(enabled) {
+        for (const mat of customMaterials) {
+          mat.depthTest = !enabled;
+        }
+        group.renderOrder = enabled ? 999 : 0;
+      },
+
       setEmissive(color, intensity) {
         for (const mat of customMaterials) {
           mat.emissive.copy(color);

@@ -301,6 +301,63 @@ body.paint-debug #look-zone {
   display: none;
 }
 
+/* ---------- Painel de teste do pincel 3D (Fase 2, ?paint=1) ---------- */
+#paint-debug-panel {
+  display: none;
+  position: fixed;
+  left: max(10px, env(safe-area-inset-left));
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 12;
+  width: min(220px, 42vw);
+  padding: 12px;
+  border-radius: 14px;
+  border: 1.5px solid rgba(255, 255, 255, 0.18);
+  background: rgba(20, 24, 30, 0.85);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  color: #eef0f2;
+  font-size: 11px;
+}
+body.paint-debug #paint-debug-panel { display: block; }
+
+.pdp-title { font-weight: 800; font-size: 12px; margin-bottom: 8px; }
+.pdp-size-row {
+  display: flex; align-items: center; gap: 6px;
+  margin-bottom: 10px;
+  color: rgba(255, 255, 255, 0.8);
+}
+.pdp-size-row input[type="range"] { flex: 1; }
+#pdp-size-val { min-width: 34px; text-align: right; font-variant-numeric: tabular-nums; }
+
+.pdp-swatches { display: flex; gap: 6px; margin-bottom: 10px; }
+.pdp-swatch {
+  width: 26px; height: 26px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  cursor: pointer;
+}
+.pdp-swatch.on { border-color: #fff; box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.3); }
+
+.pdp-history-row { margin-bottom: 10px; }
+.pdp-history-row > span { display: block; color: rgba(255, 255, 255, 0.6); margin-bottom: 4px; }
+.pdp-history { display: flex; gap: 6px; min-height: 22px; }
+.pdp-history .pdp-swatch { width: 22px; height: 22px; cursor: pointer; }
+
+.pdp-actions { display: flex; flex-direction: column; gap: 6px; }
+.pdp-btn {
+  font: inherit;
+  padding: 7px 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  cursor: pointer;
+  text-align: left;
+}
+.pdp-btn.active { background: rgba(159, 232, 255, 0.25); border-color: rgba(159, 232, 255, 0.7); }
+.pdp-btn:active { transform: scale(0.97); }
+
 /* ---------- Botões de ação (coluna à direita, acima da área de olhar) ---------- */
 /* ---------- Botões de ação mobile em Arco Ergonômico Glassmorphism ---------- */
 #actions {
