@@ -64,6 +64,39 @@ Para acrescentar uma animação: baixe o FBX do Mixamo em `public/animation/`,
 adicione uma linha em `FONTES` e outra em `POLITICA_ROOT_MOTION` no script, e
 rode de novo. O primeiro arquivo da lista é quem doa a malha e o esqueleto.
 
+### UV por região (pintura 3D)
+
+A malha nasceu no Tripo3D (nome interno `tripo_node_...`) com a UV inteira
+fragmentada — cabeça, tronco e braço praticamente se sobrepunham no espaço
+0-1 (medido: Head U[0.01,0.77]V[0.04,0.89], Spine2 U[0.00,0.81]V[0.00,0.99]).
+Inviabilizava pintar só uma região do corpo sem manchar as outras.
+
+`reunwrap_por_regiao()` corrige isso depois do decimate: classifica cada face
+pela sua região (cabeça/tronco/braço esq./braço dir./perna esq./perna dir.,
+por peso de skin dominante — ver `regiao_do_osso()`), roda `smart_project` por
+região isolada, e remapeia manualmente pra uma célula fixa de uma grade 3×2
+(`GRADE_UV`). Confira sempre com um reimport limpo, não só olhando os valores
+antes de exportar — foi o que expôs a próxima armadilha.
+
+**Armadilha: `bpy.ops.object.mode_set` repetido (Object↔Edit) trava o Blender
+5.2 headless.** Alternar modo uma vez por região dentro do loop derrubava o
+processo com `EXCEPTION_ACCESS_VIOLATION` em `BM_mesh_bm_from_me` — bug do
+Blender, não do script. Corrigido entrando em Edit Mode **uma única vez** pro
+método inteiro e usando `bmesh` (com `bm = bmesh.from_edit_mesh(...)`
+reobtido depois de cada `bpy.ops.uv.*`, já que o operador pode reconstruir a
+malha de edição por baixo).
+
+**Armadilha: validar UV lendo o `.glb` fora do Blender pode mentir.** Uma
+primeira tentativa de conferir a UV exportada usando `gltf-transform` em
+Node.js (lendo `JOINTS_0`/`WEIGHTS_0` cru) mostrou sobreposição entre
+regiões — mas os prints de debug *dentro* do Blender, antes do export,
+mostravam separação perfeita. A causa nunca foi isolada (suspeita: alguma
+diferença de como o parser em JS decodifica os accessors de skin), mas o
+teste decisivo foi **reimportar o `.glb` de volta no próprio Blender** e
+conferir por lá — bateu perfeito com o que foi escrito antes do export. Pra
+qualquer dúvida sobre o que realmente foi pro `.glb`, reimporte no Blender antes
+de desconfiar do exportador.
+
 ## 4. Decisões que não são óbvias
 
 **Root motion por eixo.** X/Z saem sempre — quem posiciona o personagem no mundo
