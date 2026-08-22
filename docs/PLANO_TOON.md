@@ -30,7 +30,7 @@ pose (crouch já existente). A "pintura livre por textura" fica para depois (Fas
 | 7 — UI party + remover penumbra da detecção | ✅ feito | `9c53cf4` | badge removido; `_canSee` sem fator de luz; botões candy coloridos |
 | 8 — Áudio (stingers de party) | ✅ feito | (este) | sons retrabalhados; +stinger `camo()` na borda de subida |
 | 4 — Formas blob/cubo selecionáveis | ✅ feito | (este) | `buildBody(kind)` + alias; seletor no menu; persiste `eom-body` |
-| 9 — Pintura livre por textura (fidelidade total) | ⬜ futuro | — | fora do MVP; pesado no mobile |
+| 9 — Pintura livre por textura (fidelidade total) | ✅ feito | `26e8c00`…`f626850` | Implementado bem depois, fora da numeração desta fase — não é o "compare de textura" cogitado aqui, e sim raycast na malha animada → UV → canvas 2D (`src/UVPaint.js`), com rede (Fase 4) e produção (Fase 5). Ver `docs/PIPELINE_PERSONAGEM.md` (reunwrap de UV) e `README.md` ("Pincel Livre") |
 
 **Validação:** three vem por CDN (importmap), então não há harness node local — a
 verificação é boot headless no Chromium (`chromium --headless=new

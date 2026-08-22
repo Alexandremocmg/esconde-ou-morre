@@ -65,6 +65,7 @@ navegador (WebSocket nativo)                    Node + ws (server/)
 | Hitreg compartilhado | `src/net/hittest.js` | Cone de mira + alcance, sem imports |
 | Cliente de rede | `src/Net.js` | Conecta, envia input/tiro, expõe eventos |
 | Avatar remoto | `src/RemotePlayer.js` | Interpola snapshots (buffer 100ms), escolhe animação pelo estado recebido |
+| Pincel Livre (rede) | `protocol.js` (`C2S.PAINT`/`S2C.PLAYER_PAINT`), `server/room.js` (`_handlePaint`), `RemotePlayer.js` (`applyPaintStrokes`) | Lista compacta de traços (não pixels — mesma regra do §4.4), evento por-ação em vez de por-tick; servidor guarda o acumulado de cada jogador só pra repassar a quem entra depois (WELCOME) |
 | Servidor | `server/index.js` + `server/room.js` | Sala única, papel por ordem de entrada, tick 20Hz, valida tiro, decide fim de partida, segura vaga de quem reconecta |
 | Integração no jogo | `src/Game.js` (`this.mode === 'online'`) | 3º modo ao lado de `chameleon`/`hunter`; reaproveita `HunterCamera` p/ o papel Caçador |
 | Reconexão | `src/Net.js` + `server/room.js` (`_reattach`/`_purgeStale`) | Backoff automático + retomada via `sessionStorage` — ver §3.2 |
@@ -199,6 +200,11 @@ resetar munição, sem reviver se já estava eliminado).
    pixel — os canvases usam `Math.random()` não semeado (`textures.js`), então dois
    clientes nunca teriam pixels idênticos mesmo se tentássemos. Só o `mat.color` (2
    valores hex) viaja — é o que a métrica de camuflagem (`isCamouflaged()`) realmente lê.
+   O Pincel Livre (pintura por UV, ver tabela do §3 e `src/UVPaint.js`) segue a mesma
+   regra por um motivo diferente, mas com a mesma solução: manda uma LISTA DE COMANDOS
+   de traço (posição UV + cor + raio), nunca a textura/pixels em si — cada cliente
+   redesenha os mesmos comandos no seu próprio canvas, o que é determinístico (ao
+   contrário do carimbo de ambiente acima).
 
 ## 5. Débito registrado
 

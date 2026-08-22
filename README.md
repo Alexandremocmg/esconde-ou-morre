@@ -31,7 +31,8 @@ camuflagem**. Todo o visual é **procedural** — sem assets externos.
 > [`docs/PLANO_MULTIPLAYER.md`](docs/PLANO_MULTIPLAYER.md) — a evolução da sala fixa de
 > 2 para 1 Caçador + até 4 Camaleões na mesma partida está em
 > [`docs/PLANO_LOBBY_MULTIPLAYER.md`](docs/PLANO_LOBBY_MULTIPLAYER.md). O pipeline que
-> gera o personagem 3D (Mixamo → Blender → GLB único) está em
+> gera o personagem 3D (Mixamo → Blender → GLB único), incluindo o reunwrap de UV por
+> região usado pelo Pincel Livre, está em
 > [`docs/PIPELINE_PERSONAGEM.md`](docs/PIPELINE_PERSONAGEM.md). O acesso configurado ao
 > Tripo3D para gerar assets 3D por IA sob demanda (props/cenário, não usado no
 > personagem principal) está em [`docs/TRIPO_3D.md`](docs/TRIPO_3D.md). Os parâmetros de
@@ -85,7 +86,8 @@ Fora do modo Online, qualquer host de arquivos estáticos serve a pasta como est
   - **Pinch to Zoom (Multitouch):** Gesto de 2 dedos para aproximar/afastar a câmera (1.8m a 7.5m) e 1 dedo para girar a visão.
   - **Oclusão de Câmera:** pilares/móveis/lajes entre a câmera 3ª pessoa e o jogador desvanecem (`Game._updateOcclusion`) pra ele nunca sumir 100% atrás da própria geometria — cobre tanto quem está grudado numa parede quanto parado no chão encostado num obstáculo.
 - **Menus Radiais Duplos (2 Modos em 1 Botão):**
-  - **Pintar (🎨):** *Toque rápido* para amostragem automática (*Quick Match*) e onda de tinta; *Segurar* para Menu Radial com Histórico de 4 Cores recentes e acabamento (Fosco/Brilhante).
+  - **Pintar (🎨):** *Toque rápido* para amostragem automática (*Quick Match*) e onda de tinta; *Segurar* para Menu Radial com Histórico de 4 Cores recentes e acabamento (Fosco/Brilhante) — e o botão **PINCEL** no centro desse menu abre o **Pincel Livre**.
+- **Pincel Livre (pintura 3D por UV):** pintura à mão livre sobre o próprio personagem — raycast da câmera contra a malha ANIMADA (não a bind pose, ver `src/UVPaint.js`) devolve a UV do ponto tocado, carimbada num canvas 2D usado como textura dinâmica (`CanvasTexture`, 512×512, mantendo o `gradientMap` toon). Painel com tamanho de pincel, paleta + histórico de amostras, conta-gotas (sem copiar a textura da superfície), desfazer/limpar, brilho emissivo (`MeshToonMaterial.emissive`, sem PBR real) e raio-X. No modo Online, os traços são sincronizados automaticamente entre jogadores (lista compacta de comandos — nunca pixels, mesma regra do resto do protocolo — mandada sozinha ao pintar, sem botão de enviar); quem entra depois de uma pintura já começada recebe o histórico acumulado. Ver `src/UVPaint.js`, `Game.js` (`_setupPaintPanel`/`_flushAndSendPaint`) e a seção "UV por região" em `docs/PIPELINE_PERSONAGEM.md`.
   - **Poses (🧍):** *Toque rápido* para congelar no **Modo Estátua/Mimetismo**; *Segurar & Deslizar* para Roda de 6 Poses 3D.
   - **Escalar (🧱):** Botão contextual com brilho ativado ao aproximar-se de superfícies escaláveis.
   - **Pular (🟢):** Salto físico responsivo com animação `Jump.fbx`.
@@ -123,6 +125,7 @@ src/
   AnimationManager.js # Loader do GLB único, instancia/clona o personagem e a arma (createBlaster)
   Game.js         # Orquestra partida, menus radiais, pinch zoom e reinício em memória
   Player.js       # Física do jogador, amostragem de cor, modos de pose e pulo
+  UVPaint.js      # Pincel Livre: raycast na malha animada → UV → canvas 2D (textura de pintura)
   Seeker.js       # IA dos Caçadores: patrulha/caça, visão Toon, reset em memória
   ChameleonTarget.js # Alvos-camaleão parados do modo Caçador jogável (fase 1, sem IA própria)
   Level.js        # Mansão de 2 andares, mobília e áreas de camuflagem

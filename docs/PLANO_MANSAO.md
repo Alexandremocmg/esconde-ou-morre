@@ -169,26 +169,65 @@ de cena com `colorable:false`.
 **Custo:** 285–298 malhas (meta ≤400; antes 188–204). Cobertura e penumbra sem
 regressão — centro de L2/L3 segue em 0.25 (penumbra) apesar das 8 luminárias novas.
 
+## Aumento adicional do pé-direito (produção, resolve a pendência abaixo)
+
+Feedback jogando em produção confirmou a sensação de "paredes baixas" descrita na
+pendência original — mas o caminho escolhido foi o OPOSTO do que as duas opções (a)/(b)
+propunham (nenhuma delas exigia baixar nada): em vez de baixar `WALL_H` pra caber no
+mezanino, o pé-direito do salão subiu mais **+3m** e o piso superior **+2m**, com o
+mezanino/escadaria acompanhando junto. Valores atuais (`src/Level.js`):
+
+| Constante | Antes | Agora |
+| --- | --- | --- |
+| `WALL_H` (pé-direito do salão) | 7,8 | **10,8** |
+| `ROOM_H` (paredes de cômodo do térreo) | 3,2 | **6,2** |
+| `ROOM2_H` (divisórias do 2º andar) | 2,4 | **4,4** |
+| `FLOOR2_Y` (laje do 2º andar) | 3,4 | **6,4** |
+| `MEZZ3_Y` (sacada/passagem elevada) | 5,2 | **8,2** |
+
+Teto/cornija/lustre/pilares e toda a decoração posicionada relativa a essas constantes
+acompanharam automaticamente. Bug real exposto pela mudança: a escadaria térreo→2º andar
+tinha número fixo de degraus (20) calibrado pro `FLOOR2_Y` antigo — cada degrau passou do
+limite de `STEP_UP` (0,30m) que o jogador sobe andando, travando no meio da subida;
+recalibrado pra 28 degraus. `src/net/occluders.js` (snapshot estático de geometria pro
+hitreg do modo Online) foi regenerado do zero, já que as caixas de parede dependem
+diretamente dessas constantes.
+
 ## Pendências / próximos passos
-- **Escala do personagem vs. altura das paredes** (feedback de gameplay, investigado
-  e ADIADO por decisão do usuário — sem mudança de código nesta rodada). Proporção
-  pedida: boneco ≈45-50% da altura de parede em cômodo normal, ≈25-30% num salão de
-  pé-direito alto. Achado real: a proporção da SALA NORMAL já bate exatamente
-  (1,44m / `ROOM_H`=3,2m = 45%) — mas o prédio tem um **teto único** (`WALL_H`=7,8m)
-  pro edifício inteiro; as paredes de cômodo (`ROOM_H`) são divisórias PARCIAIS,
-  abertas por cima até esse mesmo teto — então olhando pra cima em qualquer cômodo o
-  teto real está a 7,8m (18,5%), não a 3,2m. É provável que essa "janela" pro teto
-  alto seja a causa da sensação de desproporção relatada, não o `ROOM_H` em si.
-  Baixar `WALL_H` pra bater com os 25-30% pedidos no salão central tira a folga que
-  o mezanino (`MEZZ3_Y`=5,2, ver linha 90 acima) precisa por cima — mudança
-  estrutural, não um número solto. Reavaliar depois de ver o efeito da correção de
-  oclusão de câmera e do joystick — se a sensação persistir, os dois caminhos são:
-  (a) fechar o topo das paredes de cômodo com um teto de verdade por área (some o
-  sightline pro teto alto, geometria nova por cômodo), ou (b) redesenhar o circuito
-  vertical do mezanino pra caber com um `WALL_H` mais baixo.
+- ~~Escala do personagem vs. altura das paredes~~ — **resolvido** pelo aumento de
+  pé-direito acima. Histórico do problema original, pra contexto: proporção pedida era
+  boneco ≈45-50% da altura de parede em cômodo normal, ≈25-30% num salão de pé-direito
+  alto; a sala normal já batia certo (1,44m / `ROOM_H` antigo = 45%), mas o teto único do
+  prédio (`WALL_H` antigo) criava uma "janela" visível pro teto alto de qualquer cômodo,
+  o que era a causa provável da sensação de desproporção — confirmado pelo feedback
+  seguinte pedindo mais pé-direito, não menos.
 - **Fino de dificuldade por playtest**: `BASE_SURVIVE=60`/`+15` por estágio e
   `DIFF_PER_STAGE=0.12` seguem os valores antigos, de quando o estágio 1 tinha **um**
   Caçador. Agora tem dois — pode estar duro no começo. Isso é sensação, não medição:
   precisa de você jogando.
 - **Mezanino y=5.2** (varanda dupla): fora do escopo entregue (2 andares 0/3.4 já de pé).
 - Camuflagem por padrão de lombada / espelhos reais: fora de escopo (ver plano original).
+
+## Correção — escalada atravessava a laje e escapava da mansão nos cantos (reportado no playtest)
+
+Dois bugs em `Player._updateLatched` (escalar parede — compartilhado entre Camaleão e
+Caçador humano):
+
+1. **Escalando até a altura do 2º andar, o personagem atravessava a laje** em vez de
+   subir nela. `_updateLatched` só verificava colisão contra a MALHA da parede
+   (`climbables`), nunca contra `level.solids` (que inclui as lajes) — só existia
+   checagem de piso pra DESCER (`_supportTopBelow`, usado em `_detachToGround`).
+   Corrigido reusando a mesma busca também pra SUBIR: se o topo sólido mais alto
+   alcançável (`floorY`) ficou acima dos pés, emerge em cima dele em vez de atravessar.
+2. **Escalando perto de um canto do perímetro, o personagem "vazava" pra fora da
+   mansão.** Causa: as 4 paredes do perímetro são caixas que se sobrepõem exatamente no
+   canto, e o movimento tangencial ao escalar (`side`/`up`, dentro do plano da parede)
+   não tinha limite nenhum — contornar o bisel arredondado da própria caixa
+   (`RoundedBoxGeometry`) podia grudar na face de FORA dela, ejetando o personagem.
+   Corrigido travando o movimento nas duas direções tangenciais pela AABB real da
+   parede (`EDGE_MARGIN`), ANTES de alcançar o bisel; ao bater na borda, tenta achar a
+   parede PERPENDICULAR primeiro (sonda direta, não o padrão de offset do re-pin
+   normal) pra virar o canto suavemente em vez de ficar preso ou vazar.
+
+**Verificação:** testado em browser nos dois cenários (subir até a laje do 2º andar,
+contornar um canto do perímetro escalando) — sem atravessar, sem vazar.
