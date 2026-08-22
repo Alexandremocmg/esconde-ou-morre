@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { buildBody, Gait } from './Character.js?v=3';
-import { toonGradient } from './textures.js?v=3';
+import { toonGradient, toonGradientGloss } from './textures.js?v=3';
 import { animationManager } from './AnimationManager.js?v=3';
 import { TUNE } from './Tuning.js?v=1';
 import { createPaintTexture, strokeBetween, clearTexture, raycastAnimatedSkinnedMesh } from './UVPaint.js?v=1';
@@ -334,12 +334,21 @@ export class Player {
     });
   }
 
+  // roughness/metalness são inertes no MeshToonMaterial (sem PBR, o
+  // sombreamento vem só do gradientMap cel) — escrever neles não muda nada
+  // na tela, e o boneco PRIMITIVO (dono das zonas) fica invisível assim que
+  // o GLB anima. Efeito de verdade: trocar o LUT do cel shading (mais banda
+  // = highlight concentrado, lê como brilhante) nas zonas E no personagem
+  // animado — ver textures.js (toonGradientGloss) e AnimationManager.js
+  // (setGradientMap).
   setFinish(finish) {
     const isGloss = finish === 'gloss';
+    const tex = isGloss ? toonGradientGloss() : toonGradient();
     for (const z of this.zones) {
-      z.mat.roughness = isGloss ? 0.2 : 0.85;
-      z.mat.metalness = isGloss ? 0.25 : 0.0;
+      z.mat.gradientMap = tex;
+      z.mat.needsUpdate = true;
     }
+    if (this.animInstance) this.animInstance.setGradientMap(tex);
   }
 
   setPose(poseName) {
@@ -560,6 +569,15 @@ export class Player {
 
   setXray(enabled) {
     if (this.animInstance && this.animInstance.setXray) this.animInstance.setXray(enabled);
+  }
+
+  // Fase 3 (?paint=1) — canal emissivo do painel de teste. `intensity` em
+  // 0..1; `colorHex` normalmente é a cor de pincel selecionada no painel.
+  setEmissive(colorHex, intensity) {
+    if (!this.animInstance || !this.animInstance.setEmissive) return;
+    this._tmpEmissive = this._tmpEmissive || new THREE.Color();
+    this._tmpEmissive.set(colorHex);
+    this.animInstance.setEmissive(this._tmpEmissive, intensity);
   }
 
   // Conta-gotas do painel de teste (Fase 2): SÓ extrai a cor renderizada da

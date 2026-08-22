@@ -34,6 +34,26 @@ export function toonGradient(steps = 3) {
   });
 }
 
+// Variante "brilhante" pro toggle Fosco/Brilhante (Player.setFinish).
+// MeshToonMaterial não tem specular de verdade — roughness/metalness são
+// inertes nele (só valem em material PBR). Fingir "brilhante" dentro do
+// próprio cel shading: a última banda do degradê salta perto do branco,
+// lendo como um highlight especular concentrado, em vez do degradê suave
+// e "fosco" de toonGradient().
+export function toonGradientGloss(steps = 4) {
+  return cached(`toonGloss:${steps}`, () => {
+    const n = Math.max(3, steps | 0);
+    const data = new Uint8Array(n);
+    for (let i = 0; i < n; i++) {
+      data[i] = i === n - 1 ? 255 : Math.round(255 * (0.45 + 0.4 * (i / (n - 2))));
+    }
+    const tex = new THREE.DataTexture(data, n, 1, THREE.RedFormat);
+    tex.magFilter = tex.minFilter = THREE.NearestFilter;
+    tex.needsUpdate = true;
+    return tex;
+  });
+}
+
 // Cria um <canvas> 2D quadrado já com um preenchimento de base.
 function makeCanvas(size, base) {
   const cv = document.createElement('canvas');

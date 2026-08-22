@@ -1280,9 +1280,21 @@ export class Game {
     const selecionarCor = (hex, origem) => {
       corAtual = hex;
       swatches.forEach((b) => b.classList.toggle('on', b === origem));
+      // O emissivo usa a cor de pincel atual — reaplica se já houver brilho ligado.
+      if (emissiveAtual > 0) this.player.setEmissive(corAtual, emissiveAtual);
     };
     swatches.forEach((btn) => {
       btn.addEventListener('click', () => selecionarCor(btn.dataset.color, btn));
+    });
+
+    // ---- Emissivo (Fase 3) ----
+    let emissiveAtual = 0;
+    const emissiveInput = document.getElementById('pdp-emissive');
+    const emissiveVal = document.getElementById('pdp-emissive-val');
+    emissiveInput.addEventListener('input', () => {
+      emissiveAtual = Number(emissiveInput.value) / 100;
+      emissiveVal.textContent = `${emissiveInput.value}%`;
+      this.player.setEmissive(corAtual, emissiveAtual);
     });
 
     // ---- Histórico de amostras (conta-gotas) ----

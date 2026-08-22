@@ -151,6 +151,14 @@
       <input id="pdp-size" type="range" min="6" max="60" value="22">
       <span id="pdp-size-val">22px</span>
     </label>
+    <!-- Fase 3: canal emissivo (MeshToonMaterial.emissive/emissiveIntensity,
+         nativo — sem precisar de PBR). Cor usada é a de pincel selecionada
+         abaixo. Simula camuflagem contra lâmpada/letreiro aceso. -->
+    <label class="pdp-size-row">
+      <span>✨ Brilho</span>
+      <input id="pdp-emissive" type="range" min="0" max="100" value="0">
+      <span id="pdp-emissive-val">0%</span>
+    </label>
     <div class="pdp-swatches" id="pdp-swatches">
       <button class="pdp-swatch on" type="button" data-color="#2ec4b6" style="background:#2ec4b6"></button>
       <button class="pdp-swatch" type="button" data-color="#ff006e" style="background:#ff006e"></button>

@@ -247,6 +247,28 @@ class AnimationManager {
         if (matU) matU.color.copy(color);
       },
 
+      // Fosco/Brilhante (Player.setFinish) — troca o LUT do cel shading em vez
+      // de roughness/metalness (inertes no MeshToonMaterial). Sem isto, o
+      // toggle não tinha efeito nenhum no personagem animado: só mexia nas
+      // zonas do boneco primitivo, que fica invisível assim que o GLB carrega.
+      setGradientMap(tex) {
+        for (const mat of customMaterials) {
+          mat.gradientMap = tex;
+          mat.needsUpdate = true;
+        }
+      },
+
+      // Fase 3 (?paint=1) — canal emissivo: MeshToonMaterial suporta
+      // emissive/emissiveIntensity nativamente, sem precisar de PBR (que
+      // colidiria com a direção toon do jogo — ver avaliação da spec de
+      // pintura 3D). Simula camuflagem contra lâmpada/letreiro aceso.
+      setEmissive(color, intensity) {
+        for (const mat of customMaterials) {
+          mat.emissive.copy(color);
+          mat.emissiveIntensity = intensity;
+        }
+      },
+
       // Fase 1 do pincel 3D por UV (ver src/UVPaint.js, ativo só atrás de
       // ?paint=1) — troca o `.map` de todo material do GLB pela textura
       // pintada, sem mexer em setColor/customMaterials (o jogo padrão nunca
