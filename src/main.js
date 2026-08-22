@@ -1,6 +1,7 @@
 import { Game } from './Game.js?v=3';
 import { animationManager } from './AnimationManager.js?v=3';
 import { initTunePanel } from './TunePanel.js?v=1';
+import { initMenuUI, updateLoadingStages } from './MenuUI.js?v=1';
 
 // Painel de ajuste ao vivo (⚙️) — só aparece com ?tune=1 na URL, ver TunePanel.js.
 initTunePanel();
@@ -40,20 +41,28 @@ if (modePick) {
   }
 }
 
-// Inicia o pré-carregamento de todas as animações 3D no boot da página
+// Inicia o pré-carregamento de todas as animações 3D no boot da página.
+// `wantsAutoStart` fica true quando o jogador já escolheu um modo (tela de
+// loading do MenuUI está ativa) antes do carregamento terminar — nesse caso o
+// próprio callback dispara startGame() ao chegar em 100%, em vez de esperar o
+// clique no #start-btn (que agora só existe como fallback escondido).
+let loadPercent = 0;
+let wantsAutoStart = false;
+
 animationManager.loadAll((percent, key) => {
+  loadPercent = percent;
   if (loaderFill) loaderFill.style.width = `${percent}%`;
-  if (loaderStatus) {
-    if (percent < 100) {
-      loaderStatus.textContent = `Carregando modelos e animações 3D... ${percent}%`;
-    } else {
-      loaderStatus.textContent = '✅ Tudo pronto! Clique em JOGAR.';
-    }
-  }
+  if (loaderStatus) loaderStatus.textContent = `${percent}%`;
+  updateLoadingStages(percent);
 
   if (percent >= 100 && startBtn) {
     startBtn.disabled = false;
     startBtn.textContent = 'JOGAR';
+    if (wantsAutoStart) {
+      wantsAutoStart = false;
+      // Pequeno atraso pra não cortar o "100%" instantaneamente da tela.
+      setTimeout(startGame, 500);
+    }
   }
 });
 
@@ -85,8 +94,10 @@ async function enterImmersive() {
   } catch (_) { /* ok */ }
 }
 
-startBtn.addEventListener('click', async () => {
-  if (startBtn.disabled) return;
+// Extraído do listener do #start-btn (que agora é só um fallback escondido, ver
+// index.html) pra também poder ser disparado automaticamente pelo fluxo novo de
+// telas (MenuUI): escolha de modo → loading → jogo, sem exigir um segundo toque.
+async function startGame() {
   // O modo (Camaleão/Caçador/Online) só é lido no construtor do Game — trocar de
   // modo depois de já ter jogado exige recarregar a página, já que o Game
   // não tem um dispose() para desmontar o loop de render/cena anterior.
@@ -103,4 +114,23 @@ startBtn.addEventListener('click', async () => {
     boot();
   }
   await enterImmersive();
+}
+
+startBtn.addEventListener('click', () => {
+  if (startBtn.disabled) return;
+  startGame();
+});
+
+initMenuUI({
+  // Chamado quando o jogador toca num card de modo (tela de Escolha de Modo já
+  // avançou pra Loading nesse momento, ver MenuUI.js). Se o carregamento já
+  // tiver terminado, dispara direto; senão, marca a flag lida no callback do
+  // animationManager.loadAll acima.
+  onModeChosen() {
+    if (loadPercent >= 100) {
+      setTimeout(startGame, 500);
+    } else {
+      wantsAutoStart = true;
+    }
+  },
 });

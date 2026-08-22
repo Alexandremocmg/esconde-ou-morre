@@ -32,7 +32,9 @@ camuflagem**. Todo o visual é **procedural** — sem assets externos.
 > 2 para 1 Caçador + até 4 Camaleões na mesma partida está em
 > [`docs/PLANO_LOBBY_MULTIPLAYER.md`](docs/PLANO_LOBBY_MULTIPLAYER.md). O pipeline que
 > gera o personagem 3D (Mixamo → Blender → GLB único) está em
-> [`docs/PIPELINE_PERSONAGEM.md`](docs/PIPELINE_PERSONAGEM.md). Os parâmetros de
+> [`docs/PIPELINE_PERSONAGEM.md`](docs/PIPELINE_PERSONAGEM.md). O acesso configurado ao
+> Tripo3D para gerar assets 3D por IA sob demanda (props/cenário, não usado no
+> personagem principal) está em [`docs/TRIPO_3D.md`](docs/TRIPO_3D.md). Os parâmetros de
 > movimento (deadzone/curva do joystick, giro, velocidade) são calibrados ao vivo por um
 > painel de dev (`?tune=1` na URL) documentado em
 > [`docs/PAINEL_AJUSTE.md`](docs/PAINEL_AJUSTE.md).
@@ -111,10 +113,13 @@ server/           # Servidor autoritativo do modo Online (docs/PLANO_MULTIPLAYER
 public/
   animation/      # FBX originais do Mixamo (fonte do GLB — o jogo não os baixa mais)
   models/         # character_animated.glb (personagem + 9 clipes) e water_gun.glb (arma do Caçador)
+assets/
+  menu/           # Ilustração de fundo + recorte decorativo do menu (docs/TRIPO_3D.md não se aplica — arte 2D, não 3D)
 scripts/
   gerar_personagem_glb.py # Pipeline Mixamo FBX → Blender → character_animated.glb (docs/PIPELINE_PERSONAGEM.md)
 src/
   main.js         # Boot, preloader 3D, gestos e fullscreen
+  MenuUI.js       # Telas do menu (principal/escolha de modo/loading) e modais (Config/Como Jogar/Em breve)
   AnimationManager.js # Loader do GLB único, instancia/clona o personagem e a arma (createBlaster)
   Game.js         # Orquestra partida, menus radiais, pinch zoom e reinício em memória
   Player.js       # Física do jogador, amostragem de cor, modos de pose e pulo

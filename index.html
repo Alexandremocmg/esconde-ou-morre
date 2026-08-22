@@ -152,60 +152,191 @@
     </div>
   </div>
 
-  <!-- Menu inicial (necessário p/ fullscreen + lock de orientação + áudio) -->
-  <div id="start-overlay">
-    <div class="panel menu">
-      <h1>Esconde ou Morre</h1>
-      <p>Grude, camufle e sobreviva ao Caçador.</p>
+  <!-- Menu inicial (necessário p/ fullscreen + lock de orientação + áudio).
+       3 telas (screen-main/mode/loading) dentro do MESMO #start-overlay — Game.js
+       só sabe mostrar/esconder esse container inteiro (restartInPlace), então ele
+       precisa continuar sendo o elemento externo único. src/MenuUI.js alterna qual
+       .menu-screen fica visível. -->
+  <div id="start-overlay" data-screen="main">
+    <div class="menu-bg"></div>
 
-      <ul class="how">
-        <li><span class="how-ic">🕹️</span> <b>Mover:</b> arraste na metade esquerda da tela (joystick).</li>
-        <li><span class="how-ic">🎨</span> <b>Pintar:</b> mire com a retícula e toque em 🎨 para sugar a cor (🎛️ ajusta o tom).</li>
-        <li><span class="how-ic">🧱</span> <b>Camuflar:</b> grude numa superfície da mesma cor do seu disfarce.</li>
-        <li><span class="how-ic">👁️</span> <b>Objetivo:</b> fuja do Caçador vermelho e sobreviva até o tempo acabar.</li>
-      </ul>
-
-      <div class="body-label">Escolha o modo</div>
-      <div id="mode-pick" class="body-pick">
-        <button type="button" data-mode="chameleon" class="on"><span class="bp-ic">🦎</span>Camaleão</button>
-        <button type="button" data-mode="hunter"><span class="bp-ic">🎯</span>Caçador</button>
-        <!-- Multiplayer (docs/PLANO_MULTIPLAYER.md, fatia vertical v1): sala fixa de 2,
-             papel (Caçador/Camaleão) atribuído pelo servidor — ver src/Net.js. -->
-        <button type="button" data-mode="online"><span class="bp-ic">🌐</span>Online</button>
+    <!-- Tela 1: Menu principal -->
+    <section id="screen-main" class="menu-screen active" data-screen-name="main">
+      <div class="menu-topbar">
+        <div class="menu-logo">
+          <h1>Esconde ou Morre</h1>
+          <p class="menu-tagline">Copie as cores. Engane. Sobreviva.</p>
+        </div>
+        <div class="menu-top-right">
+          <button class="glass-chip open-settings" type="button" aria-label="Configurações">⚙️</button>
+          <button class="glass-chip" type="button" data-soon="Loja" aria-label="Loja">🎁</button>
+        </div>
       </div>
 
-      <div class="body-label">Escolha sua forma</div>
-      <div id="body-pick" class="body-pick">
-        <button type="button" data-kind="toy" class="on"><span class="bp-ic">🧍</span>Boneco</button>
-        <button type="button" data-kind="mannequin"><span class="bp-ic">🪆</span>Manequim</button>
-        <button type="button" data-kind="blob"><span class="bp-ic">🫧</span>Blob</button>
-        <button type="button" data-kind="cube"><span class="bp-ic">🧊</span>Cubo</button>
+      <!-- Faixa central: flex garante que a lista/botão/decoração nunca
+           sobreponham a topbar ou a nav de baixo, mesmo em telas baixas
+           (posicionamento por % absoluto colidia em viewports curtos). -->
+      <div class="menu-hero">
+        <div class="menu-side-list">
+          <button class="menu-list-row" type="button" data-soon="Continuar Partida">
+            <span class="mlr-ic">👥</span>
+            <span class="mlr-txt"><b>Continuar Partida</b><small>Reconectar à sua última sala</small></span>
+          </button>
+          <button class="menu-list-row" type="button" data-soon="Instalar Aplicativo">
+            <span class="mlr-ic">⬇️</span>
+            <span class="mlr-txt"><b>Instalar Aplicativo</b><small>Jogue mais rápido e offline</small></span>
+          </button>
+          <button class="menu-list-row open-how" type="button">
+            <span class="mlr-ic">📖</span>
+            <span class="mlr-txt"><b>Como Jogar</b><small>Regras e dicas</small></span>
+          </button>
+        </div>
+
+        <button id="menu-play-btn" class="menu-play-btn" type="button">▶ JOGAR</button>
+
+        <img class="menu-character-deco" src="assets/menu/character-plant.png" alt="" aria-hidden="true">
       </div>
 
-      <div class="body-label">Regras do Caçador (Munição de Água)</div>
-      <div class="ammo-cfg-panel">
-        <label for="ammo-select">💧 Jatos de Água:
-          <select id="ammo-select">
-            <option value="1">1 Jato (Hardcore)</option>
-            <option value="3">3 Jatos</option>
-            <option value="5" selected>5 Jatos (Padrão)</option>
-            <option value="10">10 Jatos</option>
-            <option value="15">15 Jatos</option>
-            <option value="30">30 Jatos</option>
-          </select>
-        </label>
-        <label class="toggle-lbl">
-          <input type="checkbox" id="infinite-ammo-toggle"> Munição Infinita
-        </label>
+      <nav class="menu-bottom-nav">
+        <button type="button" data-soon="Ranking"><span class="bn-ic">🏆</span>Ranking</button>
+        <button type="button" data-soon="Missões"><span class="bn-ic">📋</span>Missões</button>
+        <button type="button" data-soon="Personalização"><span class="bn-ic">🎨</span>Personalização</button>
+        <button type="button" data-soon="Novidades"><span class="bn-ic">📣</span>Novidades</button>
+        <button type="button" data-soon="Créditos"><span class="bn-ic">ⓘ</span>Créditos</button>
+      </nav>
+
+      <span class="menu-version">v0.1.0</span>
+    </section>
+
+    <!-- Tela 2: Escolha de modo (substitui o antigo #mode-pick avulso; main.js
+         continua só lendo button[data-mode] aqui dentro, sem mudanças) -->
+    <section id="screen-mode" class="menu-screen" data-screen-name="mode">
+      <div class="menu-topbar menu-topbar-mode">
+        <button class="glass-chip-text open-how" type="button">ⓘ Como Jogar</button>
+        <button class="glass-chip-text open-settings" type="button">⚙️ Configurações</button>
       </div>
+
+      <h2 class="mode-title">Escolha seu Modo</h2>
+      <p class="mode-subtitle">Cada modo. Uma experiência.<br>Esconda-se ou encontre.</p>
+
+      <div id="mode-pick" class="mode-cards">
+        <button type="button" data-mode="chameleon" class="mode-card mode-card-chameleon on">
+          <span class="mc-badge">🦎 Camuflagem</span>
+          <span class="mc-title">Camaleão</span>
+          <span class="mc-desc">Copie as cores do ambiente, esconda-se e sobreviva até o tempo acabar.</span>
+          <span class="mc-cta">Jogar como Camaleão</span>
+        </button>
+        <button type="button" data-mode="hunter" class="mode-card mode-card-hunter">
+          <span class="mc-badge">💧 Caçada</span>
+          <span class="mc-title">Caçador</span>
+          <span class="mc-desc">Encontre os Camaleões antes que a água acabe. Use o Scanner com inteligência.</span>
+          <span class="mc-cta">Jogar como Caçador</span>
+        </button>
+        <!-- Multiplayer (docs/PLANO_MULTIPLAYER.md): sala com 1 Caçador + até 4
+             Camaleões, papel atribuído pelo servidor — ver src/Net.js. -->
+        <button type="button" data-mode="online" class="mode-card mode-card-online">
+          <span class="mc-badge">🌐 Online</span>
+          <span class="mc-title">Online</span>
+          <span class="mc-desc">Jogue com pessoas reais. 1 Caçador contra até 4 Camaleões na mesma sala.</span>
+          <span class="mc-cta">Jogar Online</span>
+        </button>
+      </div>
+
+      <div class="mode-bottom-bar">
+        <button class="mode-back-btn" id="mode-back-btn" type="button">← Voltar</button>
+        <p class="mode-room-note">👑 Primeiro jogador da sala será o Caçador.<br>Até 4 jogadores adicionais entram como Camaleões.</p>
+        <p class="mode-tip">💡 <b>Dica Rápida:</b> Ficar imóvel e bem camuflado pode salvar sua vida.</p>
+      </div>
+    </section>
+
+    <!-- Tela 3: Carregamento -->
+    <section id="screen-loading" class="menu-screen" data-screen-name="loading">
+      <div class="loading-logo">
+        <h1>Esconde ou Morre</h1>
+        <p class="menu-tagline">Escolha sua cor. Escolha sobreviver.</p>
+      </div>
+
+      <img class="loading-character" src="assets/menu/character-plant.png" alt="" aria-hidden="true">
 
       <div id="loader-box" class="loader-box">
+        <span class="loader-caption">Carregando a mansão...</span>
         <div class="loader-bar"><i id="loader-fill"></i></div>
-        <span id="loader-status">Carregando modelos 3D... 0%</span>
+        <span id="loader-status">0%</span>
       </div>
 
-      <button id="start-btn" disabled>Carregando 3D...</button>
-      <small>Melhor em tela cheia, na horizontal. Ative o som do aparelho.</small>
+      <div class="loading-stages">
+        <span class="stage-ic" data-stage="0">🪣<small>Preparando as tintas</small></span>
+        <span class="stage-ic" data-stage="1">📦<small>Carregando personagens</small></span>
+        <span class="stage-ic" data-stage="2">🗺️<small>Montando os cômodos</small></span>
+        <span class="stage-ic" data-stage="3">📶<small>Conectando a mansão</small></span>
+        <span class="stage-ic" data-stage="4">💧<small>Sincronizando jogadores</small></span>
+      </div>
+
+      <div class="loading-tip loading-tip-left"><b>DICA:</b> Copie as cores do ambiente para se camuflar.</div>
+      <div class="loading-tip loading-tip-right"><b>LEMBRE-SE:</b> Ficar imóvel pode ser a melhor escolha.</div>
+
+      <span class="menu-version">Versão 0.1.0 · Protótipo em desenvolvimento</span>
+    </section>
+
+    <!-- Fallback programático: código existente (main.js) ainda liga nele; fica
+         fora da tela, MenuUI.js dispara startGame() automaticamente no fluxo novo. -->
+    <button id="start-btn" class="sr-only" disabled>Carregando 3D...</button>
+
+    <!-- Modal de Configurações: novo lar do seletor de forma + config de munição,
+         que já são features reais hoje (Game.js/Player.js leem esses IDs) e não
+         tinham lugar no layout dos mockups — IDs preservados de propósito. -->
+    <div id="settings-modal" class="menu-modal hidden">
+      <div class="menu-modal-card">
+        <div class="menu-modal-head"><h3>Configurações</h3><button class="modal-close" type="button" data-modal-close>✕</button></div>
+
+        <div class="body-label">Escolha sua forma</div>
+        <div id="body-pick" class="body-pick">
+          <button type="button" data-kind="toy" class="on"><span class="bp-ic">🧍</span>Boneco</button>
+          <button type="button" data-kind="mannequin"><span class="bp-ic">🪆</span>Manequim</button>
+          <button type="button" data-kind="blob"><span class="bp-ic">🫧</span>Blob</button>
+          <button type="button" data-kind="cube"><span class="bp-ic">🧊</span>Cubo</button>
+        </div>
+
+        <div class="body-label">Regras do Caçador (Munição de Água)</div>
+        <div class="ammo-cfg-panel">
+          <label for="ammo-select">💧 Jatos de Água:
+            <select id="ammo-select">
+              <option value="1">1 Jato (Hardcore)</option>
+              <option value="3">3 Jatos</option>
+              <option value="5" selected>5 Jatos (Padrão)</option>
+              <option value="10">10 Jatos</option>
+              <option value="15">15 Jatos</option>
+              <option value="30">30 Jatos</option>
+            </select>
+          </label>
+          <label class="toggle-lbl">
+            <input type="checkbox" id="infinite-ammo-toggle"> Munição Infinita
+          </label>
+        </div>
+        <small>Melhor em tela cheia, na horizontal. Ative o som do aparelho.</small>
+      </div>
+    </div>
+
+    <!-- Modal Como Jogar: mesmo conteúdo real de sempre, só realocado -->
+    <div id="how-modal" class="menu-modal hidden">
+      <div class="menu-modal-card">
+        <div class="menu-modal-head"><h3>Como Jogar</h3><button class="modal-close" type="button" data-modal-close>✕</button></div>
+        <ul class="how">
+          <li><span class="how-ic">🕹️</span> <b>Mover:</b> arraste na metade esquerda da tela (joystick).</li>
+          <li><span class="how-ic">🎨</span> <b>Pintar:</b> mire com a retícula e toque em 🎨 para sugar a cor (🎛️ ajusta o tom).</li>
+          <li><span class="how-ic">🧱</span> <b>Camuflar:</b> grude numa superfície da mesma cor do seu disfarce.</li>
+          <li><span class="how-ic">👁️</span> <b>Objetivo:</b> fuja do Caçador vermelho e sobreviva até o tempo acabar.</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- Modal genérico "Em breve" para os itens sem função real ainda -->
+    <div id="soon-modal" class="menu-modal hidden">
+      <div class="menu-modal-card soon-card">
+        <h3 id="soon-title"></h3>
+        <p>Em breve!</p>
+        <button class="btn-ghost" type="button" data-modal-close>Fechar</button>
+      </div>
     </div>
   </div>
 
