@@ -62,6 +62,43 @@ if (continueBtn) {
   });
 }
 
+// "Instalar Aplicativo" (Fase C, Plano 2): o Chrome/Android/Edge dispara
+// `beforeinstallprompt` quando o app é instalável — precisa `preventDefault()`
+// e guardar o evento pra chamar `.prompt()` depois, dentro de um gesto do
+// usuário (o clique no botão), já que o navegador só permite usar isso uma
+// vez e não fora de um gesto. Sem esse evento (iOS Safari nunca tem; alguns
+// navegadores desktop também não), o clique abre #install-modal com o passo
+// a passo manual em vez de fingir que instalou.
+let deferredInstallPrompt = null;
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredInstallPrompt = e;
+});
+
+const installBtn = document.getElementById('install-btn');
+const installSub = document.getElementById('install-sub');
+const jaInstalado = () => {
+  if (!installBtn) return;
+  installBtn.disabled = true;
+  if (installSub) installSub.textContent = 'Já instalado';
+};
+if (window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true) {
+  jaInstalado();
+}
+if (installBtn) {
+  installBtn.addEventListener('click', async () => {
+    if (installBtn.disabled) return;
+    if (deferredInstallPrompt) {
+      deferredInstallPrompt.prompt();
+      await deferredInstallPrompt.userChoice;
+      deferredInstallPrompt = null;
+    } else {
+      document.getElementById('install-modal')?.classList.remove('hidden');
+    }
+  });
+}
+window.addEventListener('appinstalled', jaInstalado);
+
 // Inicia o pré-carregamento de todas as animações 3D no boot da página.
 // `wantsAutoStart` fica true quando o jogador já escolheu um modo (tela de
 // loading do MenuUI está ativa) antes do carregamento terminar — nesse caso o
@@ -94,6 +131,16 @@ let game = null;
 // verificação. Fica fora quando servido de um domínio de verdade.
 const EM_DESENVOLVIMENTO = /^(localhost|127\.0\.0\.1|\[::1\]|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/
   .test(location.hostname) || new URLSearchParams(location.search).has('debug');
+
+// Service worker do PWA (Fase C, Plano 2 — sw.js): só registra fora de dev,
+// mesma flag acima — em dev o dev_server.py já garante JS/CSS sempre fresco
+// via no-store, e um SW por cima disso reintroduziria cache obsoleto bem no
+// cenário que esses headers existem pra evitar.
+if (!EM_DESENVOLVIMENTO && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  });
+}
 
 function boot() {
   if (game) return;

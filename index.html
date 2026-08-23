@@ -7,7 +7,13 @@
 <meta http-equiv="Pragma" content="no-cache" />
 <meta http-equiv="Expires" content="0" />
 <title>Esconde ou Morre — Vertical Slice</title>
-<link rel="icon" href="data:," />
+<link rel="icon" href="assets/icons/icon-192.png" />
+<link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png" />
+<!-- PWA "Instalar Aplicativo" (Fase C, Plano 2 — docs/PLANO_CONTAS.md não se
+     aplica aqui, ver README). manifest.json na raiz do repo; sw.js registrado
+     em main.js só fora de dev (ver comentário lá — cache agressivo do
+     service worker atrapalharia o ciclo de no-cache do dev_server.py). -->
+<link rel="manifest" href="manifest.json" />
 <link rel="stylesheet" href="css/style.css?v=5" />
 
 <!-- Three.js e Supabase via CDN (ES Modules), sem bundler nem npm no cliente.
@@ -237,9 +243,14 @@
             <span class="mlr-ic">👥</span>
             <span class="mlr-txt"><b>Continuar Partida</b><small id="continue-match-sub">Nenhuma partida em andamento</small></span>
           </button>
-          <button class="menu-list-row" type="button" data-soon="Instalar Aplicativo">
+          <!-- Fase C (Plano 2): se o navegador oferece o prompt nativo
+               (Chrome/Android/Edge), o clique dispara ele direto. Sem esse
+               evento (iOS Safari nunca tem; alguns navegadores desktop
+               também não), abre #install-modal com o passo a passo manual —
+               ver main.js. -->
+          <button id="install-btn" class="menu-list-row" type="button">
             <span class="mlr-ic">⬇️</span>
-            <span class="mlr-txt"><b>Instalar Aplicativo</b><small>Jogue mais rápido e offline</small></span>
+            <span class="mlr-txt"><b>Instalar Aplicativo</b><small id="install-sub">Jogue mais rápido e offline</small></span>
           </button>
           <button class="menu-list-row" type="button" data-modal-open="how">
             <span class="mlr-ic">📖</span>
@@ -432,6 +443,21 @@
           <li><span class="how-ic">⏳</span> <b>Contagem regressiva:</b> a partida Online só começa depois de todo mundo pronto.</li>
           <li><span class="how-ic">📡</span> <b>Scanner do Caçador:</b> pulso que revela a direção dos Camaleões próximos.</li>
           <li><span class="how-ic">🔌</span> <b>Reconexão automática:</b> queda de wifi ou app em segundo plano não derruba mais a partida Online.</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- Fallback de instalação manual (Fase C, Plano 2) — só abre quando o
+         navegador não oferece o prompt nativo (`beforeinstallprompt`), ver
+         main.js. Conteúdo fixo (não dá pra detectar de forma confiável QUAL
+         navegador/SO em todos os casos, então mostra os 3 caminhos comuns). -->
+    <div id="install-modal" class="menu-modal hidden">
+      <div class="menu-modal-card">
+        <div class="menu-modal-head"><h3>Como instalar</h3><button class="modal-close" type="button" data-modal-close>✕</button></div>
+        <ul class="how">
+          <li><span class="how-ic">🍎</span> <b>iPhone/iPad (Safari):</b> toque em Compartilhar (□↑) e depois em "Adicionar à Tela de Início".</li>
+          <li><span class="how-ic">🤖</span> <b>Android (Chrome):</b> toque no menu (⋮) e em "Instalar aplicativo" ou "Adicionar à tela inicial".</li>
+          <li><span class="how-ic">💻</span> <b>Computador (Chrome/Edge):</b> clique no ícone de instalar (⊕ ou ⬇️) na barra de endereço.</li>
         </ul>
       </div>
     </div>
