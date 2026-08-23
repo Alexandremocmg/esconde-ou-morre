@@ -8,7 +8,7 @@
 <meta http-equiv="Expires" content="0" />
 <title>Esconde ou Morre — Vertical Slice</title>
 <link rel="icon" href="data:," />
-<link rel="stylesheet" href="css/style.css?v=4" />
+<link rel="stylesheet" href="css/style.css?v=5" />
 
 <!-- Three.js e Supabase via CDN (ES Modules), sem bundler nem npm no cliente.
      Requer servidor local: `python -m http.server` ou `npx serve`. -->
@@ -228,9 +228,14 @@
            (posicionamento por % absoluto colidia em viewports curtos). -->
       <div class="menu-hero">
         <div class="menu-side-list">
-          <button class="menu-list-row" type="button" data-soon="Continuar Partida">
+          <!-- Fase B (Plano 2): reaproveita a sessão que Net.js já guarda em
+               sessionStorage — nada de conta aqui (ver docs/PLANO_CONTAS.md
+               §5, "Continuar Partida" foi deliberadamente deixado fora do
+               sistema de contas). Começa desabilitado; main.js liga/desliga
+               conforme existir ou não uma sessão reaproveitável. -->
+          <button id="continue-match-btn" class="menu-list-row" type="button" disabled>
             <span class="mlr-ic">👥</span>
-            <span class="mlr-txt"><b>Continuar Partida</b><small>Reconectar à sua última sala</small></span>
+            <span class="mlr-txt"><b>Continuar Partida</b><small id="continue-match-sub">Nenhuma partida em andamento</small></span>
           </button>
           <button class="menu-list-row" type="button" data-soon="Instalar Aplicativo">
             <span class="mlr-ic">⬇️</span>
@@ -251,8 +256,8 @@
         <button type="button" data-soon="Ranking"><span class="bn-ic">🏆</span>Ranking</button>
         <button type="button" data-soon="Missões"><span class="bn-ic">📋</span>Missões</button>
         <button type="button" data-soon="Personalização"><span class="bn-ic">🎨</span>Personalização</button>
-        <button type="button" data-soon="Novidades"><span class="bn-ic">📣</span>Novidades</button>
-        <button type="button" data-soon="Créditos"><span class="bn-ic">ⓘ</span>Créditos</button>
+        <button type="button" data-modal-open="news"><span class="bn-ic">📣</span>Novidades</button>
+        <button type="button" data-modal-open="credits"><span class="bn-ic">ⓘ</span>Créditos</button>
       </nav>
 
       <span class="menu-version">v0.1.0</span>
@@ -392,6 +397,42 @@
           <p class="auth-welcome">Logado como <b id="auth-username-display"></b></p>
           <button id="auth-signout" type="button" class="btn-ghost">Sair</button>
         </div>
+      </div>
+    </div>
+
+    <!-- Créditos (Fase B, Plano 2): ferramentas/fontes reais usadas no jogo,
+         levantadas de docs/PIPELINE_PERSONAGEM.md e docs/TRIPO_3D.md. -->
+    <div id="credits-modal" class="menu-modal hidden">
+      <div class="menu-modal-card">
+        <div class="menu-modal-head"><h3>Créditos</h3><button class="modal-close" type="button" data-modal-close>✕</button></div>
+        <ul class="how">
+          <li><span class="how-ic">🎮</span> <b>Three.js:</b> motor 3D que roda o jogo inteiro no navegador, sem instalar nada.</li>
+          <li><span class="how-ic">🕺</span> <b>Mixamo:</b> fonte das animações do personagem (correr, pular, escalar, atirar...).</li>
+          <li><span class="how-ic">🧱</span> <b>Blender:</b> ferramenta usada pra preparar o modelo 3D e as animações pro jogo.</li>
+          <li><span class="how-ic">🔫</span> <b>Sketchfab:</b> modelo-base do lançador de água do Caçador.</li>
+          <li><span class="how-ic">🤖</span> <b>Tripo3D:</b> geração de modelos 3D por IA, disponível no pipeline do jogo.</li>
+          <li><span class="how-ic">🎨</span> <b>Cenário e efeitos:</b> 100% procedurais — sem texturas prontas além das citadas acima.</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- Novidades (Fase B, Plano 2): changelog curado em linguagem de jogador,
+         a partir do histórico real de commits — mais recente primeiro. -->
+    <div id="news-modal" class="menu-modal hidden">
+      <div class="menu-modal-card">
+        <div class="menu-modal-head"><h3>Novidades</h3><button class="modal-close" type="button" data-modal-close>✕</button></div>
+        <ul class="how">
+          <li><span class="how-ic">🖌️</span> <b>Pincel Livre:</b> pinte seu personagem à mão — segure o botão Pintar e toque em PINCEL.</li>
+          <li><span class="how-ic">🏛️</span> <b>Menu novo:</b> tela inicial repintada no estilo mansão de luxo.</li>
+          <li><span class="how-ic">📐</span> <b>Mansão mais alta:</b> salão e piso superior ganharam mais pé-direito.</li>
+          <li><span class="how-ic">🧗</span> <b>Escalada corrigida:</b> não dá mais pra atravessar lajes nem escapar da mansão pelos cantos.</li>
+          <li><span class="how-ic">💦</span> <b>Jato de água:</b> ficou bem mais visível e agora funciona igual no modo Online.</li>
+          <li><span class="how-ic">🏃</span> <b>Corrida no joystick:</b> corrigida — não precisava mais empurrar até o talo pra correr de verdade.</li>
+          <li><span class="how-ic">👥</span> <b>Sala Online maior:</b> agora 1 Caçador contra até 4 Camaleões na mesma partida.</li>
+          <li><span class="how-ic">⏳</span> <b>Contagem regressiva:</b> a partida Online só começa depois de todo mundo pronto.</li>
+          <li><span class="how-ic">📡</span> <b>Scanner do Caçador:</b> pulso que revela a direção dos Camaleões próximos.</li>
+          <li><span class="how-ic">🔌</span> <b>Reconexão automática:</b> queda de wifi ou app em segundo plano não derruba mais a partida Online.</li>
+        </ul>
       </div>
     </div>
 

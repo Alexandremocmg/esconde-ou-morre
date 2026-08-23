@@ -76,23 +76,18 @@ aba) — ver `docs/PLANO_MULTIPLAYER.md` §3.2. "Continuar Partida" no menu (Fas
 Plano 2) só liga o botão a esse mecanismo já existente, sem tocar em conta/Supabase.
 Se isso se mostrar insuficiente no uso real, revisitar.
 
-## 6. Pendência operacional — "Confirm email" precisa ser desligado no painel
+## 6. "Confirm email" (resolvido)
 
-O projeto Supabase nasce com **confirmação de e-mail obrigatória** por padrão — a
-decisão registrada em §2 ("sem confirmação obrigatória") ainda não está em vigor de
-verdade, porque essa é uma configuração de infraestrutura (Authentication → Sign In /
-Providers → Email → "Confirm email"), não algo editável por migration/SQL nem exposto
-pelas ferramentas de MCP disponíveis nesta sessão.
-
-Efeito enquanto não for desligada: `signUp()` cria a conta mas não devolve sessão —
-`src/MenuUI.js` já trata isso (mostra "Conta criada! Confirme seu e-mail...", não
-finge sucesso). Só falta desligar o toggle. Também vale checar o rate limit de
-e-mails do provedor SMTP embutido do Supabase (bem baixo por padrão, ~poucos e-mails/
-hora) se muitas contas forem criadas em teste — configurar SMTP próprio resolve isso,
-mas é opcional pro volume de um joguinho.
-
-**Passo manual pendente:** dashboard do Supabase → projeto `esconde-ou-morre` →
-Authentication → Sign In / Providers → Email → desligar "Confirm email".
+O projeto Supabase nascia com confirmação de e-mail obrigatória por padrão — não é
+algo editável por migration/SQL nem pelas ferramentas de MCP disponíveis nesta sessão
+(é uma configuração de infra: Authentication → Sign In / Providers → Email → "Confirm
+email"), então coube ao usuário desligar manualmente no painel. Feito e verificado em
+browser (signup loga direto, sessão sobrevive a reload, sign out funciona).
+`src/MenuUI.js` continua tratando o caso de conta pendente de confirmação com uma
+mensagem clara (não finge sucesso), caso o toggle seja religado no futuro. Se muitas
+contas forem criadas em pouco tempo, o rate limit do provedor SMTP embutido do
+Supabase pode aparecer (bem baixo por padrão) — configurar SMTP próprio resolve, mas
+é opcional pro volume de um joguinho.
 
 ## 7. Limitações conhecidas
 

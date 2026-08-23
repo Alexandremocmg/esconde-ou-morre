@@ -9,7 +9,7 @@ import { Joystick } from './Joystick.js?v=3';
 import { Effects } from './Effects.js?v=3';
 import { Audio } from './Audio.js?v=3';
 import { animationManager } from './AnimationManager.js?v=3';
-import { Net } from './Net.js?v=3';
+import { Net, resolveWsUrl } from './Net.js?v=4';
 import { RemotePlayer } from './RemotePlayer.js?v=3';
 import {
   FIXED_LAYOUT,
@@ -20,13 +20,7 @@ import {
   makeInputPayload,
   S2C,
   ROLE,
-  PROD_WS_URL,
 } from './net/protocol.js?v=3';
-
-// Mesmo padrão de detecção de localhost/LAN usado em main.js (EM_DESENVOLVIMENTO) —
-// duplicado aqui porque main.js não exporta nada (é só o boot) e um módulo de rede
-// não devia depender do bootstrapper pra saber se está em dev.
-const HOST_LOCAL_OU_LAN = /^(localhost|127\.0\.0\.1|\[::1\]|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/;
 
 // Mira do Caçador jogável (Game.fireHunterShot): cone de mira a partir do
 // centro da câmera, não pixel-perfect — evita o problema de raycast contra o
@@ -348,24 +342,11 @@ export class Game {
   }
 
   // ------------------------------------------------------------ MODO ONLINE
-  // Endereço do servidor autoritativo (docs/PLANO_MULTIPLAYER.md). Padrão: mesmo
-  // host da página, porta 8787 (server/index.js). `?ws=host` ou `?ws=host:porta`
-  // sobrescreve — necessário ao testar por túnel (cloudflared/ngrok), onde o cliente e
-  // o servidor ficam em domínios/túneis DIFERENTES (o túnel do cliente não repassa a
-  // porta 8787). Aceita também uma URL completa (`?ws=wss://...`).
-  //
-  // wss:// obrigatório quando a página é servida por https (o túnel sempre é) — um
-  // navegador bloqueia ws:// (inseguro) chamado de uma página https (conteúdo misto).
-  //
-  // Fora de localhost/LAN e sem `?ws=`, cai no servidor de produção (PROD_WS_URL) —
-  // é o caso do cliente hospedado na Vercel, que mora num domínio diferente do
-  // servidor (Render) e não pode assumir a porta 8787 do próprio host.
+  // Endereço do servidor autoritativo (docs/PLANO_MULTIPLAYER.md) — lógica movida
+  // pra Net.resolveWsUrl() (Fase B, Plano 2) pra "Continuar Partida" no menu
+  // principal poder checar sessão reaproveitável ANTES de um Game existir.
   _wsUrl() {
-    const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
-    const override = new URLSearchParams(location.search).get('ws');
-    if (override) return /^wss?:\/\//.test(override) ? override : `${scheme}://${override}`;
-    if (HOST_LOCAL_OU_LAN.test(location.hostname)) return `${scheme}://${location.hostname}:8787`;
-    return PROD_WS_URL;
+    return resolveWsUrl();
   }
 
   // Conecta à sala, resolve o papel (servidor decide) e liga os handlers de rede.

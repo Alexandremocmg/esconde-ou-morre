@@ -1,4 +1,17 @@
-import { C2S, S2C, TICK_MS, RECONNECT_GRACE_MS } from './net/protocol.js?v=3';
+import { C2S, S2C, TICK_MS, RECONNECT_GRACE_MS, PROD_WS_URL, HOST_LOCAL_OU_LAN } from './net/protocol.js?v=3';
+
+// Mesma lógica de escolha de servidor que só existia dentro de Game.js
+// (_wsUrl) — movida pra cá (Fase B, Plano 2) porque "Continuar Partida" no
+// menu principal precisa dela ANTES de um Game existir, só pra checar se dá
+// pra reconectar. Continua com a mesma prioridade: `?ws=` explícito > mesmo
+// host/LAN (dev) > PROD_WS_URL.
+export function resolveWsUrl() {
+  const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
+  const override = new URLSearchParams(location.search).get('ws');
+  if (override) return /^wss?:\/\//.test(override) ? override : `${scheme}://${override}`;
+  if (HOST_LOCAL_OU_LAN.test(location.hostname)) return `${scheme}://${location.hostname}:8787`;
+  return PROD_WS_URL;
+}
 
 // Chave de sessionStorage pra sobreviver a um RELOAD DE VERDADE da página (o
 // navegador mata a aba em segundo plano e recarrega do zero — mais comum no
@@ -21,6 +34,15 @@ function saveSession(url, id, token) {
 }
 function clearSession() {
   try { sessionStorage.removeItem(SESSION_KEY); } catch (_) {}
+}
+
+// "Continuar Partida" (menu principal, Fase B): só precisa saber SE dá pra
+// reconectar, não os detalhes — reusa loadSession pra não duplicar a
+// validação (mesma aba, mesma URL, id+token presentes). Não garante que o
+// servidor ainda segura a vaga (RECONNECT_GRACE_MS pode já ter passado) —
+// isso só se sabe tentando; aqui é só uma dica pro menu mostrar o botão.
+export function hasResumableSession(url) {
+  return !!loadSession(url);
 }
 
 // Cliente WebSocket do modo online (docs/PLANO_MULTIPLAYER.md). Usa o WebSocket

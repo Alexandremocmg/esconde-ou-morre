@@ -1342,6 +1342,8 @@ body.mode-online.online-hunter #reticle { display: block; }
   flex: none;
 }
 .menu-list-row:active { background: rgba(10, 10, 14, 0.62); }
+.menu-list-row:disabled { opacity: 0.45; cursor: default; }
+.menu-list-row:disabled:active { background: rgba(10, 10, 14, 0.42); }
 .mlr-ic { font-size: 18px; flex: none; }
 .mlr-txt { display: flex; flex-direction: column; }
 .mlr-txt b { font-size: 12px; }
@@ -1625,9 +1627,9 @@ body.mode-online.online-hunter #reticle { display: block; }
   .loading-tip { display: none; }
 }
 /* Abaixo disso a lista lateral chegaria perto demais do botão JOGAR
-   centralizado. Some só os 2 itens placeholder (Continuar Partida/Instalar
-   Aplicativo, ambos com [data-soon]) — "Como Jogar" (função real) fica, pra
-   não depender só da tela de Escolha de Modo pra ser encontrado. */
+   centralizado. Some só o item ainda placeholder (Instalar Aplicativo,
+   [data-soon] — Fase C do Plano 2) — "Como Jogar" e "Continuar Partida"
+   (funções reais) ficam, pra não depender só da tela de Escolha de Modo. */
 @media (max-width: 480px) {
   .menu-side-list .menu-list-row[data-soon] { display: none; }
   /* Só sobrou 1 linha (Como Jogar), mas ancorada à esquerda + JOGAR

@@ -63,6 +63,10 @@ export const LOBBY_COUNTDOWN_MS = 12000;
 // diferentes e o servidor não escuta a porta 8787 publicamente.
 export const PROD_WS_URL = 'wss://esconde-ou-morre-server.onrender.com';
 
+// Mesmo regex usado por Net.resolveWsUrl() (e antes só em Game.js._wsUrl()) pra
+// decidir se o servidor mora no mesmo host/LAN (dev) ou em PROD_WS_URL (produção).
+export const HOST_LOCAL_OU_LAN = /^(localhost|127\.0\.0\.1|\[::1\]|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/;
+
 // ------------------------------------------------------------------ mensagens
 // Cliente → servidor
 export const C2S = {

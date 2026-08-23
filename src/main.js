@@ -2,6 +2,7 @@ import { Game } from './Game.js?v=3';
 import { animationManager } from './AnimationManager.js?v=3';
 import { initTunePanel } from './TunePanel.js?v=1';
 import { initMenuUI, updateLoadingStages } from './MenuUI.js?v=2';
+import { resolveWsUrl, hasResumableSession } from './Net.js?v=4';
 
 // Painel de ajuste ao vivo (⚙️) — só aparece com ?tune=1 na URL, ver TunePanel.js.
 initTunePanel();
@@ -39,6 +40,26 @@ if (modePick) {
       for (const b of modePick.querySelectorAll('button')) b.classList.toggle('on', b === btn);
     });
   }
+}
+
+// "Continuar Partida" (Fase B, Plano 2 — docs/PLANO_CONTAS.md §5): deliberadamente
+// SEM conta. Só reaproveita a sessão que Net.js já guarda sozinho em
+// sessionStorage pra decidir se mostra o atalho — habilitado só quando há uma
+// sessão válida pra ESTE servidor (mesma checagem que Net.connect() já faria
+// de qualquer forma; aqui é só pra saber se vale a pena mostrar o botão).
+// Clicar simula escolher o card "Online": connect() dentro do Game novo tenta
+// o rejoin sozinho (?rejoin=id:token), sem nenhum caminho novo de conexão.
+const continueBtn = document.getElementById('continue-match-btn');
+if (continueBtn) {
+  if (hasResumableSession(resolveWsUrl())) {
+    continueBtn.disabled = false;
+    const sub = document.getElementById('continue-match-sub');
+    if (sub) sub.textContent = 'Reconectar à sua última sala';
+  }
+  continueBtn.addEventListener('click', () => {
+    if (continueBtn.disabled) return;
+    document.querySelector('#mode-pick button[data-mode="online"]')?.click();
+  });
 }
 
 // Inicia o pré-carregamento de todas as animações 3D no boot da página.
