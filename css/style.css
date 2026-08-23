@@ -1047,6 +1047,40 @@ body.mode-online.online-hunter #reticle { display: block; }
   color: #eaffff;
 }
 
+/* ---------- Conta (Plano 2, Fase A — #auth-modal) ---------- */
+#auth-chip.on {
+  background: rgba(46, 204, 113, 0.22);
+  border-color: rgba(46, 204, 113, 0.6);
+}
+.auth-tabs {
+  display: flex; gap: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  padding: 4px; border-radius: 12px;
+  margin-bottom: 14px;
+}
+.auth-tab {
+  flex: 1; font: inherit; font-size: 13px; font-weight: 700;
+  padding: 8px 0; border: none; border-radius: 9px;
+  background: transparent; color: var(--ui-dim);
+  cursor: pointer;
+}
+.auth-tab.on { background: rgba(255, 255, 255, 0.16); color: #fff; }
+#auth-form { display: flex; flex-direction: column; gap: 10px; }
+#auth-form input {
+  font: inherit; font-size: 14px;
+  padding: 11px 14px; border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(0, 0, 0, 0.35);
+  color: #fff;
+  outline: none;
+}
+#auth-form input.hidden { display: none; }
+#auth-form input::placeholder { color: rgba(255, 255, 255, 0.4); }
+#auth-form .btn-primary { margin-top: 4px; }
+.auth-msg { font-size: 12px; margin-top: 10px; text-align: center; min-height: 15px; color: var(--ui-dim); }
+.auth-msg.error { color: #ff6b6b; }
+.auth-welcome { margin-bottom: 14px; font-size: 14px; }
+
 /* ── Painel de ajuste ao vivo (⚙️, ?tune=1 — TunePanel.js) ──────────────────
    Escondido por padrão (display:none) tanto no botão quanto no painel — só
    initTunePanel() os revela, e só depois de conferir a query string, então

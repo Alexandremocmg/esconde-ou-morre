@@ -38,7 +38,9 @@ camuflagem**. Todo o visual é **procedural** — sem assets externos.
 > personagem principal) está em [`docs/TRIPO_3D.md`](docs/TRIPO_3D.md). Os parâmetros de
 > movimento (deadzone/curva do joystick, giro, velocidade) são calibrados ao vivo por um
 > painel de dev (`?tune=1` na URL) documentado em
-> [`docs/PAINEL_AJUSTE.md`](docs/PAINEL_AJUSTE.md).
+> [`docs/PAINEL_AJUSTE.md`](docs/PAINEL_AJUSTE.md). Contas de jogador (Ranking,
+> Missões, Personalização — Supabase Auth + Postgres) estão em
+> [`docs/PLANO_CONTAS.md`](docs/PLANO_CONTAS.md).
 
 ## Como rodar (build estática)
 

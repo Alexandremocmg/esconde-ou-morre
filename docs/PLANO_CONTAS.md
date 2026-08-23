@@ -1,0 +1,108 @@
+# Contas de jogador (Supabase) — Ranking, Missões, Personalização
+
+## 1. Por que existe
+
+O menu principal tinha 8 itens ("Loja", "Continuar Partida", "Instalar Aplicativo",
+"Ranking", "Missões", "Personalização", "Novidades", "Créditos") que só abriam um
+modal genérico "Em breve" (`src/MenuUI.js`, `[data-soon]`). Fechar Ranking, Missões e
+Personalização de verdade precisa de uma identidade de jogador que sobreviva entre
+sessões — e isso **não existia em nenhum lugar do projeto**: o servidor Online
+(`server/room.js`) é uma sala única em memória, sem banco, sem login, que zera sozinha
+quando esvazia (ver `docs/PLANO_MULTIPLAYER.md`). Perguntado, o usuário escolheu conta
+de verdade (backend + banco), não armazenamento só local no aparelho.
+
+**Loja** fica "Em breve" por decisão do usuário (pagamento com dinheiro real não é algo
+que o assistente processa sozinho) — pendência de negócio, não de código.
+
+**Continuar Partida** foi deliberadamente **desacoplado** de conta — ver §5.
+
+## 2. Por que Supabase
+
+Resolve os dois lados de uma vez sem sair do "ES Modules puros, sem bundler" do
+projeto: Auth (email+senha, sem escrever hash/sessão do zero) e Postgres (ranking,
+missões, perfil), com um client que roda direto do navegador via CDN/ESM — mesmo
+padrão do `three` no importmap de `index.html`:
+
+```html
+"@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2"
+```
+
+Projeto: **`esconde-ou-morre`** (novo, org `alexandre.14r@gmail.com's Org`, região
+`sa-east-1`, plano free). Nenhum projeto Supabase existente antes deste era deste jogo.
+
+`src/Auth.js` encapsula o client (`SUPABASE_URL`/publishable key — seguros de expor no
+cliente por design, a segurança de verdade é a RLS abaixo) e as funções
+`signUp/signIn/signOut/getSession/onAuthStateChange/getProfile/updateProfile`.
+
+**Confirmação de e-mail: desligada** (reduz fricção pra um joguinho casual). Se quiser
+ligar depois, é uma configuração no painel do Supabase, sem mudança de código.
+
+## 3. Schema (migration `contas_fundacao`, projeto `nqcjlnqutujxyctkglkh`)
+
+| Tabela | Papel | RLS |
+| --- | --- | --- |
+| `profiles` | `id`=`auth.users.id`, `username`, `body_kind` (Personalização, Fase D) | leitura pública (ranking mostra nome); escrita só do dono |
+| `match_results` | Ranking (Fase E): `user_id`, `mode`, `won`, `camo_time_seconds`, `verified` | leitura pública; insert só do dono |
+| `missions` | Missões (Fase F): conteúdo estático, `code`/`title`/`description`/`goal_count` | leitura pública; sem insert/update de cliente (só migration/service role) |
+| `mission_progress` | Missões (Fase F): `user_id`+`mission_id` → `progress`/`completed_at` | leitura/escrita só do dono |
+
+`profiles` nasce sozinho no signup via trigger `handle_new_user` (`SECURITY DEFINER`,
+`EXECUTE` revogado de `anon`/`authenticated` — só roda como efeito do insert em
+`auth.users`, não é chamável via RPC pelo cliente). Evita corrida entre confirmar
+conta e o cliente tentar criar o profile por conta própria.
+
+## 4. Confiabilidade dos dados (`match_results.verified`)
+
+Partidas **Online** podem ser gravadas pelo **servidor** (`server/room.js`, no ponto
+que já decide fim de partida — autoritativo) usando a service role key —
+`verified=true`. Partidas **solo** (Camaleão/Caçador sem servidor nenhum — o jogo
+inteiro roda no cliente) só podem ser client-reported — `verified=false`, mesmo
+espírito honesto do "Débito registrado" que `docs/PLANO_MULTIPLAYER.md` já documenta
+pra outras lacunas (ex.: "Movimento é forjável na v1"). O Ranking (Fase E) deve deixar
+essa distinção visível, não escondida.
+
+## 5. Continuar Partida — por que NÃO usa conta
+
+Investigado antes de desenhar: `RECONNECT_GRACE_MS` (`src/net/protocol.js`) é **30
+segundos**; a sala é única, em memória, e some inteira num restart/deploy/sleep do
+Render free tier (`server/room.js`, sem persistência nenhuma); uma partida inteira dura
+**~60-90s** (timer `SOBREVIVA .../1:00`). Não existe cenário realista de "sair, trocar
+de aparelho, voltar depois" pra uma partida que já teria terminado — ligar isso a conta
+seria infraestrutura nova pra um caso de uso que praticamente não acontece.
+
+O jogo já resolve o caso REAL (queda de wifi, app em segundo plano, reload da mesma
+aba) com o mecanismo existente e automático (`src/Net.js`, `sessionStorage`, mesma
+aba) — ver `docs/PLANO_MULTIPLAYER.md` §3.2. "Continuar Partida" no menu (Fase B do
+Plano 2) só liga o botão a esse mecanismo já existente, sem tocar em conta/Supabase.
+Se isso se mostrar insuficiente no uso real, revisitar.
+
+## 6. Pendência operacional — "Confirm email" precisa ser desligado no painel
+
+O projeto Supabase nasce com **confirmação de e-mail obrigatória** por padrão — a
+decisão registrada em §2 ("sem confirmação obrigatória") ainda não está em vigor de
+verdade, porque essa é uma configuração de infraestrutura (Authentication → Sign In /
+Providers → Email → "Confirm email"), não algo editável por migration/SQL nem exposto
+pelas ferramentas de MCP disponíveis nesta sessão.
+
+Efeito enquanto não for desligada: `signUp()` cria a conta mas não devolve sessão —
+`src/MenuUI.js` já trata isso (mostra "Conta criada! Confirme seu e-mail...", não
+finge sucesso). Só falta desligar o toggle. Também vale checar o rate limit de
+e-mails do provedor SMTP embutido do Supabase (bem baixo por padrão, ~poucos e-mails/
+hora) se muitas contas forem criadas em teste — configurar SMTP próprio resolve isso,
+mas é opcional pro volume de um joguinho.
+
+**Passo manual pendente:** dashboard do Supabase → projeto `esconde-ou-morre` →
+Authentication → Sign In / Providers → Email → desligar "Confirm email".
+
+## 7. Limitações conhecidas
+
+- Progresso de Missões e resultado de partidas solo são **client-reported** — um
+  jogador mal-intencionado pode forjar. Aceitável pra um ranking/missões casuais
+  (mesmo trade-off já aceito pra "movimento" no modo Online); não é um sistema
+  anti-cheat.
+- Sem verificação de e-mail: uma conta pode ser criada com um e-mail que a pessoa não
+  controla. Sem impacto de segurança real aqui (não há dados sensíveis nem dinheiro
+  envolvido) — só afeta recuperação de senha por e-mail, se algum dia for usada.
+- `body_kind` em `profiles` tem os mesmos 4 valores de `sessionStorage['eom-body']`
+  (`toy`/`mannequin`/`blob`/`cube`) — Fase D decide como os dois convivem (conta
+  sobrepõe sessionStorage quando logado, sessionStorage continua valendo deslogado).

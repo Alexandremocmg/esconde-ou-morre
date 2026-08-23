@@ -1,6 +1,9 @@
-// Controla as 3 telas dentro de #start-overlay (main/mode/loading) e os modais
-// (Configurações, Como Jogar, "Em breve"). Não sabe nada sobre Game.js — só
-// alterna visibilidade de DOM e delega o início da partida pro callback
+import { signUp, signIn, signOut, getSession, onAuthStateChange, getProfile } from './Auth.js?v=1';
+
+// Controla as 3 telas dentro de #start-overlay (main/mode/loading), os modais
+// (Configurações, Como Jogar, "Em breve") e a conta de jogador (Plano 2, Fase A
+// — Supabase Auth, ver Auth.js). Não sabe nada sobre Game.js — só alterna
+// visibilidade de DOM e delega o início da partida pro callback
 // `onModeChosen` passado por main.js (que já sabe extrair/chamar startGame()).
 //
 // #start-overlay continua sendo o único elemento que Game.js manipula
@@ -44,34 +47,118 @@ export function initMenuUI({ onModeChosen } = {}) {
     }
   }
 
-  // ---------- Modais ----------
+  // ---------- Modais (genérico, Plano 2 Fase A) ----------
+  // Qualquer `<button data-modal-open="x">` abre `#x-modal` — não precisa mais
+  // de um bloco de código por modal novo (era o caso antes: settings/how/soon
+  // cada um hardcoded). `.menu-modal` cobre fechar-por-fora e o ✕
+  // (`[data-modal-close]`) automaticamente pra qualquer modal que existir no
+  // DOM, incluindo os que este arquivo nunca chega a mencionar pelo nome.
   function openModal(modal) { if (modal) modal.classList.remove('hidden'); }
   function closeModal(modal) { if (modal) modal.classList.add('hidden'); }
 
-  const settingsModal = document.getElementById('settings-modal');
-  const howModal = document.getElementById('how-modal');
+  for (const btn of document.querySelectorAll('[data-modal-open]')) {
+    btn.addEventListener('click', () => openModal(document.getElementById(`${btn.dataset.modalOpen}-modal`)));
+  }
+
+  // "Em breve" continua um caso especial: um único modal reaproveitado por
+  // vários botões, com o título trocado na hora (ver index.html [data-soon]).
   const soonModal = document.getElementById('soon-modal');
   const soonTitle = document.getElementById('soon-title');
-
-  for (const btn of document.querySelectorAll('.open-settings')) {
-    btn.addEventListener('click', () => openModal(settingsModal));
-  }
-  for (const btn of document.querySelectorAll('.open-how')) {
-    btn.addEventListener('click', () => openModal(howModal));
-  }
   for (const btn of document.querySelectorAll('[data-soon]')) {
     btn.addEventListener('click', () => {
       if (soonTitle) soonTitle.textContent = btn.dataset.soon;
       openModal(soonModal);
     });
   }
+
   for (const btn of document.querySelectorAll('[data-modal-close]')) {
     btn.addEventListener('click', () => closeModal(btn.closest('.menu-modal')));
   }
   // Fecha clicando no fundo escuro (fora do cartão), não no cartão em si.
-  for (const modal of [settingsModal, howModal, soonModal]) {
-    if (!modal) continue;
+  for (const modal of document.querySelectorAll('.menu-modal')) {
     modal.addEventListener('click', (ev) => { if (ev.target === modal) closeModal(modal); });
+  }
+
+  // ---------- Conta (Plano 2, Fase A — docs/PLANO_CONTAS.md) ----------
+  const authModal = document.getElementById('auth-modal');
+  if (authModal) {
+    const authChip = document.getElementById('auth-chip');
+    const loggedOutEl = document.getElementById('auth-logged-out');
+    const loggedInEl = document.getElementById('auth-logged-in');
+    const usernameDisplay = document.getElementById('auth-username-display');
+    const authForm = document.getElementById('auth-form');
+    const authEmail = document.getElementById('auth-email');
+    const authPassword = document.getElementById('auth-password');
+    const authUsername = document.getElementById('auth-username');
+    const authSubmit = document.getElementById('auth-submit');
+    const authMsg = document.getElementById('auth-msg');
+    const authSignout = document.getElementById('auth-signout');
+    const authTabs = authModal.querySelectorAll('.auth-tab');
+
+    let mode = 'signin';
+    const setMode = (next) => {
+      mode = next;
+      authTabs.forEach((t) => t.classList.toggle('on', t.dataset.authTab === mode));
+      authUsername.classList.toggle('hidden', mode !== 'signup');
+      authSubmit.textContent = mode === 'signup' ? 'Criar Conta' : 'Entrar';
+      authMsg.textContent = '';
+      authMsg.classList.remove('error');
+    };
+    authTabs.forEach((t) => t.addEventListener('click', () => setMode(t.dataset.authTab)));
+
+    // Reflete a sessão atual (chip com anel verde + qual bloco do modal
+    // aparece). `onAuthStateChange` cobre login/logout/refresh de token —
+    // não precisa recarregar a página nem reabrir o modal pra atualizar.
+    const showLoggedState = (session) => {
+      const logged = !!session;
+      loggedOutEl.classList.toggle('hidden', logged);
+      loggedInEl.classList.toggle('hidden', !logged);
+      authChip.classList.toggle('on', logged);
+      if (logged) {
+        getProfile(session.user.id).then(({ profile }) => {
+          usernameDisplay.textContent = profile ? profile.username : session.user.email;
+        });
+      } else {
+        setMode('signin');
+      }
+    };
+    getSession().then(({ session }) => showLoggedState(session));
+    onAuthStateChange(showLoggedState);
+
+    authForm.addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      authSubmit.disabled = true;
+      authMsg.textContent = '';
+      authMsg.classList.remove('error');
+      const email = authEmail.value.trim();
+      const password = authPassword.value;
+      const { data, error } = mode === 'signup'
+        ? await signUp(email, password, authUsername.value.trim())
+        : await signIn(email, password);
+      authSubmit.disabled = false;
+      if (error) {
+        authMsg.textContent = error.message;
+        authMsg.classList.add('error');
+        return;
+      }
+      // Se o projeto exigir confirmação de e-mail, signUp() cria a conta mas
+      // NÃO devolve sessão (`data.session` nulo) — sem isto o modal fechava
+      // "com sucesso" e o jogador ficava sem entender por que não logou.
+      if (mode === 'signup' && !data.session) {
+        authMsg.textContent = 'Conta criada! Confirme seu e-mail (verifique a caixa de entrada) e entre depois.';
+        authForm.reset();
+        return;
+      }
+      authForm.reset();
+      closeModal(authModal); // showLoggedState já roda via onAuthStateChange
+    });
+
+    if (authSignout) {
+      authSignout.addEventListener('click', async () => {
+        await signOut();
+        closeModal(authModal);
+      });
+    }
   }
 
   // ---------- Voltar ao menu principal (Game Over / Vitória) ----------

@@ -8,14 +8,16 @@
 <meta http-equiv="Expires" content="0" />
 <title>Esconde ou Morre — Vertical Slice</title>
 <link rel="icon" href="data:," />
-<link rel="stylesheet" href="css/style.css?v=3" />
+<link rel="stylesheet" href="css/style.css?v=4" />
 
-<!-- Three.js via CDN (ES Modules). Requer servidor local: `python -m http.server` ou `npx serve`. -->
+<!-- Three.js e Supabase via CDN (ES Modules), sem bundler nem npm no cliente.
+     Requer servidor local: `python -m http.server` ou `npx serve`. -->
 <script type="importmap">
 {
   "imports": {
     "three": "https://unpkg.com/three@0.161.0/build/three.module.js",
-    "three/addons/": "https://unpkg.com/three@0.161.0/examples/jsm/"
+    "three/addons/": "https://unpkg.com/three@0.161.0/examples/jsm/",
+    "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2"
   }
 }
 </script>
@@ -211,7 +213,12 @@
           <p class="menu-tagline">Copie as cores. Engane. Sobreviva.</p>
         </div>
         <div class="menu-top-right">
-          <button class="glass-chip open-settings" type="button" aria-label="Configurações">⚙️</button>
+          <!-- Plano 2, Fase A: chip de conta — 👤 deslogado, ganha classe
+               "on" (ver style.css) quando logado. Conteúdo real do estado
+               (nome, sair) fica dentro do modal, não no chip (espaço curto
+               demais pro nome de usuário). -->
+          <button id="auth-chip" class="glass-chip" type="button" data-modal-open="auth" aria-label="Conta">👤</button>
+          <button class="glass-chip" type="button" data-modal-open="settings" aria-label="Configurações">⚙️</button>
           <button class="glass-chip" type="button" data-soon="Loja" aria-label="Loja">🎁</button>
         </div>
       </div>
@@ -229,7 +236,7 @@
             <span class="mlr-ic">⬇️</span>
             <span class="mlr-txt"><b>Instalar Aplicativo</b><small>Jogue mais rápido e offline</small></span>
           </button>
-          <button class="menu-list-row open-how" type="button">
+          <button class="menu-list-row" type="button" data-modal-open="how">
             <span class="mlr-ic">📖</span>
             <span class="mlr-txt"><b>Como Jogar</b><small>Regras e dicas</small></span>
           </button>
@@ -255,8 +262,8 @@
          continua só lendo button[data-mode] aqui dentro, sem mudanças) -->
     <section id="screen-mode" class="menu-screen" data-screen-name="mode">
       <div class="menu-topbar menu-topbar-mode">
-        <button class="glass-chip-text open-how" type="button">ⓘ Como Jogar</button>
-        <button class="glass-chip-text open-settings" type="button">⚙️ Configurações</button>
+        <button class="glass-chip-text" type="button" data-modal-open="how">ⓘ Como Jogar</button>
+        <button class="glass-chip-text" type="button" data-modal-open="settings">⚙️ Configurações</button>
       </div>
 
       <h2 class="mode-title">Escolha seu Modo</h2>
@@ -356,6 +363,35 @@
           </label>
         </div>
         <small>Melhor em tela cheia, na horizontal. Ative o som do aparelho.</small>
+      </div>
+    </div>
+
+    <!-- Modal de Conta (Plano 2, Fase A — docs/PLANO_CONTAS.md): login/criar
+         conta (Supabase Auth) ou, se já logado, nome + sair. src/MenuUI.js
+         alterna qual dos dois blocos (#auth-logged-out/#auth-logged-in)
+         fica visível conforme o estado da sessão. -->
+    <div id="auth-modal" class="menu-modal hidden">
+      <div class="menu-modal-card">
+        <div class="menu-modal-head"><h3>Conta</h3><button class="modal-close" type="button" data-modal-close>✕</button></div>
+
+        <div id="auth-logged-out">
+          <div class="auth-tabs">
+            <button type="button" class="auth-tab on" data-auth-tab="signin">Entrar</button>
+            <button type="button" class="auth-tab" data-auth-tab="signup">Criar Conta</button>
+          </div>
+          <form id="auth-form">
+            <input id="auth-username" type="text" placeholder="Nome de jogador" autocomplete="username" class="hidden">
+            <input id="auth-email" type="email" placeholder="E-mail" autocomplete="email" required>
+            <input id="auth-password" type="password" placeholder="Senha (mín. 6 caracteres)" autocomplete="current-password" required minlength="6">
+            <button id="auth-submit" type="submit" class="btn-primary">Entrar</button>
+          </form>
+          <p id="auth-msg" class="auth-msg"></p>
+        </div>
+
+        <div id="auth-logged-in" class="hidden">
+          <p class="auth-welcome">Logado como <b id="auth-username-display"></b></p>
+          <button id="auth-signout" type="button" class="btn-ghost">Sair</button>
+        </div>
       </div>
     </div>
 
