@@ -11,6 +11,11 @@ import { Audio } from './Audio.js?v=3';
 import { animationManager } from './AnimationManager.js?v=3';
 import { Net, resolveWsUrl } from './Net.js?v=4';
 import { RemotePlayer } from './RemotePlayer.js?v=3';
+// Fase E do Plano 2 (docs/PLANO_CONTAS.md): primeiro (e único) ponto onde
+// Game.js sabe algo sobre conta de jogador — só pra reportar resultado de
+// partida pro Ranking. `reportMatchResult` já no-opa sozinho sem sessão
+// logada, então não precisa de nenhum estado de auth aqui.
+import { reportMatchResult } from './Auth.js?v=2';
 import {
   FIXED_LAYOUT,
   JET_RANGE,
@@ -745,7 +750,10 @@ export class Game {
 
       // Cronômetro da partida
       this.elapsed += dt;
-      if (this.mode === 'chameleon') {
+      // Fase E (Ranking): faltava acumular pro Camaleão ONLINE — o badge
+      // 🫥 e o Ranking de sobrevivência ficavam travados em 0:00 pra esse
+      // papel (bug real, não decisão de escopo; só o solo já acumulava).
+      if (this.mode === 'chameleon' || (this.mode === 'online' && this.onlineRole === ROLE.CHAMELEON)) {
         if (this.player.isCamouflaged()) this.camoTime += dt;
 
         // Atraso de 30s no Placar de Tempo Camuflado (Anti-Cheat Spec)
@@ -1210,7 +1218,11 @@ export class Game {
       if (this.waterAmmo <= 0) {
         this.audio.emptyClick();
         this._updateWaterAmmoHud();
-        this._gameOver("Vitória dos Camaleões! O Caçador ficou sem água.");
+        // Bug real (Fase E, Ranking): isto é uma VITÓRIA do Camaleão, não
+        // derrota — chamava _gameOver() pela mensagem, o que marcava
+        // `this.over=true`/`this.won=false` (e reportaria pro Ranking como
+        // partida perdida). _win() é quem mostra a tela de Vitória corretamente.
+        this._win("Vitória dos Camaleões! O Caçador ficou sem água.");
         return;
       }
       this.waterAmmo--;
@@ -1257,8 +1269,9 @@ export class Game {
     }
 
     // Se a munição acabou e não acertou um Camaleão para vencer, Vitória dos Camaleões!
+    // (mesmo bug do outro ponto acima — _win(), não _gameOver(), ver comentário lá).
     if (!this.infiniteAmmo && this.waterAmmo <= 0 && !hitPlayer) {
-      this._gameOver("Vitória dos Camaleões! O Caçador ficou sem água.");
+      this._win("Vitória dos Camaleões! O Caçador ficou sem água.");
     }
   }
 
@@ -1599,8 +1612,21 @@ export class Game {
     }
   }
 
+  // Ranking (Fase E, Plano 2) — único chokepoint por resultado (todo
+  // _gameOver/_win de qualquer modo passa por aqui, ver docs/PLANO_CONTAS.md
+  // §4). `reportMatchResult` já não-opa sozinho sem sessão logada. Ignora a
+  // rara falha de conexão Online antes do `welcome` chegar (`onlineRole`
+  // ainda nulo) — nenhuma partida de verdade aconteceu pra valer a pena
+  // registrar.
+  _reportMatchResult(won) {
+    if (this.mode === 'online' && !this.onlineRole) return;
+    const dbMode = this.mode === 'online' ? `online_${this.onlineRole}` : this.mode;
+    reportMatchResult({ mode: dbMode, won, camoTimeSeconds: this.camoTime });
+  }
+
   _gameOver(msg) {
     if (this.won || this.over) return;
+    this._reportMatchResult(false);
     this.over = true;
     this._clearVignette();
     this.audio.caught();
@@ -1610,6 +1636,7 @@ export class Game {
 
   _win(msg) {
     if (this.won || this.over) return;
+    this._reportMatchResult(true);
     this.won = true;
     this._clearVignette();
     this.audio.win();

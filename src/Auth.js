@@ -64,3 +64,71 @@ export async function updateProfile(userId, fields) {
   const { data, error } = await supabase.from('profiles').update(fields).eq('id', userId).select().single();
   return { profile: data, error };
 }
+
+// Ranking (Plano 2, Fase E — docs/PLANO_CONTAS.md). Client-reported: só
+// grava se houver sessão (sem conta, sem ranking — silencioso, não é erro).
+// Decisão registrada em PLANO_CONTAS.md: um jogador só pode mentir sobre o
+// PRÓPRIO resultado (não dá pra creditar/incriminar a conta de outra pessoa
+// sem roubar a sessão dela) — mesmo nível de confiança de qualquer stat
+// client-reported, `verified` fica sempre `false` por enquanto (coluna já
+// existe pensando numa Fase futura server-authoritative pro modo Online).
+export async function reportMatchResult({ mode, won, camoTimeSeconds = 0 }) {
+  const { session } = await getSession();
+  if (!session) return;
+  const { error } = await supabase.from('match_results').insert({
+    user_id: session.user.id,
+    mode,
+    won: !!won,
+    camo_time_seconds: Math.max(0, Math.round(camoTimeSeconds)),
+  });
+  // Falha aqui (rede, RLS etc.) não deve travar o fim de partida do jogador
+  // — só perde a entrada no ranking dessa partida específica.
+  if (error) console.warn('[ranking] falha ao gravar resultado:', error.message);
+}
+
+// Junta `username` nas linhas de `match_results` (sem FK direta pra
+// `profiles` — as duas tabelas referenciam `auth.users` separadamente, não
+// uma à outra — então o embed automático do PostgREST não funciona aqui;
+// 2 queries simples resolve pra um top 10-20, sem precisar de view nova).
+async function attachUsernames(rows) {
+  const ids = [...new Set(rows.map((r) => r.user_id))];
+  if (!ids.length) return [];
+  const { data: profiles } = await supabase.from('profiles').select('id, username').in('id', ids);
+  const nameById = new Map((profiles || []).map((p) => [p.id, p.username]));
+  return rows.map((r) => ({ ...r, username: nameById.get(r.user_id) || 'Jogador' }));
+}
+
+// Top sobrevivência (Camaleão, solo + Online juntos — "por modo" do plano
+// vira "por papel": a melhor partida de um jogador conta, seja treino
+// sozinho ou partida online de verdade).
+export async function getSurvivalRanking(limit = 10) {
+  const { data: rows, error } = await supabase
+    .from('match_results')
+    .select('user_id, camo_time_seconds, played_at')
+    .in('mode', ['chameleon', 'online_chameleon'])
+    .order('camo_time_seconds', { ascending: false })
+    .limit(limit);
+  if (error || !rows) return [];
+  return attachUsernames(rows);
+}
+
+// Top Caçador por número de vitórias. Supabase JS não faz GROUP BY sem
+// RPC/view — pra um ranking casual, agrega no cliente sobre as últimas 500
+// partidas vencidas (suficiente pro volume de um joguinho; documentado como
+// limitação conhecida em docs/PLANO_CONTAS.md).
+export async function getHunterRanking(limit = 10) {
+  const { data: rows, error } = await supabase
+    .from('match_results')
+    .select('user_id')
+    .in('mode', ['hunter', 'online_hunter'])
+    .eq('won', true)
+    .limit(500);
+  if (error || !rows) return [];
+  const wins = new Map();
+  for (const r of rows) wins.set(r.user_id, (wins.get(r.user_id) || 0) + 1);
+  const top = [...wins.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, limit)
+    .map(([user_id, winsCount]) => ({ user_id, wins: winsCount }));
+  return attachUsernames(top);
+}

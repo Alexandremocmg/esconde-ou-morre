@@ -1,4 +1,4 @@
-import { signUp, signIn, signOut, getSession, onAuthStateChange, getProfile } from './Auth.js?v=1';
+import { signUp, signIn, signOut, getSession, onAuthStateChange, getProfile, getSurvivalRanking, getHunterRanking } from './Auth.js?v=2';
 
 // Controla as 3 telas dentro de #start-overlay (main/mode/loading), os modais
 // (Configurações, Como Jogar, "Em breve") e a conta de jogador (Plano 2, Fase A
@@ -161,6 +161,69 @@ export function initMenuUI({ onModeChosen, onAuthChange } = {}) {
       authSignout.addEventListener('click', async () => {
         await signOut();
         closeModal(authModal);
+      });
+    }
+  }
+
+  // ---------- Ranking (Plano 2, Fase E — docs/PLANO_CONTAS.md) ----------
+  const rankingModal = document.getElementById('ranking-modal');
+  if (rankingModal) {
+    const rankingList = document.getElementById('ranking-list');
+    const rankingTabs = rankingModal.querySelectorAll('.auth-tab');
+    let rankingLoadedTab = null;
+
+    const formatDuration = (seconds) => {
+      const s = Math.max(0, Math.round(seconds));
+      const m = Math.floor(s / 60);
+      return `${m}:${String(s % 60).padStart(2, '0')}`;
+    };
+
+    const renderRanking = (rows, valueFn) => {
+      rankingList.innerHTML = '';
+      if (!rows.length) {
+        rankingList.innerHTML = '<li class="ranking-empty">Ninguém no ranking ainda — jogue logado pra aparecer aqui!</li>';
+        return;
+      }
+      for (let i = 0; i < rows.length; i++) {
+        const li = document.createElement('li');
+        li.className = 'ranking-row';
+        const rank = document.createElement('span');
+        rank.className = 'ranking-rank';
+        rank.textContent = String(i + 1);
+        const name = document.createElement('span');
+        name.className = 'ranking-name';
+        name.textContent = rows[i].username;
+        const value = document.createElement('span');
+        value.className = 'ranking-value';
+        value.textContent = valueFn(rows[i]);
+        li.append(rank, name, value);
+        rankingList.appendChild(li);
+      }
+    };
+
+    const loadTab = async (tab) => {
+      rankingList.innerHTML = '<li class="ranking-empty">Carregando…</li>';
+      if (tab === 'hunter') {
+        renderRanking(await getHunterRanking(), (r) => `${r.wins} vitória${r.wins === 1 ? '' : 's'}`);
+      } else {
+        renderRanking(await getSurvivalRanking(), (r) => formatDuration(r.camo_time_seconds));
+      }
+      rankingLoadedTab = tab;
+    };
+
+    rankingTabs.forEach((t) => {
+      t.addEventListener('click', () => {
+        rankingTabs.forEach((b) => b.classList.toggle('on', b === t));
+        loadTab(t.dataset.rankingTab);
+      });
+    });
+
+    // Só busca dados quando o modal é realmente aberto (não no boot da
+    // página) — reaproveita o mesmo clique que já abre o modal (padrão
+    // genérico de modais acima), só que aqui também dispara a 1ª carga.
+    for (const btn of document.querySelectorAll('[data-modal-open="ranking"]')) {
+      btn.addEventListener('click', () => {
+        if (!rankingLoadedTab) loadTab('survival');
       });
     }
   }

@@ -1,9 +1,9 @@
-import { Game } from './Game.js?v=3';
+import { Game } from './Game.js?v=4';
 import { animationManager } from './AnimationManager.js?v=3';
 import { initTunePanel } from './TunePanel.js?v=1';
-import { initMenuUI, updateLoadingStages } from './MenuUI.js?v=2';
+import { initMenuUI, updateLoadingStages } from './MenuUI.js?v=3';
 import { resolveWsUrl, hasResumableSession } from './Net.js?v=4';
-import { getProfile, updateProfile } from './Auth.js?v=1';
+import { getProfile, updateProfile } from './Auth.js?v=2';
 
 // Painel de ajuste ao vivo (⚙️) — só aparece com ?tune=1 na URL, ver TunePanel.js.
 initTunePanel();

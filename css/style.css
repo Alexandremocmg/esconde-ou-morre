@@ -1105,6 +1105,24 @@ body.mode-online.online-hunter #reticle { display: block; }
   outline: none;
 }
 
+/* Ranking (Fase E, Plano 2 — #ranking-modal) */
+.ranking-list {
+  list-style: none;
+  display: flex; flex-direction: column; gap: 6px;
+  max-height: 320px; overflow-y: auto;
+  margin-top: 14px;
+}
+.ranking-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
+}
+.ranking-rank { font-weight: 800; width: 20px; text-align: center; color: var(--accent); flex: none; }
+.ranking-name { flex: 1; font-size: 13px; color: var(--ui); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ranking-value { font-size: 12px; color: var(--ui-dim); font-variant-numeric: tabular-nums; flex: none; }
+.ranking-empty { text-align: center; color: var(--ui-dim); padding: 20px 0; font-size: 13px; }
+
 /* ── Painel de ajuste ao vivo (⚙️, ?tune=1 — TunePanel.js) ──────────────────
    Escondido por padrão (display:none) tanto no botão quanto no painel — só
    initTunePanel() os revela, e só depois de conferir a query string, então

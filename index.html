@@ -14,7 +14,7 @@
      em main.js só fora de dev (ver comentário lá — cache agressivo do
      service worker atrapalharia o ciclo de no-cache do dev_server.py). -->
 <link rel="manifest" href="manifest.json" />
-<link rel="stylesheet" href="css/style.css?v=7" />
+<link rel="stylesheet" href="css/style.css?v=8" />
 
 <!-- Three.js e Supabase via CDN (ES Modules), sem bundler nem npm no cliente.
      Requer servidor local: `python -m http.server` ou `npx serve`. -->
@@ -264,7 +264,7 @@
       </div>
 
       <nav class="menu-bottom-nav">
-        <button type="button" data-soon="Ranking"><span class="bn-ic">🏆</span>Ranking</button>
+        <button type="button" data-modal-open="ranking"><span class="bn-ic">🏆</span>Ranking</button>
         <button type="button" data-soon="Missões"><span class="bn-ic">📋</span>Missões</button>
         <button type="button" data-modal-open="custom"><span class="bn-ic">🎨</span>Personalização</button>
         <button type="button" data-modal-open="news"><span class="bn-ic">📣</span>Novidades</button>
@@ -401,6 +401,23 @@
           <p class="auth-welcome">Logado como <b id="auth-username-display"></b></p>
           <button id="auth-signout" type="button" class="btn-ghost">Sair</button>
         </div>
+      </div>
+    </div>
+
+    <!-- Ranking (Fase E, Plano 2 — docs/PLANO_CONTAS.md §4): 2 abas, cada uma
+         alimentada por Auth.js (getSurvivalRanking/getHunterRanking). Grava
+         resultado é client-reported (ver reportMatchResult em Game.js) — sem
+         conta, o jogador não aparece aqui, mas ainda pode jogar normalmente. -->
+    <div id="ranking-modal" class="menu-modal hidden">
+      <div class="menu-modal-card">
+        <div class="menu-modal-head"><h3>Ranking</h3><button class="modal-close" type="button" data-modal-close>✕</button></div>
+        <div class="auth-tabs">
+          <button type="button" class="auth-tab on" data-ranking-tab="survival">🫥 Sobrevivência</button>
+          <button type="button" class="auth-tab" data-ranking-tab="hunter">💧 Caçador</button>
+        </div>
+        <ol id="ranking-list" class="ranking-list">
+          <li class="ranking-empty">Abra pra carregar…</li>
+        </ol>
       </div>
     </div>
 
@@ -547,4 +564,4 @@
   <div id="tune-panel" class="hidden"></div>
 </div>
 
-<script type="module" src="src/main.js?v=4"></script>
+<script type="module" src="src/main.js?v=6"></script>

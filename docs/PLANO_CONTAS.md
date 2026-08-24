@@ -14,7 +14,7 @@ de verdade (backend + banco), não armazenamento só local no aparelho.
 **Loja** fica "Em breve" por decisão do usuário (pagamento com dinheiro real não é algo
 que o assistente processa sozinho) — pendência de negócio, não de código.
 
-**Continuar Partida** foi deliberadamente **desacoplado** de conta — ver §5.
+**Continuar Partida** foi deliberadamente **desacoplado** de conta — ver §6.
 
 ## 2. Por que Supabase
 
@@ -51,17 +51,56 @@ ligar depois, é uma configuração no painel do Supabase, sem mudança de códi
 `auth.users`, não é chamável via RPC pelo cliente). Evita corrida entre confirmar
 conta e o cliente tentar criar o profile por conta própria.
 
-## 4. Confiabilidade dos dados (`match_results.verified`)
+## 4. Confiabilidade dos dados (`match_results.verified`) — decisão da Fase E
 
-Partidas **Online** podem ser gravadas pelo **servidor** (`server/room.js`, no ponto
-que já decide fim de partida — autoritativo) usando a service role key —
-`verified=true`. Partidas **solo** (Camaleão/Caçador sem servidor nenhum — o jogo
-inteiro roda no cliente) só podem ser client-reported — `verified=false`, mesmo
-espírito honesto do "Débito registrado" que `docs/PLANO_MULTIPLAYER.md` já documenta
-pra outras lacunas (ex.: "Movimento é forjável na v1"). O Ranking (Fase E) deve deixar
-essa distinção visível, não escondida.
+A ideia original era o **servidor** gravar partidas Online (`verified=true`,
+autoritativo), e só o solo ser client-reported. Na hora de implementar, perguntei —
+fazer isso direito exige o servidor (`server/room.js`) saber qual conta Supabase é
+cada jogador: nova dependência (`@supabase/supabase-js` no servidor), guardar a
+service role key como segredo em produção (Render), e verificar o JWT de cada
+jogador antes de confiar nele. Escopo real, não só UI.
 
-## 5. Continuar Partida — por que NÃO usa conta
+**Decisão: por agora, TUDO é client-reported** — solo e Online, os dois. `verified`
+sempre `false` (coluna continua existindo pra uma Fase futura server-authoritative,
+se algum dia valer a pena o escopo acima). Um jogador só pode mentir sobre o
+**PRÓPRIO** resultado — não dá pra creditar/incriminar a conta de outra pessoa sem
+roubar a sessão dela, então o risco novo introduzido é zero além do que qualquer
+stat client-reported já teria. Mesmo espírito honesto do "Débito registrado" que
+`docs/PLANO_MULTIPLAYER.md` já documenta pra outras lacunas (ex.: "Movimento é
+forjável na v1").
+
+`Game.js._reportMatchResult(won)` é o único ponto que chama `reportMatchResult()` —
+roda dentro de `_gameOver()`/`_win()` (os dois únicos chokepoints de fim de partida,
+qualquer que seja o modo). `reportMatchResult()` (`src/Auth.js`) checa sessão
+sozinho e não faz nada sem login — Game.js nunca precisa saber se o jogador está
+logado.
+
+**Bugs reais corrigidos ao implementar isto** (achados testando o hook, não coisa
+que eu tava procurando):
+- `Game.js:fireWaterJet` chamava `_gameOver("Vitória dos Camaleões!...")` em 2
+  lugares — a mensagem dizia vitória, mas `_gameOver()` marca derrota
+  (`this.won=false`) e mostra a tela de Game Over, não Vitória. Corrigido pra
+  `_win(...)` nos dois — bug visível pro jogador (tela errada), não só o Ranking.
+- `this.camoTime` só acumulava em Camaleão **solo** (`this.mode === 'chameleon'`) —
+  Camaleão **Online** nunca acumulava nada, então o badge 🫥 no HUD ficava travado
+  em 0:00 a partida inteira, e o Ranking de sobrevivência online sempre daria zero.
+  Corrigido pra também acumular quando `this.mode === 'online' &amp;&amp; this.onlineRole
+  === ROLE.CHAMELEON`.
+
+## 5. Categorias do Ranking
+
+2 abas, cada uma colapsando solo+Online pelo mesmo PAPEL (não por modo exato) —
+simplificação deliberada: a melhor partida de um jogador conta, seja treino sozinho
+ou jogo online de verdade.
+
+- **Sobrevivência** (`chameleon` + `online_chameleon`): top 10 por
+  `camo_time_seconds`, uma linha por partida (não agregado).
+- **Caçador** (`hunter` + `online_hunter`): top 10 por número de vitórias — agregado
+  no CLIENTE (Supabase JS não faz `GROUP BY` sem RPC/view), sobre até 500 partidas
+  vencidas recentes. Suficiente pro volume de um joguinho casual; documentado aqui
+  como limitação conhecida, não escondido.
+
+## 6. Continuar Partida — por que NÃO usa conta
 
 Investigado antes de desenhar: `RECONNECT_GRACE_MS` (`src/net/protocol.js`) é **30
 segundos**; a sala é única, em memória, e some inteira num restart/deploy/sleep do
@@ -76,7 +115,7 @@ aba) — ver `docs/PLANO_MULTIPLAYER.md` §3.2. "Continuar Partida" no menu (Fas
 Plano 2) só liga o botão a esse mecanismo já existente, sem tocar em conta/Supabase.
 Se isso se mostrar insuficiente no uso real, revisitar.
 
-## 6. "Confirm email" (resolvido)
+## 7. "Confirm email" (resolvido)
 
 O projeto Supabase nascia com confirmação de e-mail obrigatória por padrão — não é
 algo editável por migration/SQL nem pelas ferramentas de MCP disponíveis nesta sessão
@@ -89,7 +128,7 @@ contas forem criadas em pouco tempo, o rate limit do provedor SMTP embutido do
 Supabase pode aparecer (bem baixo por padrão) — configurar SMTP próprio resolve, mas
 é opcional pro volume de um joguinho.
 
-## 7. Limitações conhecidas
+## 8. Limitações conhecidas
 
 - Progresso de Missões e resultado de partidas solo são **client-reported** — um
   jogador mal-intencionado pode forjar. Aceitável pra um ranking/missões casuais
