@@ -14,7 +14,7 @@
      em main.js só fora de dev (ver comentário lá — cache agressivo do
      service worker atrapalharia o ciclo de no-cache do dev_server.py). -->
 <link rel="manifest" href="manifest.json" />
-<link rel="stylesheet" href="css/style.css?v=5" />
+<link rel="stylesheet" href="css/style.css?v=7" />
 
 <!-- Three.js e Supabase via CDN (ES Modules), sem bundler nem npm no cliente.
      Requer servidor local: `python -m http.server` ou `npx serve`. -->
@@ -266,7 +266,7 @@
       <nav class="menu-bottom-nav">
         <button type="button" data-soon="Ranking"><span class="bn-ic">🏆</span>Ranking</button>
         <button type="button" data-soon="Missões"><span class="bn-ic">📋</span>Missões</button>
-        <button type="button" data-soon="Personalização"><span class="bn-ic">🎨</span>Personalização</button>
+        <button type="button" data-modal-open="custom"><span class="bn-ic">🎨</span>Personalização</button>
         <button type="button" data-modal-open="news"><span class="bn-ic">📣</span>Novidades</button>
         <button type="button" data-modal-open="credits"><span class="bn-ic">ⓘ</span>Créditos</button>
       </nav>
@@ -347,20 +347,13 @@
          fora da tela, MenuUI.js dispara startGame() automaticamente no fluxo novo. -->
     <button id="start-btn" class="sr-only" disabled>Carregando 3D...</button>
 
-    <!-- Modal de Configurações: novo lar do seletor de forma + config de munição,
-         que já são features reais hoje (Game.js/Player.js leem esses IDs) e não
-         tinham lugar no layout dos mockups — IDs preservados de propósito. -->
+    <!-- Modal de Configurações: config de munição do Caçador, feature real
+         hoje (Game.js/Player.js leem esses IDs). Seletor de forma morava
+         aqui antes — mudou pra #custom-modal (Personalização) na Fase D do
+         Plano 2, IDs preservados de propósito. -->
     <div id="settings-modal" class="menu-modal hidden">
       <div class="menu-modal-card">
         <div class="menu-modal-head"><h3>Configurações</h3><button class="modal-close" type="button" data-modal-close>✕</button></div>
-
-        <div class="body-label">Escolha sua forma</div>
-        <div id="body-pick" class="body-pick">
-          <button type="button" data-kind="toy" class="on"><span class="bp-ic">🧍</span>Boneco</button>
-          <button type="button" data-kind="mannequin"><span class="bp-ic">🪆</span>Manequim</button>
-          <button type="button" data-kind="blob"><span class="bp-ic">🫧</span>Blob</button>
-          <button type="button" data-kind="cube"><span class="bp-ic">🧊</span>Cubo</button>
-        </div>
 
         <div class="body-label">Regras do Caçador (Munição de Água)</div>
         <div class="ammo-cfg-panel">
@@ -462,6 +455,32 @@
       </div>
     </div>
 
+    <!-- Personalização (Fase D, Plano 2 — docs/PLANO_CONTAS.md §3): forma do
+         corpo (movida daqui de Configurações) sempre funciona local
+         (sessionStorage['eom-body']), sincroniza com profiles.body_kind
+         quando logado. Nome de jogador só existe pra quem tem conta
+         (profiles.username, usado no Ranking) — ver main.js. -->
+    <div id="custom-modal" class="menu-modal hidden">
+      <div class="menu-modal-card">
+        <div class="menu-modal-head"><h3>Personalização</h3><button class="modal-close" type="button" data-modal-close>✕</button></div>
+
+        <div class="body-label">Escolha sua forma</div>
+        <div id="body-pick" class="body-pick">
+          <button type="button" data-kind="toy" class="on"><span class="bp-ic">🧍</span>Boneco</button>
+          <button type="button" data-kind="mannequin"><span class="bp-ic">🪆</span>Manequim</button>
+          <button type="button" data-kind="blob"><span class="bp-ic">🫧</span>Blob</button>
+          <button type="button" data-kind="cube"><span class="bp-ic">🧊</span>Cubo</button>
+        </div>
+
+        <div class="body-label">Nome de jogador</div>
+        <p id="custom-username-logged-out" class="custom-note">Entre numa conta (👤) pra escolher um nome de jogador — usado no Ranking.</p>
+        <div id="custom-username-logged-in" class="hidden">
+          <input id="custom-username" type="text" maxlength="24" placeholder="Nome de jogador">
+          <p id="custom-username-msg" class="auth-msg"></p>
+        </div>
+      </div>
+    </div>
+
     <!-- Modal Como Jogar: mesmo conteúdo real de sempre, só realocado -->
     <div id="how-modal" class="menu-modal hidden">
       <div class="menu-modal-card">
@@ -528,4 +547,4 @@
   <div id="tune-panel" class="hidden"></div>
 </div>
 
-<script type="module" src="src/main.js?v=3"></script>
+<script type="module" src="src/main.js?v=4"></script>

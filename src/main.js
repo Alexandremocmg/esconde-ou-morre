@@ -3,6 +3,7 @@ import { animationManager } from './AnimationManager.js?v=3';
 import { initTunePanel } from './TunePanel.js?v=1';
 import { initMenuUI, updateLoadingStages } from './MenuUI.js?v=2';
 import { resolveWsUrl, hasResumableSession } from './Net.js?v=4';
+import { getProfile, updateProfile } from './Auth.js?v=1';
 
 // Painel de ajuste ao vivo (⚙️) — só aparece com ?tune=1 na URL, ver TunePanel.js.
 initTunePanel();
@@ -12,17 +13,67 @@ const startBtn = document.getElementById('start-btn');
 const loaderFill = document.getElementById('loader-fill');
 const loaderStatus = document.getElementById('loader-status');
 
-// Seletor de forma (Fase 4): persiste 'eom-body' e realça o botão escolhido.
+// Seletor de forma (Fase 4, agora dentro de Personalização — Fase D do
+// Plano 2): sessionStorage['eom-body'] continua sendo a fonte de verdade
+// pro JOGO em si (Player.js só lê sessionStorage, nunca fala com o
+// Supabase direto) — logado, a conta só empurra o valor pra sessionStorage
+// (no login) e recebe de volta (no clique); deslogado funciona 100% local,
+// como sempre funcionou.
+let currentUserId = null;
 const bodyPick = document.getElementById('body-pick');
-if (bodyPick) {
-  const saved = sessionStorage.getItem('eom-body') || 'toy';
-  for (const btn of bodyPick.querySelectorAll('button')) {
-    btn.classList.toggle('on', btn.dataset.kind === saved);
-    btn.addEventListener('click', () => {
-      sessionStorage.setItem('eom-body', btn.dataset.kind);
-      for (const b of bodyPick.querySelectorAll('button')) b.classList.toggle('on', b === btn);
-    });
+
+function setBodyKind(kind, { persistAccount = true } = {}) {
+  sessionStorage.setItem('eom-body', kind);
+  if (bodyPick) {
+    for (const b of bodyPick.querySelectorAll('button')) b.classList.toggle('on', b.dataset.kind === kind);
   }
+  if (persistAccount && currentUserId) {
+    updateProfile(currentUserId, { body_kind: kind }).catch(() => {});
+  }
+}
+
+if (bodyPick) {
+  setBodyKind(sessionStorage.getItem('eom-body') || 'toy', { persistAccount: false });
+  for (const btn of bodyPick.querySelectorAll('button')) {
+    btn.addEventListener('click', () => setBodyKind(btn.dataset.kind));
+  }
+}
+
+// Nome de jogador (Fase D, Plano 2): só existe pra quem tem conta —
+// profiles.username, usado depois no Ranking (Fase E). #custom-modal
+// alterna qual dos dois blocos aparece conforme onAuthChange abaixo.
+const customUsernameLoggedOut = document.getElementById('custom-username-logged-out');
+const customUsernameLoggedIn = document.getElementById('custom-username-logged-in');
+const customUsernameInput = document.getElementById('custom-username');
+const customUsernameMsg = document.getElementById('custom-username-msg');
+
+if (customUsernameInput) {
+  customUsernameInput.addEventListener('change', async () => {
+    if (!currentUserId) return;
+    const value = customUsernameInput.value.trim();
+    if (!value) return;
+    const { error } = await updateProfile(currentUserId, { username: value });
+    if (customUsernameMsg) {
+      customUsernameMsg.textContent = error ? error.message : 'Salvo!';
+      customUsernameMsg.classList.toggle('error', !!error);
+    }
+  });
+}
+
+// Chamado por MenuUI.js (que já possui a assinatura onAuthStateChange do
+// Supabase) toda vez que login/logout/refresh de sessão acontece — inclusive
+// na carga inicial da página. No login, puxa o profile e sincroniza forma do
+// corpo + nome pra cá; no logout, só esconde o campo de nome (forma do corpo
+// continua valendo localmente, sem precisar resetar pro padrão).
+async function onAuthChange(session) {
+  currentUserId = session ? session.user.id : null;
+  if (customUsernameLoggedOut) customUsernameLoggedOut.classList.toggle('hidden', !!session);
+  if (customUsernameLoggedIn) customUsernameLoggedIn.classList.toggle('hidden', !session);
+  if (!session) return;
+  const { profile } = await getProfile(session.user.id);
+  if (!profile) return;
+  if (customUsernameInput) customUsernameInput.value = profile.username || '';
+  if (profile.body_kind) setBodyKind(profile.body_kind, { persistAccount: false });
 }
 
 // Seletor de modo: Camaleão (padrão, foge/camufla), Caçador (jogável, mira e atira
@@ -201,4 +252,5 @@ initMenuUI({
       wantsAutoStart = true;
     }
   },
+  onAuthChange,
 });

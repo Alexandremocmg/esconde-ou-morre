@@ -1048,6 +1048,18 @@ body.mode-online.online-hunter #reticle { display: block; }
 }
 
 /* ---------- Conta (Plano 2, Fase A — #auth-modal) ---------- */
+/* Bug real: não existe `.hidden { display:none }` genérico neste projeto —
+   cada contexto define sua própria regra escopada (`#start-overlay.hidden`,
+   `.menu-modal.hidden` etc., ver o resto do arquivo). Sem isto,
+   #auth-logged-in/#custom-username-logged-in ficavam com a classe `hidden`
+   aplicada mas continuavam `display:block` — os dois blocos (logado/
+   deslogado) apareciam empilhados ao mesmo tempo. */
+#auth-logged-out.hidden,
+#auth-logged-in.hidden,
+#custom-username-logged-out.hidden,
+#custom-username-logged-in.hidden {
+  display: none;
+}
 #auth-chip.on {
   background: rgba(46, 204, 113, 0.22);
   border-color: rgba(46, 204, 113, 0.6);
@@ -1080,6 +1092,18 @@ body.mode-online.online-hunter #reticle { display: block; }
 .auth-msg { font-size: 12px; margin-top: 10px; text-align: center; min-height: 15px; color: var(--ui-dim); }
 .auth-msg.error { color: #ff6b6b; }
 .auth-welcome { margin-bottom: 14px; font-size: 14px; }
+
+/* Personalização (Fase D, Plano 2 — #custom-modal) */
+.custom-note { font-size: 12px; color: var(--ui-dim); line-height: 1.4; }
+#custom-username {
+  width: 100%;
+  font: inherit; font-size: 14px;
+  padding: 11px 14px; border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(0, 0, 0, 0.35);
+  color: #fff;
+  outline: none;
+}
 
 /* ── Painel de ajuste ao vivo (⚙️, ?tune=1 — TunePanel.js) ──────────────────
    Escondido por padrão (display:none) tanto no botão quanto no painel — só

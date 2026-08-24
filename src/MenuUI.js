@@ -12,7 +12,7 @@ import { signUp, signIn, signOut, getSession, onAuthStateChange, getProfile } fr
 // substitutos: só resetam qual .menu-screen fica visível quando o jogador volta
 // ao menu, sem duplicar a lógica de mostrar/esconder o overlay em si.
 
-export function initMenuUI({ onModeChosen } = {}) {
+export function initMenuUI({ onModeChosen, onAuthChange } = {}) {
   const overlay = document.getElementById('start-overlay');
   if (!overlay) return;
 
@@ -121,6 +121,10 @@ export function initMenuUI({ onModeChosen } = {}) {
       } else {
         setMode('signin');
       }
+      // Personalização (Fase D) precisa saber sessão logada/deslogada pra
+      // sincronizar forma do corpo/nome com profiles — MenuUI é quem já
+      // possui a assinatura de onAuthStateChange, não duplica em main.js.
+      if (onAuthChange) onAuthChange(session);
     };
     getSession().then(({ session }) => showLoggedState(session));
     onAuthStateChange(showLoggedState);
