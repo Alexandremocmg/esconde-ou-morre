@@ -674,7 +674,8 @@ export class Seeker {
 }
 
 // Aproxima um ângulo de outro respeitando o menor arco, limitado por maxStep.
-function approachAngle(current, target, maxStep) {
+// Exportada: ChameleonTarget.js (Plano 3) reusa pro giro suave da IA dos alvos.
+export function approachAngle(current, target, maxStep) {
   let diff = target - current;
   while (diff > Math.PI) diff -= Math.PI * 2;
   while (diff < -Math.PI) diff += Math.PI * 2;

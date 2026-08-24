@@ -118,18 +118,21 @@
 
 ## 3. Mecânica do Scanner / Visão Reveladora (Habilidade Secundária)
 
-**Escopo desta fase — "ping simplificado":** os `ChameleonTarget` de hoje são bonecos
-parados sem IA de esconderijo/troca de cor (`ChameleonTarget.js`, comentário de cabeçalho
-"fase 1"), então o pulso revela direção/distância de **todo alvo vivo dentro do alcance**,
-sem o sinal de "movimento/troca de cor/batimento acelerado" do briefing original — esse
-sinal não existe hoje e fica para quando os alvos ganharem comportamento próprio.
+**Escopo atual — "ping simplificado":** desde o Plano 3, os `ChameleonTarget` deixaram de
+ser bonecos parados — agora vagueiam pela própria rota, fogem ao serem avistados pela
+lanterna do Caçador e recolorem periodicamente pra combinar com o entorno
+(`ChameleonTarget.js`). O pulso do Scanner, porém, **continua revelando direção/distância
+de todo alvo vivo dentro do alcance**, sem diferenciar um alvo bem camuflado (parado,
+cor combinando) de um mal camuflado (em fuga, cor destoante) — não mais por FALTA de sinal
+nos alvos (que agora existe: `state`/velocidade/cor real), e sim por **decisão de escopo**
+desta rodada, documentada como pendência pra uma rodada futura.
 
 | Item | Status | Referência atual |
 | --- | --- | --- |
 | Pulso de 8m revela direção/distância dos alvos vivos | ✅ implementado (ping simplificado) | `Game.activateScanner()` / `Game._updateScanner()` |
 | Vinheta azulada durante o pulso | ✅ implementado | `#vignette.scanning`, `css/style.css` |
 | Duração 3s / cooldown 20s | ✅ implementado | `SCANNER_DURATION_MS=3000`, `SCANNER_COOLDOWN_MS=20000` |
-| Distorção/eco por Camaleão em movimento/trocando de cor | 🔲 fora de escopo (ver acima) | sem sinal de movimento/cor nos alvos hoje |
+| Distorção/eco por Camaleão em movimento/trocando de cor | 🔲 fora de escopo (decisão, não mais falta de sinal — ver acima) | `ChameleonTarget` já expõe `state`/velocidade/cor real; scanner ainda não os consulta |
 
 * **Lente Térmica / Sonar Acústico:** botão dedicado (`#btn-scan`, 📡) — toque ativa (não
   segurar; a duração é fixa em 3s, então "hold" e "toggle" dão no mesmo). `Game.

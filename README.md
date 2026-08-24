@@ -99,6 +99,7 @@ Fora do modo Online, qualquer host de arquivos estáticos serve a pasta como est
   - **Remoção de Tinta (`washPaint`):** O jato de água desbota a tinta do jogador de volta ao branco original em ~1.5s de contato, forçando o movimento e dando uma janela de fuga/esquiva.
   - **Placar com Atraso de 30s (Anti-Cheat):** O tempo camuflado exibido no HUD do Caçador possui um atraso intencional de 30 segundos, impedindo a localização de esconderijos por leitura de pontos em tempo real.
   - **Escolha do Caçador:** sem sorteio nem zona no mapa — no modo Online é simplesmente o primeiro a entrar na sala; os próximos, até 4, viram Camaleão (ver `docs/MECANICA_CACADOR.md` e `docs/PLANO_LOBBY_MULTIPLAYER.md`).
+  - **Camaleões-alvo com IA própria (`ChameleonTarget.js`):** deixaram de ser bonecos parados — vagueiam pela própria rota de patrulha (reaproveitando a rede de waypoints do `Seeker`), fogem ativamente ao entrar no cone da lanterna do Caçador (com histerese, sem flicker de estado) e recolorem periodicamente sampleando a cor real de superfícies próximas (`level.colorables`), tudo escalando com o estágio no mesmo padrão numérico do `Seeker`. Locomoção (bigodes de desvio + colisão-deslizante + anti-trava) é adaptada do `Seeker.js` já validado em produção.
 - **Modo Caçador Jogável — Visão/Câmera, Arma e Scanner** (`docs/MECANICA_CACADOR_VISAO.md`):
   - **Câmera 1ª Pessoa (`HunterCamera.js`):** FOV 80° (pontos cegos laterais de propósito), arma-viewmodel + antebraço/mão presos à câmera (cor acompanha a camuflagem do jogador), corpo do Caçador invisível na própria visão.
   - **Lanterna:** `SpotLight` acoplada à câmera com atenuação quadrática nativa (`decay=2`), sombra dinâmica em desktop.
@@ -129,7 +130,7 @@ src/
   Player.js       # Física do jogador, amostragem de cor, modos de pose e pulo
   UVPaint.js      # Pincel Livre: raycast na malha animada → UV → canvas 2D (textura de pintura)
   Seeker.js       # IA dos Caçadores: patrulha/caça, visão Toon, reset em memória
-  ChameleonTarget.js # Alvos-camaleão parados do modo Caçador jogável (fase 1, sem IA própria)
+  ChameleonTarget.js # Alvos-camaleão do modo Caçador jogável: vagueia/foge/recolore, IA adaptada do Seeker
   Level.js        # Mansão de 2 andares, mobília e áreas de camuflagem
   FollowCamera.js # Câmera 3ª pessoa (Camaleão) com colisão e suporte a Pinch to Zoom
   HunterCamera.js # Câmera 1ª pessoa do Caçador jogável (FOV, olhar livre)

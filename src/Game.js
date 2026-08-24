@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import { Level } from './Level.js?v=3';
 import { Player } from './Player.js?v=3';
-import { Seeker, WAYPOINTS_ALT } from './Seeker.js?v=3';
-import { ChameleonTarget } from './ChameleonTarget.js?v=3';
+import { Seeker, WAYPOINTS_ALT } from './Seeker.js?v=4';
+import { ChameleonTarget } from './ChameleonTarget.js?v=9';
 import { FollowCamera } from './FollowCamera.js?v=3';
 import { HunterCamera } from './HunterCamera.js?v=3';
 import { Joystick } from './Joystick.js?v=3';
@@ -38,6 +38,11 @@ import {
 // precisa dos MESMOS valores para validar o disparo, então moram num só lugar.
 const HUNTER_AIM_HALF_ANGLE = THREE.MathUtils.degToRad(HUNTER_AIM_HALF_ANGLE_DEG); // ~18° de cone total
 const HUNTER_TARGET_COUNT = 6;
+// Mesmos números do SpotLight de _addHunterFlashlight() — o cone de "avistamento"
+// que a IA dos alvos usa pra saber se o Caçador está olhando pra eles (Plano 3,
+// docs/MECANICA_CACADOR_VISAO.md §3) é o mesmo cone da lanterna, não o de mira.
+const HUNTER_FLASHLIGHT_RANGE = 14;
+const HUNTER_FLASHLIGHT_ANGLE_DEG = 28;
 
 // Scanner / Visão Reveladora (Fase 3, docs/MECANICA_CACADOR_VISAO.md §3). MVP "ping
 // simplificado": os ChameleonTarget de hoje são bonecos parados sem IA de esconderijo/
@@ -334,7 +339,9 @@ export class Game {
   // sem precisar sincronizar posição por frame). decay=2 é a atenuação quadrática nativa
   // do Three.js — mapeamento direto do pedido do briefing.
   _addHunterFlashlight() {
-    const light = new THREE.SpotLight(0xfff2d0, 3.2, 14, THREE.MathUtils.degToRad(28), 0.4, 2);
+    const light = new THREE.SpotLight(
+      0xfff2d0, 3.2, HUNTER_FLASHLIGHT_RANGE, THREE.MathUtils.degToRad(HUNTER_FLASHLIGHT_ANGLE_DEG), 0.4, 2
+    );
     light.castShadow = !this.isMobile; // mesmo guard de custo da key light (perf mobile)
     if (light.castShadow) {
       light.shadow.mapSize.set(1024, 1024);
@@ -709,7 +716,7 @@ export class Game {
 
       if (this.mode === 'hunter') {
         this._updateHunterFPSRig();
-        for (const t of this.targets) t.update(dt);
+        for (const t of this.targets) t.update(dt, this.camera);
         this._updateScanner(this.targets);
       }
       // Papel Caçador no modo online: mesma câmera 1ª pessoa/viewmodel do single-
@@ -914,22 +921,25 @@ export class Game {
   // ------------------------------------------------------ MODO CAÇADOR (jogável)
   // Espalha os Camaleões-alvo em pontos já validados pela IA do Seeker (routes
   // de patrulha, ver Level.js._setRoutes) — evita reinventar "onde é seguro
-  // andar" nesta fase 1 (alvos parados; sem esconderijo/camuflagem próprios).
+  // andar". Desde o Plano 3 os alvos vagueiam/fogem dentro da PRÓPRIA rota (não
+  // há grafo de escadas entre routes[0]/térreo e routes[1]/andar de cima), por
+  // isso guardamos de qual rota cada ponto veio, não só a posição.
   _spawnHunterTargets() {
     const routes = this.level.routes || [];
     const routeY = this.level.routeY || [];
     const points = [];
     // routes[i] guarda x/z de patrulha, mas o .y de cada waypoint é uma altura
     // GENÉRICA de rota (Level.js: ROUTE_Y) — não a altura real do andar. O
-    // Seeker corrige isso ao vivo com _groundY() a cada frame; o alvo é
-    // estático, então precisa da altura certa já na hora de plantar (routeY[i],
-    // a mesma usada como startY do Seeker daquela rota — ver Level._setRoutes).
+    // Seeker corrige isso ao vivo com _groundY() a cada frame; o alvo planta
+    // na altura certa já de cara (routeY[i], a mesma usada como startY do
+    // Seeker daquela rota — ver Level._setRoutes) e depois se corrige sozinho
+    // ao vaguear/fugir (mesmo _groundY adaptado, ver Fase B do Plano 3).
     for (const i of [0, 1]) {
       const route = routes[i];
       if (!route) continue;
       const y = routeY[i] != null ? routeY[i] : undefined;
       for (const w of route) {
-        points.push(y != null ? new THREE.Vector3(w.x, y, w.z) : w.clone());
+        points.push({ pos: y != null ? new THREE.Vector3(w.x, y, w.z) : w.clone(), routeIndex: i });
       }
     }
     for (let i = points.length - 1; i > 0; i--) {
@@ -939,8 +949,18 @@ export class Game {
     const count = Math.min(HUNTER_TARGET_COUNT, points.length);
     for (const t of this.targets) t.destroy();
     this.targets = [];
+    // Recalculado aqui (não reaproveita a `difficulty` do construtor) porque
+    // esta função roda de novo em restartInPlace ao avançar de estágio — sem
+    // isso os alvos ficariam presos na dificuldade do estágio em que nasceram.
+    const difficulty = 1 + (this.stage - 1) * DIFF_PER_STAGE;
     for (let i = 0; i < count; i++) {
-      this.targets.push(new ChameleonTarget(this.scene, this.level, points[i]));
+      const { pos, routeIndex } = points[i];
+      this.targets.push(new ChameleonTarget(this.scene, this.level, pos, {
+        difficulty,
+        waypoints: routes[routeIndex],
+        spotRange: HUNTER_FLASHLIGHT_RANGE,
+        spotHalfAngleDeg: HUNTER_FLASHLIGHT_ANGLE_DEG,
+      }));
     }
   }
 

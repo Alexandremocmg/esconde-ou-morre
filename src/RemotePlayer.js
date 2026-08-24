@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { animationManager } from './AnimationManager.js?v=3';
-import { GUN_OFFSET, GUN_ROT } from './Seeker.js?v=3';
+import { GUN_OFFSET, GUN_ROT } from './Seeker.js?v=4';
 import { INTERP_DELAY_MS, GROUND_Y } from './net/protocol.js?v=3';
 import { createPaintTexture, stampCircle, strokeBetween } from './UVPaint.js?v=1';
 
