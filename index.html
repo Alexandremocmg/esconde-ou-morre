@@ -14,7 +14,7 @@
      em main.js só fora de dev (ver comentário lá — cache agressivo do
      service worker atrapalharia o ciclo de no-cache do dev_server.py). -->
 <link rel="manifest" href="manifest.json" />
-<link rel="stylesheet" href="css/style.css?v=8" />
+<link rel="stylesheet" href="css/style.css?v=9" />
 
 <!-- Three.js e Supabase via CDN (ES Modules), sem bundler nem npm no cliente.
      Requer servidor local: `python -m http.server` ou `npx serve`. -->
@@ -265,7 +265,7 @@
 
       <nav class="menu-bottom-nav">
         <button type="button" data-modal-open="ranking"><span class="bn-ic">🏆</span>Ranking</button>
-        <button type="button" data-soon="Missões"><span class="bn-ic">📋</span>Missões</button>
+        <button type="button" data-modal-open="missions"><span class="bn-ic">📋</span>Missões</button>
         <button type="button" data-modal-open="custom"><span class="bn-ic">🎨</span>Personalização</button>
         <button type="button" data-modal-open="news"><span class="bn-ic">📣</span>Novidades</button>
         <button type="button" data-modal-open="credits"><span class="bn-ic">ⓘ</span>Créditos</button>
@@ -401,6 +401,19 @@
           <p class="auth-welcome">Logado como <b id="auth-username-display"></b></p>
           <button id="auth-signout" type="button" class="btn-ghost">Sair</button>
         </div>
+      </div>
+    </div>
+
+    <!-- Missões (Fase F, Plano 2 — docs/PLANO_CONTAS.md): lista fixa
+         (getMissionsWithProgress), progresso client-reported ao vivo
+         (bumpMissionProgress em Game.js). Sem conta, mostra a lista com
+         progresso zerado — ainda dá pra ver o que existe. -->
+    <div id="missions-modal" class="menu-modal hidden">
+      <div class="menu-modal-card">
+        <div class="menu-modal-head"><h3>Missões</h3><button class="modal-close" type="button" data-modal-close>✕</button></div>
+        <ul id="missions-list" class="missions-list">
+          <li class="ranking-empty">Abra pra carregar…</li>
+        </ul>
       </div>
     </div>
 
@@ -564,4 +577,4 @@
   <div id="tune-panel" class="hidden"></div>
 </div>
 
-<script type="module" src="src/main.js?v=6"></script>
+<script type="module" src="src/main.js?v=7"></script>

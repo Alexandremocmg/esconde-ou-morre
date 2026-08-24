@@ -132,3 +132,54 @@ export async function getHunterRanking(limit = 10) {
     .map(([user_id, winsCount]) => ({ user_id, wins: winsCount }));
   return attachUsernames(top);
 }
+
+// Missões (Plano 2, Fase F). `code` identifica a missão (ver migration
+// `seed_missions`) — client-reported, mesma ressalva de confiabilidade da
+// Fase E (§4 de docs/PLANO_CONTAS.md): quem chama decide SE marcar
+// progresso, não dá pra fingir progresso de outra conta sem roubar a sessão
+// dela. Lê o progresso atual antes de somar (em vez de incrementar às
+// cegas) pra nunca passar de `goal_count` nem reabrir uma missão já
+// completada — sem RPC/transação, é o melhor que dá pra garantir num
+// upsert simples; corrida entre duas abas do mesmo jogador no MESMO
+// instante é o único jeito de perder uma atualização, tolerável pra
+// missões cosméticas.
+export async function bumpMissionProgress(code, amount = 1) {
+  const { session } = await getSession();
+  if (!session) return;
+  const { data: mission } = await supabase.from('missions').select('id, goal_count').eq('code', code).single();
+  if (!mission) return;
+  const { data: existing } = await supabase
+    .from('mission_progress')
+    .select('progress, completed_at')
+    .eq('user_id', session.user.id)
+    .eq('mission_id', mission.id)
+    .maybeSingle();
+  if (existing?.completed_at) return; // já completa, nada a fazer
+  const next = Math.min(mission.goal_count, (existing?.progress || 0) + amount);
+  const { error } = await supabase.from('mission_progress').upsert({
+    user_id: session.user.id,
+    mission_id: mission.id,
+    progress: next,
+    completed_at: next >= mission.goal_count ? new Date().toISOString() : null,
+  });
+  if (error) console.warn('[missoes] falha ao atualizar progresso:', error.message);
+}
+
+// Todas as missões + progresso do jogador logado (0 se nunca começou
+// nenhuma). Sem conta, devolve as missões com progresso zerado — a tela de
+// Missões mostra a lista mesmo deslogado, só não acompanha nada ainda.
+export async function getMissionsWithProgress() {
+  const { data: missions } = await supabase.from('missions').select('*').order('code');
+  if (!missions) return [];
+  const { session } = await getSession();
+  if (!session) return missions.map((m) => ({ ...m, progress: 0, completed: false }));
+  const { data: progress } = await supabase
+    .from('mission_progress')
+    .select('mission_id, progress, completed_at')
+    .eq('user_id', session.user.id);
+  const byMissionId = new Map((progress || []).map((p) => [p.mission_id, p]));
+  return missions.map((m) => {
+    const p = byMissionId.get(m.id);
+    return { ...m, progress: p ? p.progress : 0, completed: !!(p && p.completed_at) };
+  });
+}

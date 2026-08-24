@@ -1,4 +1,4 @@
-import { signUp, signIn, signOut, getSession, onAuthStateChange, getProfile, getSurvivalRanking, getHunterRanking } from './Auth.js?v=2';
+import { signUp, signIn, signOut, getSession, onAuthStateChange, getProfile, getSurvivalRanking, getHunterRanking, getMissionsWithProgress } from './Auth.js?v=3';
 
 // Controla as 3 telas dentro de #start-overlay (main/mode/loading), os modais
 // (Configurações, Como Jogar, "Em breve") e a conta de jogador (Plano 2, Fase A
@@ -224,6 +224,57 @@ export function initMenuUI({ onModeChosen, onAuthChange } = {}) {
     for (const btn of document.querySelectorAll('[data-modal-open="ranking"]')) {
       btn.addEventListener('click', () => {
         if (!rankingLoadedTab) loadTab('survival');
+      });
+    }
+  }
+
+  // ---------- Missões (Plano 2, Fase F — docs/PLANO_CONTAS.md) ----------
+  const missionsModal = document.getElementById('missions-modal');
+  if (missionsModal) {
+    const missionsList = document.getElementById('missions-list');
+
+    const renderMissions = (missions) => {
+      missionsList.innerHTML = '';
+      if (!missions.length) {
+        missionsList.innerHTML = '<li class="ranking-empty">Nenhuma missão por enquanto.</li>';
+        return;
+      }
+      for (const m of missions) {
+        const li = document.createElement('li');
+        li.className = m.completed ? 'mission-row completed' : 'mission-row';
+
+        const title = document.createElement('div');
+        title.className = 'mission-title';
+        title.textContent = `${m.completed ? '✅' : '⬜'} ${m.title}`;
+
+        const desc = document.createElement('div');
+        desc.className = 'mission-desc';
+        desc.textContent = m.description;
+
+        const bar = document.createElement('div');
+        bar.className = 'mission-bar';
+        const fill = document.createElement('div');
+        fill.className = 'mission-bar-fill';
+        const pct = m.goal_count > 0 ? Math.min(100, Math.round((m.progress / m.goal_count) * 100)) : 0;
+        fill.style.width = `${pct}%`;
+        bar.appendChild(fill);
+
+        const progressText = document.createElement('div');
+        progressText.className = 'mission-progress-text';
+        progressText.textContent = `${m.progress}/${m.goal_count}`;
+
+        li.append(title, desc, bar, progressText);
+        missionsList.appendChild(li);
+      }
+    };
+
+    // Recarrega TODA vez que abre (diferente do Ranking, que só recarrega
+    // ao trocar de aba) — progresso do próprio jogador muda a cada partida
+    // jogada, então a versão "da última vez que abriu" fica velha rápido.
+    for (const btn of document.querySelectorAll('[data-modal-open="missions"]')) {
+      btn.addEventListener('click', async () => {
+        missionsList.innerHTML = '<li class="ranking-empty">Carregando…</li>';
+        renderMissions(await getMissionsWithProgress());
       });
     }
   }

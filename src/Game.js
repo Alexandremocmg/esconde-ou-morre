@@ -15,7 +15,7 @@ import { RemotePlayer } from './RemotePlayer.js?v=3';
 // Game.js sabe algo sobre conta de jogador — só pra reportar resultado de
 // partida pro Ranking. `reportMatchResult` já no-opa sozinho sem sessão
 // logada, então não precisa de nenhum estado de auth aqui.
-import { reportMatchResult } from './Auth.js?v=2';
+import { reportMatchResult, bumpMissionProgress } from './Auth.js?v=3';
 import {
   FIXED_LAYOUT,
   JET_RANGE,
@@ -1298,6 +1298,7 @@ export class Game {
     let raioAtual = 22;
     let modoContaGotas = false;
     let xrayLigado = false;
+    let primeiroTracoReportado = false; // missão "Artista" (Fase F) — só conta 1x
     const historico = []; // últimas cores amostradas pelo conta-gotas (máx. 3), só deste painel
 
     // ---- Tamanho do pincel ----
@@ -1386,6 +1387,14 @@ export class Game {
       }
       pintando = true;
       pintarEm(e, true);
+      // Missão "Artista" (Fase F): 1ª vez que o traço é iniciado nesta
+      // sessão — bumpMissionProgress() já é seguro de chamar de novo em
+      // sessões futuras (para sozinho ao bater goal_count=1), este flag
+      // só evita mandar rede a cada toque na MESMA sessão.
+      if (!primeiroTracoReportado) {
+        primeiroTracoReportado = true;
+        bumpMissionProgress('first_paint', 1);
+      }
     };
     const onPointerMove = (e) => {
       if (!pintando) return;
@@ -1622,6 +1631,16 @@ export class Game {
     if (this.mode === 'online' && !this.onlineRole) return;
     const dbMode = this.mode === 'online' ? `online_${this.onlineRole}` : this.mode;
     reportMatchResult({ mode: dbMode, won, camoTimeSeconds: this.camoTime });
+
+    // Missões (Fase F) — mesmo chokepoint, mesma ressalva client-reported.
+    // "papel" (não "modo exato") pra bater com as categorias do Ranking:
+    // solo e Online do mesmo papel contam pra mesma missão.
+    if (this.mode === 'online') bumpMissionProgress('play_online', 1);
+    if (won) {
+      const role = this.mode === 'online' ? this.onlineRole : this.mode;
+      if (role === ROLE.CHAMELEON) bumpMissionProgress('survive_3', 1);
+      else if (role === ROLE.HUNTER) bumpMissionProgress('hunter_win', 1);
+    }
   }
 
   _gameOver(msg) {
