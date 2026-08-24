@@ -17,7 +17,7 @@ import { RemotePlayer } from './RemotePlayer.js?v=3';
 // logada, então não precisa de nenhum estado de auth aqui.
 import { reportMatchResult, bumpMissionProgress } from './Auth.js?v=3';
 import {
-  FIXED_LAYOUT,
+  onlineLayoutFor,
   JET_RANGE,
   HUNTER_AIM_HALF_ANGLE_DEG,
   HUNTER_FIRE_COOLDOWN_MS,
@@ -133,11 +133,14 @@ export class Game {
     this.elapsed = 0;    // tempo decorrido na fase
     this.camoTime = 0;   // tempo total camuflado (só faz sentido no modo Camaleão)
 
-    // Layout da arena por estágio (cicla a cada 3): 1=aberta, 2=labirinto, 3=ilhas.
-    // Online usa um layout FIXO (protocol.FIXED_LAYOUT) — os dois clientes precisam
-    // carregar o mesmo número pro servidor poder atribuir spawns coerentes com a
-    // geometria (ver room.js: os spawns são copiados do layout 1 de Level.js).
-    const layout = this.mode === 'online' ? FIXED_LAYOUT : ((this.stage - 1) % 3) + 1;
+    // Layout da arena por estágio (cicla a cada 4): 1=salão, 2=quartos, 3=galeria,
+    // 4=fábrica abandonada (mapa novo, casco próprio — ver Level.js:_buildFactoryLevel).
+    // Online usa `onlineLayoutFor()` (protocol.js) — rotação determinística por
+    // relógio, calculada aqui de forma SÍNCRONA (o Level é montado antes de
+    // conectar), sem round-trip: o servidor calcula o MESMO valor de forma
+    // independente (room.js) pra escolher spawns/oclusores coerentes com a
+    // geometria que este cliente já construiu.
+    const layout = this.mode === 'online' ? onlineLayoutFor() : ((this.stage - 1) % 4) + 1;
     this.level = new Level(this.scene, layout, { mobile: this.isMobile });
     this.player = new Player(this.scene, this.level, { isHunter: this.mode === 'hunter' });
     this.effects = new Effects(this.scene);

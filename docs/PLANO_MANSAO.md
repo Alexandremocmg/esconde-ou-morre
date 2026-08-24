@@ -231,3 +231,39 @@ Caçador humano):
 
 **Verificação:** testado em browser nos dois cenários (subir até a laje do 2º andar,
 contornar um canto do perímetro escalando) — sem atravessar, sem vazar.
+
+## Mapa 2 — Fábrica Abandonada de Brinquedos/Tinta (layout=4)
+
+Primeiro mapa que NÃO é uma ala da mansão — casco próprio (`Level.js:_buildFactoryLevel`),
+não passa por `_build()` (não herda paredes/mezanino/paleta da mansão), só reaproveita os
+helpers de baixo nível (`_addBox`/`_addStairFlight`/`_deco`/materiais toon). Único nível +
+passarela elevada (mais simples que o mezanino de 3 níveis da mansão): 4 cômodos de canto
+(mesma topologia passável de `_buildRoom` — nunca beco sem saída) em volta de um piso
+aberto central com 2 tanques de tinta (alvos de camuflagem) e caixotes.
+
+**Paleta nova** (`FACTORY` em `Level.js`), verificada com o MESMO método sRGB da paleta
+`MANSION` (script `scratchpad/palette_check_factory.mjs`, sessão): mín. par-a-par 0,238,
+mín. vs. base do boneco 0,447 — folga maior que a própria `MANSION` (0,187/0,304).
+
+**Dois bugs reais achados só com simulação de verdade** (não apareceram olhando o
+desenho da planta):
+1. A escada até a passarela subia ATÉ O MEIO da laje elevada em vez de parar na borda
+   interna dela — mesma pegadinha já documentada pra escada da mansão ("CRÍTICO subir só
+   até a borda, não além"), só que cometida de novo aqui por engano. O jogador ficava
+   preso na transição escada→laje.
+2. A passarela não tinha barreira nenhuma na borda EXTERNA (lado da parede) — um jogador
+   simulado atravessando ela caía direto pro térreo. Corrigido esticando a passarela até
+   encostar na parede do perímetro (em vez de adicionar mais um corrimão), o que também
+   resolveu uma sobreposição real entre o anel da passarela e as paredes dos 4 cômodos de
+   canto (a borda interna original ficava DENTRO do alcance deles).
+
+**Online**: os 2 mapas elegíveis (`protocol.js:ONLINE_LAYOUTS = [1, 4]`) circulam por
+rotação determinística de relógio (`onlineLayoutFor()`) — ver `docs/PLANO_MULTIPLAYER.md`
+§4 item 3 pro raciocínio completo (por que não o servidor decidindo por sala).
+
+**Verificação:** paleta (script dedicado), contagem de malhas (165, teto ~400 — orçamento
+próprio, nunca renderiza junto com a mansão), simulação real do Player subindo a escada e
+atravessando a passarela até a parede (sem travar, sem cair), regressão nos 3 layouts da
+mansão (contagem de malhas idêntica à anterior), e teste headless `ws` cru contra o `Room`
+real cobrindo os dois mapas Online (spawn certo por layout, oclusão bloqueando/liberando
+tiro com o snapshot certo, `welcome.layout` batendo com o mapa realmente escolhido).

@@ -142,11 +142,35 @@ export const MATCH_DURATION_S = 180; // 3 min (spec §4: 3-5 min)
 // deste arquivo, não um detalhe interno do servidor.
 export const MAX_CHAMELEONS = 4;
 
-// Layout fixo da v1 — os dois clientes carregam o MESMO número de layout. Level.js é
-// função pura dele, com PRNG semeado (mulberry32, Level.js:1162): geometria/solids/
-// cores batem entre clientes sem o servidor precisar rodar Level.js (que depende de
-// canvas/DOM e não roda em Node). Lobby com escolha de layout fica para depois.
-export const FIXED_LAYOUT = 1;
+// Mapas elegíveis pro Online — cliente e servidor precisam SEMPRE concordar em qual
+// número de layout usar sem trocar mensagem nenhuma antes de construir a cena (o
+// cliente monta o Level ANTES de conectar — Game.js). Level.js é função pura do
+// número do layout, com PRNG semeado (mulberry32): geometria/solids/cores batem entre
+// clientes sem o servidor precisar rodar Level.js (que depende de canvas/DOM e não
+// roda em Node).
+export const ONLINE_LAYOUTS = [1, 4]; // 1 = mansão (salão), 4 = fábrica abandonada
+
+// Escolhe o layout do Online por ROTAÇÃO DETERMINÍSTICA de relógio, não por decisão
+// do servidor comunicada numa mensagem — a alternativa (servidor sorteia por sala,
+// cliente espera o `welcome` antes de montar o Level) exigiria adiar a construção de
+// Level/Player/câmera/HUD pro modo Online, mexendo em código que TODOS os modos
+// compartilham no construtor de Game.js, sem cobertura de teste ao vivo em
+// multiplayer real — risco desproporcional ao ganho. Em vez disso, os dois lados
+// calculam o MESMO valor de forma pura, na hora, sem round-trip: dá pra chamar tanto
+// no `new Game()` (síncrono, antes de conectar) quanto em `room.js` (a qualquer
+// momento). Troca a cada hora cheia (UTC) — ambos os lados usam `Date.now()`, que já
+// é UTC internamente, então não há fuso a sincronizar.
+//
+// Risco aceito (mesmo espírito do "Débito 1" já documentado pro movimento forjável):
+// se dois jogadores da MESMA sala conectarem bem na virada da hora (janela de
+// milissegundos), podem calcular valores diferentes e desincronizar a geometria —
+// extremamente raro (a janela de formação de sala inteira, LOBBY_COUNTDOWN_MS, é
+// 12s; a virada de hora é 1 instante em 3600s) e sem impacto de segurança/dados, só
+// visual, autocorrige na sessão seguinte.
+export function onlineLayoutFor(now = Date.now()) {
+  const hourBucket = Math.floor(now / 3600000);
+  return ONLINE_LAYOUTS[hourBucket % ONLINE_LAYOUTS.length];
+}
 
 // Empacota o estado que um cliente envia por tick. Só o que o servidor ou os outros
 // jogadores precisam: nada de estado derivado (o clipe de animação, por exemplo, é

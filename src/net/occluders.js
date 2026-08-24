@@ -11,6 +11,9 @@
 // fez — o servidor não tinha NENHUMA noção de geometria da mansão. Sem isto, um
 // Caçador podia acertar um Camaleão atrás de uma parede só por estar dentro do
 // cone/alcance, o que lia como "acertei sem nem estar mirando nele".
+//
+// Dois snapshots hoje — um por layout elegível pro Online (protocol.js:ONLINE_LAYOUTS)
+// — escolhidos por `OCCLUDERS_BY_LAYOUT[layout]` em room.js.
 
 // Mesma referência de "sobe pro tronco" de hittest.js:AIM_UP_Y — não pode importar de
 // lá (regra de zero imports vale pros dois arquivos), duplicado de propósito. Se um dia
@@ -87,6 +90,54 @@ export const LAYOUT_1_OCCLUDERS = [
   { minX: 8.75, maxX: 10.25, minY: 0.2, maxY: 1.2, minZ: -10.1, maxZ: -9.8 },
   { minX: 10.05, maxX: 11.95, minY: 0, maxY: 1, minZ: -8.85, maxZ: -8.15 },
 ];
+
+// Mesmo snapshot, layout 4 (fábrica abandonada — ver Level.js:_buildFactoryLevel).
+// Mesma fragilidade/processo de regeneração do LAYOUT_1_OCCLUDERS acima: pra
+// regerar, forçar `sessionStorage['eom-stage']='4'` antes de montar o modo Caçador
+// solo (dá layout 4), rodar o mesmo `game.level.climbables.map(...)`.
+export const LAYOUT_4_OCCLUDERS = [
+  { minX: -14.5, maxX: 14.5, minY: 0, maxY: 7.6, minZ: -14.8, maxZ: -14.2 },
+  { minX: -14.5, maxX: 14.5, minY: 0, maxY: 7.6, minZ: 14.2, maxZ: 14.8 },
+  { minX: -14.8, maxX: -14.2, minY: 0, maxY: 7.6, minZ: -14.5, maxZ: 14.5 },
+  { minX: 14.2, maxX: 14.8, minY: 0, maxY: 7.6, minZ: -14.5, maxZ: 14.5 },
+  { minX: -11.5, maxX: -4.5, minY: 0, maxY: 5.2, minZ: -11.75, maxZ: -11.25 },
+  { minX: -11.5, maxX: -9.6, minY: 0, maxY: 5.2, minZ: -4.75, maxZ: -4.25 },
+  { minX: -6.4, maxX: -4.5, minY: 0, maxY: 5.2, minZ: -4.75, maxZ: -4.25 },
+  { minX: -11.75, maxX: -11.25, minY: 0, maxY: 5.2, minZ: -11.5, maxZ: -4.5 },
+  { minX: -4.75, maxX: -4.25, minY: 0, maxY: 5.2, minZ: -11.5, maxZ: -9.6 },
+  { minX: -4.75, maxX: -4.25, minY: 0, maxY: 5.2, minZ: -6.4, maxZ: -4.5 },
+  { minX: 4.5, maxX: 11.5, minY: 0, maxY: 5.2, minZ: -11.75, maxZ: -11.25 },
+  { minX: 4.5, maxX: 6.4, minY: 0, maxY: 5.2, minZ: -4.75, maxZ: -4.25 },
+  { minX: 9.6, maxX: 11.5, minY: 0, maxY: 5.2, minZ: -4.75, maxZ: -4.25 },
+  { minX: 4.25, maxX: 4.75, minY: 0, maxY: 5.2, minZ: -11.5, maxZ: -9.6 },
+  { minX: 4.25, maxX: 4.75, minY: 0, maxY: 5.2, minZ: -6.4, maxZ: -4.5 },
+  { minX: 11.25, maxX: 11.75, minY: 0, maxY: 5.2, minZ: -11.5, maxZ: -4.5 },
+  { minX: -11.5, maxX: -9.6, minY: 0, maxY: 5.2, minZ: 4.25, maxZ: 4.75 },
+  { minX: -6.4, maxX: -4.5, minY: 0, maxY: 5.2, minZ: 4.25, maxZ: 4.75 },
+  { minX: -11.5, maxX: -4.5, minY: 0, maxY: 5.2, minZ: 11.25, maxZ: 11.75 },
+  { minX: -11.75, maxX: -11.25, minY: 0, maxY: 5.2, minZ: 4.5, maxZ: 11.5 },
+  { minX: -4.75, maxX: -4.25, minY: 0, maxY: 5.2, minZ: 4.5, maxZ: 6.4 },
+  { minX: -4.75, maxX: -4.25, minY: 0, maxY: 5.2, minZ: 9.6, maxZ: 11.5 },
+  { minX: 4.5, maxX: 6.4, minY: 0, maxY: 5.2, minZ: 4.25, maxZ: 4.75 },
+  { minX: 9.6, maxX: 11.5, minY: 0, maxY: 5.2, minZ: 4.25, maxZ: 4.75 },
+  { minX: 4.5, maxX: 11.5, minY: 0, maxY: 5.2, minZ: 11.25, maxZ: 11.75 },
+  { minX: 4.25, maxX: 4.75, minY: 0, maxY: 5.2, minZ: 4.5, maxZ: 6.4 },
+  { minX: 4.25, maxX: 4.75, minY: 0, maxY: 5.2, minZ: 9.6, maxZ: 11.5 },
+  { minX: 11.25, maxX: 11.75, minY: 0, maxY: 5.2, minZ: 4.5, maxZ: 11.5 },
+  { minX: -4.2, maxX: -1.8, minY: 0, maxY: 3.2, minZ: -4.2, maxZ: -1.8 },
+  { minX: 1.8, maxX: 4.2, minY: 0, maxY: 3.2, minZ: 1.8, maxZ: 4.2 },
+  { minX: 4, maxX: 5, minY: 0, maxY: 1, minZ: -5, maxZ: -4 },
+  { minX: -5, maxX: -4, minY: 0, maxY: 1, minZ: 4, maxZ: 5 },
+  { minX: 5, maxX: 6, minY: 0, maxY: 1, minZ: -3.7, maxZ: -2.7 },
+  { minX: -6, maxX: -5, minY: 0, maxY: 1, minZ: 2.7, maxZ: 3.7 },
+];
+
+// Lookup por número de layout — room.js usa `onlineLayoutFor()` (protocol.js) pra
+// saber qual sala usar qual tabela, sem precisar de um switch espalhado por lá.
+export const OCCLUDERS_BY_LAYOUT = {
+  1: LAYOUT_1_OCCLUDERS,
+  4: LAYOUT_4_OCCLUDERS,
+};
 
 // Teste ray-AABB pelo método dos slabs — matemática pura, mesmo espírito de
 // hittest.js:normalize. `dir` já precisa vir normalizada.

@@ -59,6 +59,34 @@ const MANSION = {
 // Array para o espalhador e para índices por-seed (ordem estável).
 const SIGNATURE = Object.values(MANSION);
 
+// ─────────────────────────────────────────────────────────────────────────────
+// MAPA 2 — FÁBRICA ABANDONADA DE BRINQUEDOS/TINTA (layout=4). Casco PRÓPRIO —
+// não passa por `_build()` (não herda paredes/mezanino/paleta da mansão), só
+// reaproveita os helpers de baixo nível (_addBox/_addStairFlight/_deco/
+// materiais toon). Ver `_buildFactoryLevel()`.
+const FACTORY = {
+  amareloSeguranca: 0xF5C518, // faixas de alerta, corrimãos
+  cinzaMetal:       0x5C6670, // painéis metálicos do perímetro/passarela
+  ferrugem:         0x8B4A2B, // caixotes/paletes envelhecidos
+  tintaTeal:        0x2FB6A8, // tanque de tinta A + sala de tintas
+  tintaRoxa:        0x8A4FD1, // tanque de tinta B
+  vermelhoAlerta:   0xE0483E, // vestiário/porta de emergência
+  concreto:         0xC9B896, // (reservado — cor de cena, não-colorável)
+  azulIndustrial:   0x3E7CB1, // linha de montagem
+  verdeToxico:      0x8FCB3E, // barris de solvente
+};
+// Verificado com o MESMO método da paleta MANSION (Player.js:toSRGB — hex já
+// nasce em sRGB, então a distância certa é Euclidiana direta nos bytes, sem
+// nenhuma conversão de gamma): mín. par-a-par 0.238 (tintaTeal~azulIndustrial),
+// mín. vs. base do boneco (0xeef0f2) 0.447 (concreto) — folga bem acima do
+// mínimo exigido (>=0.161 / >=0.188, mesmo limiar da paleta MANSION).
+// Script: scratchpad/palette_check_factory.mjs (sessão, não versionado).
+const F_HALF = HALF;    // mesma meia-largura da mansão (29×29 m) — mantém as
+                         // faixas de alcance/velocidade do Seeker já calibradas
+const F_WALL_H = 7.6;   // pé-direito único (sem os 3 níveis da mansão)
+const F_ROOM_H = 5.2;   // paredes dos 4 cômodos de canto
+const F_CAT_Y = 4.4;    // altura da passarela elevada (equivalente ao mezanino)
+
 // Waypoint na altura de operação do Caçador.
 function wp(x, z) { return new THREE.Vector3(x, ROUTE_Y, z); }
 
@@ -95,7 +123,11 @@ export class Level {
     this._flames = [];    // { mat, phase, base } chamas emissivas que tremulam
     this._roomDoors = []; // {x,z} dos vãos de cômodo → mantidos livres no espalhamento
 
-    this._build();
+    // layout=4 é um LOCAL diferente (fábrica), casco próprio — não passa por
+    // _build() (paredes/mezanino/paleta da mansão). Layouts 1-3 continuam
+    // exatamente como antes.
+    if (this.layout === 4) this._buildFactoryLevel();
+    else this._build();
   }
 
   // Estimativa BARATA de luz em pos (0..1) para a mecânica de PENUMBRA (Fase 5):
@@ -992,6 +1024,193 @@ export class Level {
     // atravessar o piso). Game._updateOcclusion usa este `occluders`.
     this.occluders = this.climbables.concat(this._slabs);
     this.cameraColliders = this.climbables.concat(this._slabs);
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // MAPA 2 — FÁBRICA ABANDONADA. Único nível + passarela elevada (mais simples
+  // que o mezanino de 3 níveis da mansão) — 4 cômodos de canto (mesma topologia
+  // passável de _buildRoom, nunca beco sem saída) em volta de um piso aberto
+  // central com tanques de tinta (alvos de camuflagem) e caixotes.
+  // ═══════════════════════════════════════════════════════════════════════
+  _buildFactoryLevel() {
+    const H = F_HALF, t = 0.6;
+
+    // Piso: concreto, não-colorável (decoração de cena — mesmo espírito do
+    // parquet/mármore da mansão, que também não são alvo de camuflagem).
+    const cc = this._mat('concrete', { normals: !this._mobile });
+    const floor = new THREE.Mesh(
+      new THREE.BoxGeometry(H * 2, 1, H * 2),
+      this._makeMat({
+        color: 0xffffff, roughness: cc.roughness, metalness: cc.metalness,
+        map: rep(cc.map, 8, 8), normalMap: this._mobile ? null : rep(cc.normalMap, 8, 8), normalScale: cc.normalScale,
+      })
+    );
+    floor.position.y = -0.5;
+    floor.receiveShadow = true;
+    this.scene.add(floor);
+    this._addSolid(H * 2, 1, H * 2, 0, -0.5, 0);
+    this.walkables.push(floor);
+
+    // Faixa de alerta amarela no centro (equivalente à placa de mármore central
+    // da mansão) — decorativa, não-colorável.
+    this._deco(new THREE.PlaneGeometry(11, 11), FACTORY.amareloSeguranca, 0, 0.011, 0,
+      { rx: -Math.PI / 2, colorable: false, roughness: 1 });
+
+    // Paredes de perímetro: painel metálico corrugado.
+    const mt = this._mat('metal');
+    const wallOpts = { roughness: mt.roughness, metalness: mt.metalness, map: mt.map, normalMap: mt.normalMap, normalScale: mt.normalScale };
+    const wallRep = (len) => ({ x: Math.max(1, len / 3), y: Math.max(1, F_WALL_H / 3) });
+    this._addBox(H * 2, F_WALL_H, t, FACTORY.cinzaMetal, 0, F_WALL_H / 2, -H, { ...wallOpts, mapRepeat: wallRep(H * 2) });
+    this._addBox(H * 2, F_WALL_H, t, FACTORY.cinzaMetal, 0, F_WALL_H / 2, H, { ...wallOpts, mapRepeat: wallRep(H * 2) });
+    this._addBox(t, F_WALL_H, H * 2, FACTORY.cinzaMetal, -H, F_WALL_H / 2, 0, { ...wallOpts, mapRepeat: wallRep(H * 2) });
+    this._addBox(t, F_WALL_H, H * 2, FACTORY.cinzaMetal, H, F_WALL_H / 2, 0, { ...wallOpts, mapRepeat: wallRep(H * 2) });
+
+    // Teto: chapa metálica lisa virada pra baixo, sem colisão (mesmo padrão de
+    // _addCeiling, mas na altura própria da fábrica — _addCeiling usa WALL_H
+    // da mansão direto, não dá pra reaproveitar sem gerar altura errada aqui).
+    const ceil = new THREE.Mesh(
+      new THREE.PlaneGeometry(H * 2, H * 2),
+      new THREE.MeshToonMaterial({ color: 0x8890a0, gradientMap: toonGradient(), side: THREE.FrontSide })
+    );
+    ceil.rotation.x = Math.PI / 2;
+    ceil.position.y = F_WALL_H;
+    ceil.receiveShadow = true;
+    this.scene.add(ceil);
+
+    // 4 cômodos de canto — mesma topologia passável da ala de quartos (corredor
+    // aberto no meio, 2 portas por cômodo, nunca beco sem saída).
+    const rDep = this._buildFactoryRoom(-8, -8, 7, 7, FACTORY.ferrugem, ['s', 'e']);       // Depósito de Caixas
+    const rLin = this._buildFactoryRoom(8, -8, 7, 7, FACTORY.azulIndustrial, ['s', 'w']);  // Linha de Montagem
+    const rTin = this._buildFactoryRoom(-8, 8, 7, 7, FACTORY.tintaTeal, ['n', 'e']);       // Sala de Tintas
+    const rVes = this._buildFactoryRoom(8, 8, 7, 7, FACTORY.vermelhoAlerta, ['n', 'w']);   // Vestiário
+
+    // Tanques de tinta: caixas grandes grudáveis/coloráveis (ótimos alvos de
+    // camuflagem) no piso aberto central, fora das linhas retas entre as portas.
+    this._addBox(2.4, 3.2, 2.4, FACTORY.tintaRoxa, -3, 1.6, -3, { roughness: 0.4, metalness: 0.1 });
+    this._addBox(2.4, 3.2, 2.4, FACTORY.verdeToxico, 3, 1.6, 3, { roughness: 0.4, metalness: 0.1 });
+
+    // Caixotes empilhados (cobertura de baixo porte, seekerPass como a mobília
+    // da mansão — o Caçador não tem pathfinding e entalava em vãos estreitos).
+    const crate = (x, z, color) => this._addBox(1.0, 1.0, 1.0, color, x, 0.5, z, { roughness: 0.75, seekerPass: true });
+    crate(4.5, -4.5, FACTORY.ferrugem);
+    crate(-4.5, 4.5, FACTORY.ferrugem);
+    crate(5.5, -3.2, FACTORY.amareloSeguranca);
+    crate(-5.5, 3.2, FACTORY.amareloSeguranca);
+
+    // Passarela elevada: um ANEL só (sem "poços" — como fica FORA do miolo dos
+    // cômodos, o vão central já é aberto por baixo, não precisa recortar
+    // buraco nenhum, diferente do mezanino cheio da mansão). Duas restrições
+    // reais descobertas testando com simulação de verdade (não só olhando o
+    // desenho): (1) a borda EXTERNA precisa encostar na parede do perímetro —
+    // sem isso sobra um vão sem piso NEM corrimão entre a passarela e a
+    // parede, e o jogador cai reto até o térreo ao atravessar; (2) a borda
+    // INTERNA precisa ficar ALÉM da extensão dos 4 cômodos de canto (que vão
+    // até |coord|=11.5 = 8+7/2) — com uma borda mais apertada, o anel da
+    // passarela ATRAVESSA as paredes dos cômodos (mesma altura, Y se sobrepõe).
+    const CW = H - t / 2, CIN = 11.8; // borda externa (encosta na parede) / interna (livre dos cômodos)
+    const CWID = CW - CIN;
+    const catSlab = (w, d, cx, cz) => {
+      const mesh = new THREE.Mesh(
+        new THREE.BoxGeometry(w, 0.3, d),
+        this._makeMat({ color: FACTORY.cinzaMetal, roughness: 0.5, metalness: 0.4 })
+      );
+      mesh.position.set(cx, F_CAT_Y - 0.15, cz);
+      mesh.receiveShadow = true; mesh.castShadow = false;
+      this.scene.add(mesh);
+      this._addSolid(w, 0.3, d, cx, F_CAT_Y - 0.15, cz);
+      this.walkables.push(mesh); this._slabs.push(mesh);
+    };
+    catSlab(H * 2 - 1, CWID, 0, -(CW - CWID / 2)); // norte
+    catSlab(H * 2 - 1, CWID, 0, CW - CWID / 2);    // sul
+    catSlab(CWID, H * 2 - 1, -(CW - CWID / 2), 0); // oeste
+    catSlab(CWID, H * 2 - 1, CW - CWID / 2, 0);    // leste
+
+    // Guarda-corpo na borda INTERNA da passarela (evita cair no vão central) —
+    // com vão livre em x∈[-2,2] nos lados N/S, onde as escadas atravessam (sem
+    // isso o próprio corrimão bloquearia quem está subindo, ver mansão:
+    // "boca do lance segue aberta").
+    const railSeg = (x1, z1, x2, z2) => {
+      const w = Math.max(0.08, Math.abs(x2 - x1)), d = Math.max(0.08, Math.abs(z2 - z1));
+      this._addBox(w, 0.9, d, FACTORY.amareloSeguranca, (x1 + x2) / 2, F_CAT_Y + 0.45, (z1 + z2) / 2,
+        { climbable: false, colorable: false, roughness: 0.5, metalness: 0.3 });
+    };
+    const GAP = 2.0; // metade do vão livre pra escada (largura 3 + folga)
+    railSeg(-H + 0.5, -CIN, -GAP, -CIN); railSeg(GAP, -CIN, H - 0.5, -CIN); // norte, com vão
+    railSeg(-H + 0.5, CIN, -GAP, CIN); railSeg(GAP, CIN, H - 0.5, CIN);     // sul, com vão
+    railSeg(-CIN, -H + 0.5, -CIN, H - 0.5); // oeste, inteiro (sem escada)
+    railSeg(CIN, -H + 0.5, CIN, H - 0.5);   // leste, inteiro (sem escada)
+
+    // 2 escadas (N e S) do térreo até a passarela. CRÍTICO subir só até z=±CIN
+    // (a borda INTERNA da passarela), não além — a laje é um sólido de 0.3 m
+    // e sua face frontal agiria como parede se a escada continuasse por baixo
+    // dela (mesma pegadinha já documentada pra escada da mansão, ver
+    // _buildMezzanine: "CRÍTICO subir só até z=IN, não além"). 16 degraus pra
+    // 4.4 m de subida ≈ 0.28 m/degrau — abaixo do STEP_UP=0.30 do jogador.
+    this._addStairFlight(0, 3, 6, CIN, 0, F_CAT_Y, 16);
+    this._addStairFlight(0, 3, -6, -CIN, 0, F_CAT_Y, 16);
+
+    // Spawn no meio do piso aberto, longe de todo cômodo.
+    this.spawn.set(0, 0, -2);
+
+    // Rotas: térreo passa pelas 4 portas sem entrar fundo em nenhum cômodo
+    // (mesmo raciocínio de custo-benefício da ala de quartos — espiar da porta
+    // já cobre a maior parte do cômodo bem mais barato que entrar); passarela
+    // é o anel elevado.
+    const ground = [
+      wp(0, -2), wp(-4.5, -6), wp(-8, -4.5), wp(0, -2), wp(4.5, -6), wp(8, -4.5),
+      wp(0, 0), wp(-4.5, 6), wp(-8, 4.5), wp(0, 2), wp(4.5, 6), wp(8, 4.5), wp(0, -2),
+    ];
+    const catwalk = [
+      wp(0, -CW), wp(CW, -CW), wp(CW, 0), wp(CW, CW),
+      wp(0, CW), wp(-CW, CW), wp(-CW, 0), wp(-CW, -CW),
+    ];
+    this.routes = [ground, catwalk, ground.slice().reverse()];
+    this.routeY = [EYE_Y, F_CAT_Y + EYE_Y, EYE_Y];
+
+    this._collectDoors(rDep, rLin, rTin, rVes);
+
+    // Materializa oclusores/colisores de câmera — mesmo passo final de _build(),
+    // repetido aqui porque este layout não passa por ele.
+    this.occluders = this.climbables.concat(this._slabs);
+    this.cameraColliders = this.climbables.concat(this._slabs);
+  }
+
+  // Cômodo de fábrica: MESMA topologia passável de _buildRoom (paredes com vão
+  // largo, nunca beco sem saída — o Caçador não tem pathfinding), mas com
+  // painel metálico em vez de boiserie. _buildRoom é compartilhado pelas 3
+  // alas da mansão — não convém mudar a textura dele pra isto.
+  _buildFactoryRoom(cx, cz, w, d, color, doors, { door = DOOR_MIN, h = F_ROOM_H } = {}) {
+    const hw = w / 2, hd = d / 2, t = 0.5;
+    const mt = this._mat('metal');
+    const opts = { roughness: mt.roughness, metalness: mt.metalness, map: mt.map, normalMap: mt.normalMap, normalScale: mt.normalScale };
+    const rep2 = (len) => ({ x: Math.max(1, len / 3), y: Math.max(1, h / 3) });
+
+    const wallAlongX = (zPos, hasDoor) => {
+      if (!hasDoor) { this._addBox(w, h, t, color, cx, h / 2, zPos, { ...opts, mapRepeat: rep2(w) }); return; }
+      const seg = (w - door) / 2;
+      if (seg <= 0.2) return;
+      this._addBox(seg, h, t, color, cx - (door / 2 + seg / 2), h / 2, zPos, { ...opts, mapRepeat: rep2(seg) });
+      this._addBox(seg, h, t, color, cx + (door / 2 + seg / 2), h / 2, zPos, { ...opts, mapRepeat: rep2(seg) });
+    };
+    const wallAlongZ = (xPos, hasDoor) => {
+      if (!hasDoor) { this._addBox(t, h, d, color, xPos, h / 2, cz, { ...opts, mapRepeat: rep2(d) }); return; }
+      const seg = (d - door) / 2;
+      if (seg <= 0.2) return;
+      this._addBox(t, h, seg, color, xPos, h / 2, cz - (door / 2 + seg / 2), { ...opts, mapRepeat: rep2(seg) });
+      this._addBox(t, h, seg, color, xPos, h / 2, cz + (door / 2 + seg / 2), { ...opts, mapRepeat: rep2(seg) });
+    };
+
+    wallAlongX(cz - hd, doors.includes('n'));
+    wallAlongX(cz + hd, doors.includes('s'));
+    wallAlongZ(cx - hw, doors.includes('w'));
+    wallAlongZ(cx + hw, doors.includes('e'));
+
+    const doorPts = [];
+    if (doors.includes('n')) doorPts.push({ x: cx, z: cz - hd });
+    if (doors.includes('s')) doorPts.push({ x: cx, z: cz + hd });
+    if (doors.includes('w')) doorPts.push({ x: cx - hw, z: cz });
+    if (doors.includes('e')) doorPts.push({ x: cx + hw, z: cz });
+    return { center: { x: cx, z: cz }, doors: doorPts, w, d };
   }
 
   _addCeiling() {

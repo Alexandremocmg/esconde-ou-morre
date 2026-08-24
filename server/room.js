@@ -23,7 +23,7 @@ import {
   HUNTER_MISS_COOLDOWN_MS,
   AIM_TOLERANCE_DEG,
   MATCH_DURATION_S,
-  FIXED_LAYOUT,
+  onlineLayoutFor,
   GROUND_Y,
   HUNTER_AMMO_DEFAULT,
   MAX_CHAMELEONS,
@@ -31,36 +31,47 @@ import {
   MAX_PAINT_STROKES_PER_MSG,
 } from '../src/net/protocol.js';
 import { coneCandidates, normalize } from '../src/net/hittest.js';
-import { LAYOUT_1_OCCLUDERS, isOccluded } from '../src/net/occluders.js';
+import { OCCLUDERS_BY_LAYOUT, isOccluded } from '../src/net/occluders.js';
 
 // Lobby maior (docs/PLANO_LOBBY_MULTIPLAYER.md): a sala inteira é 1 Caçador +
 // MAX_CHAMELEONS Camaleões — a atribuição de papel (mais abaixo) já dava HUNTER só pro
 // 1º e CHAMELEON pra todo o resto, então só o limite de capacidade precisava mudar.
 const ROOM_CAPACITY = 1 + MAX_CHAMELEONS;
 
-// Ponto de spawn do Caçador copiado de Level.js (layout 1: this.spawn.set(-6, 0, 8)).
-// `y: GROUND_Y`, não 0 — Player.position (o que os snapshots reais vão carregar) é a
-// altura do CENTRO da cápsula, não a altura do chão; o spawn sintético precisa começar
-// consistente com isso (bug real já corrigido: avatares remotos flutuavam 2×GROUND_Y —
-// ver protocol.js).
-const HUNTER_SPAWN = { x: -6, y: GROUND_Y, z: 8 };
+// Pontos de spawn do Caçador copiados de Level.js (this.spawn.set(...) de cada
+// layout elegível pro Online — protocol.js:ONLINE_LAYOUTS). `y: GROUND_Y`, não 0 —
+// Player.position (o que os snapshots reais vão carregar) é a altura do CENTRO da
+// cápsula, não a altura do chão; o spawn sintético precisa começar consistente com
+// isso (bug real já corrigido: avatares remotos flutuavam 2×GROUND_Y — ver protocol.js).
+const HUNTER_SPAWN_BY_LAYOUT = {
+  1: { x: -6, y: GROUND_Y, z: 8 },   // mansão (salão) — this.spawn.set(-6, 0, 8)
+  4: { x: 0, y: GROUND_Y, z: -2 },   // fábrica — this.spawn.set(0, 0, -2)
+};
 
-// Base dos spawns dos Camaleões: mesmo canto SW aberto de antes (era um ponto único fixo
-// quando a sala só tinha 1 Camaleão). Com N Camaleões, cada um pega um ponto num anel ao
-// redor desta base pra não nascer empilhado em cima dos outros — ver `_chameleonSpawn`.
-const CHAMELEON_SPAWN_BASE = { x: -3, z: 8 };
-const CHAMELEON_SPAWN_RADIUS = 2.2; // ainda dentro do cômodo aberto, testado sem colisão
+// Base dos spawns dos Camaleões por layout: mesmo canto/área aberta de onde o Caçador
+// nasce. Com N Camaleões, cada um pega um ponto num anel ao redor desta base pra não
+// nascer empilhado em cima dos outros — ver `_chameleonSpawn`.
+const CHAMELEON_SPAWN_BASE_BY_LAYOUT = {
+  1: { x: -3, z: 8 },  // mesmo canto SW aberto do Caçador
+  4: { x: 0, z: 1.5 }, // piso aberto central, longe dos tanques de tinta (±3,∓3) e das escadas (x=0, |z|>=6)
+};
+const CHAMELEON_SPAWN_RADIUS_BY_LAYOUT = {
+  1: 2.2, // ainda dentro do cômodo aberto, testado sem colisão
+  4: 1.6, // idem — clareia os tanques (raio ~2.55 da origem) e a escada
+};
 
 // `index` é a ordem de entrada entre os Camaleões (0, 1, 2...), não um id — divide o
 // círculo em MAX_CHAMELEONS fatias iguais. Sem validação contra geometria (Débito 1 do
 // plano original): o controlador do jogador já resolve colisão a partir do 1º frame,
 // igual sempre aconteceu com o ponto único.
-function _chameleonSpawn(index) {
+function _chameleonSpawn(layout, index) {
+  const base = CHAMELEON_SPAWN_BASE_BY_LAYOUT[layout] || CHAMELEON_SPAWN_BASE_BY_LAYOUT[1];
+  const radius = CHAMELEON_SPAWN_RADIUS_BY_LAYOUT[layout] || CHAMELEON_SPAWN_RADIUS_BY_LAYOUT[1];
   const angle = (index * 2 * Math.PI) / MAX_CHAMELEONS;
   return {
-    x: CHAMELEON_SPAWN_BASE.x + CHAMELEON_SPAWN_RADIUS * Math.cos(angle),
+    x: base.x + radius * Math.cos(angle),
     y: GROUND_Y,
-    z: CHAMELEON_SPAWN_BASE.z + CHAMELEON_SPAWN_RADIUS * Math.sin(angle),
+    z: base.z + radius * Math.sin(angle),
   };
 }
 
@@ -70,6 +81,16 @@ export class Room {
     this._matchStartAt = 0;
     this._over = false;
     this._interval = null;
+    // Layout desta sala — decidido UMA VEZ quando o 1º cliente entra numa sala vazia
+    // (ver _freshJoin, `holders.length === 0`) e mantido fixo pro resto da vida da
+    // sala, mesmo que a hora vire no meio da partida (onlineLayoutFor() só é
+    // CONSULTADO na formação — se fosse chamado de novo a cada disparo/reconexão,
+    // dois pontos da MESMA sala poderiam discordar sobre a geometria caso o relógio
+    // virasse durante a partida). `Room` é uma instância ÚNICA pro processo inteiro
+    // (server/index.js), não uma por partida — por isso não dá pra só calcular aqui
+    // no construtor: o processo roda por horas, a sala esvazia e reforma várias
+    // vezes, e cada reformação é uma chance nova de rotação.
+    this._layout = onlineLayoutFor();
   }
 
   start() {
@@ -121,7 +142,7 @@ export class Room {
 
     this._send(ws, {
       type: S2C.WELCOME,
-      id: client.id, role: client.role, spawn: client.spawn, layout: FIXED_LAYOUT,
+      id: client.id, role: client.role, spawn: client.spawn, layout: this._layout,
       matchDuration: MATCH_DURATION_S, token: client.token, eliminated: client.eliminated,
       matchStartAt: this._matchStartAt,
       players: [...this.clients.values()]
@@ -147,6 +168,11 @@ export class Room {
       return;
     }
 
+    // Sala virou de vez (0 clientes, nem os em graça de reconexão): reabre a
+    // escolha de mapa — mesma rotação determinística de Game.js, mas só CONSULTADA
+    // aqui na formação (ver comentário no construtor sobre por que não a cada tick).
+    if (holders.length === 0) this._layout = onlineLayoutFor();
+
     const id = randomUUID();
     const token = randomUUID();
     const takenRoles = new Set(holders.map((c) => c.role));
@@ -154,7 +180,9 @@ export class Room {
     // Índice de entrada ENTRE os Camaleões (0, 1, 2...) — decide a fatia do anel de
     // spawn deste (`_chameleonSpawn`). Irrelevante pro Caçador, que tem ponto fixo.
     const chameleonIndex = holders.filter((c) => c.role === ROLE.CHAMELEON).length;
-    const spawn = role === ROLE.HUNTER ? HUNTER_SPAWN : _chameleonSpawn(chameleonIndex);
+    const spawn = role === ROLE.HUNTER
+      ? (HUNTER_SPAWN_BY_LAYOUT[this._layout] || HUNTER_SPAWN_BY_LAYOUT[1])
+      : _chameleonSpawn(this._layout, chameleonIndex);
 
     const client = {
       id, token, ws, role, connected: true,
@@ -212,7 +240,7 @@ export class Room {
 
     this._send(ws, {
       type: S2C.WELCOME,
-      id, role, spawn, layout: FIXED_LAYOUT,
+      id, role, spawn, layout: this._layout,
       matchDuration: MATCH_DURATION_S, token, eliminated: client.eliminated, // sempre false aqui (join novo), por simetria com _reattach
       matchStartAt: this._matchStartAt,
       players: [...this.clients.values()]
@@ -384,13 +412,15 @@ export class Room {
     // protocol.js.
     // Oclusão de parede: coneCandidates devolve a lista ordenada por ângulo de
     // propósito (comentário em hittest.js já esperava por isto) — percorre e fica
-    // com o primeiro que não tem uma caixa de LAYOUT_1_OCCLUDERS no meio do caminho.
-    // Sem isto, um Camaleão atrás de uma parede dentro do cone/alcance contava como
-    // acerto: lia como "acertei sem nem estar mirando nele, de longe".
+    // com o primeiro que não tem uma caixa de oclusão do MAPA DESTA SALA (this._layout)
+    // no meio do caminho. Sem isto, um Camaleão atrás de uma parede dentro do
+    // cone/alcance contava como acerto: lia como "acertei sem nem estar mirando
+    // nele, de longe".
+    const occluders = OCCLUDERS_BY_LAYOUT[this._layout] || OCCLUDERS_BY_LAYOUT[1];
     const hits = coneCandidates(origin, dir, candidates, {
       range: JET_RANGE,
       halfAngleDeg: HUNTER_AIM_HALF_ANGLE_DEG + AIM_TOLERANCE_DEG,
-    }).filter((h) => !isOccluded(origin, h.pos, LAYOUT_1_OCCLUDERS));
+    }).filter((h) => !isOccluded(origin, h.pos, occluders));
     const best = hits[0] || null;
 
     // Jato visível (docs/PLANO_LOBBY_MULTIPLAYER.md nunca cobriu isto — era uma lacuna

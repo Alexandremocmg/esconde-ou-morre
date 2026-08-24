@@ -182,19 +182,35 @@ resetar munição, sem reviver se já estava eliminado).
    2.1. **Oclusão de parede** (`src/net/occluders.js`, novo): antes disso, o servidor
         não tinha NENHUMA noção de geometria da mansão — um Camaleão atrás de parede
         dentro do cone/alcance contava como acerto (`hittest.js` já documentava essa
-        lacuna como pendência do servidor). `LAYOUT_1_OCCLUDERS` é um snapshot estático
-        (AABBs de `level.climbables`, layout 1 — o único do Online) extraído uma vez
-        via harness Playwright headless; `isOccluded()` faz o teste ray-AABB pelo
-        método dos slabs, sem `three`/DOM (mesma regra de zero-imports de
-        `protocol.js`/`hittest.js`). `server/room.js:_handleFire` filtra os candidatos
-        de `coneCandidates` por isto antes de escolher o `best`. Fragilidade registrada
-        no próprio arquivo: se a geometria do layout 1 mudar em `Level.js`, o snapshot
-        fica desatualizado em silêncio — precisa ser regerado manualmente.
-3. **Layout fixo (`FIXED_LAYOUT` em protocol.js).** `Level` é função pura do número do
-   layout, com PRNG semeado (`mulberry32`, `Level.js`) — os dois clientes produzem
+        lacuna como pendência do servidor). `LAYOUT_1_OCCLUDERS`/`LAYOUT_4_OCCLUDERS`
+        são snapshots estáticos (AABBs de `level.climbables`, um por layout elegível
+        pro Online — `protocol.js:ONLINE_LAYOUTS`) extraídos uma vez cada via harness
+        Playwright headless; `isOccluded()` faz o teste ray-AABB pelo método dos
+        slabs, sem `three`/DOM (mesma regra de zero-imports de `protocol.js`/
+        `hittest.js`). `server/room.js:_handleFire` escolhe a tabela certa por
+        `OCCLUDERS_BY_LAYOUT[this._layout]` e filtra os candidatos de `coneCandidates`
+        por isto antes de escolher o `best`. Fragilidade registrada no próprio
+        arquivo: se a geometria de um layout mudar em `Level.js`, o snapshot
+        correspondente fica desatualizado em silêncio — precisa ser regerado
+        manualmente.
+3. **Dois mapas no Online, escolhidos por rotação determinística de relógio
+   (`onlineLayoutFor()` em protocol.js).** `Level` é função pura do número do layout,
+   com PRNG semeado (`mulberry32`, `Level.js`) — os dois clientes produzem
    geometria/`solids`/cores idênticos sem o servidor precisar rodar `Level.js` (que
-   depende de `canvas`/DOM e não roda em Node). Os spawns em `server/room.js` foram
-   copiados manualmente do `spawn` do layout 1.
+   depende de `canvas`/DOM e não roda em Node). Em vez do servidor decidir por sala e
+   comunicar a escolha (exigiria o cliente esperar o `welcome` antes de montar o
+   `Level` — mudança de arquitetura grande, mexeria no boot de TODOS os modos, não só
+   Online), cliente e servidor calculam o MESMO valor de forma pura e síncrona a
+   partir de `Date.now()` (rotaciona a cada hora cheia UTC) — sem round-trip, sem
+   payload novo. `server/room.js` só CONSULTA essa função uma vez por sala (quando o
+   1º cliente entra numa sala vazia, `this._layout` fica fixo pelo resto da vida da
+   sala) — do contrário duas partes da MESMA sala poderiam discordar da geometria se
+   o relógio virasse durante a partida. Risco aceito (mesmo espírito do Débito 1):
+   dois jogadores conectando bem na virada da hora podem calcular valores diferentes
+   e desincronizar — janela de milissegundos, sem impacto de segurança/dados, só
+   visual, autocorrige na sessão seguinte. Os spawns em `server/room.js`
+   (`HUNTER_SPAWN_BY_LAYOUT`/`_chameleonSpawn`) foram copiados manualmente do `spawn`
+   de cada layout.
 4. **Cor nunca vai pela rede como pixels.** A "estampa" da camuflagem
    (`Player._stampZone`) é derivada de `(material, texSize, aniso)`, não de dados por
    pixel — os canvases usam `Math.random()` não semeado (`textures.js`), então dois
