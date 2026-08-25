@@ -1,16 +1,16 @@
 import * as THREE from 'three';
-import { Level } from './Level.js?v=4';
-import { Player } from './Player.js?v=4';
+import { Level } from './Level.js?v=25';
+import { Player } from './Player.js?v=7';
 import { Seeker, WAYPOINTS_ALT } from './Seeker.js?v=6';
-import { ChameleonTarget } from './ChameleonTarget.js?v=9';
+import { ChameleonTarget } from './ChameleonTarget.js?v=10';
 import { FollowCamera } from './FollowCamera.js?v=3';
 import { HunterCamera } from './HunterCamera.js?v=3';
 import { Joystick } from './Joystick.js?v=3';
 import { Effects } from './Effects.js?v=3';
 import { Audio } from './Audio.js?v=3';
-import { animationManager } from './AnimationManager.js?v=3';
-import { Net, resolveWsUrl } from './Net.js?v=4';
-import { RemotePlayer } from './RemotePlayer.js?v=3';
+import { animationManager } from './AnimationManager.js?v=4';
+import { Net, resolveWsUrl } from './Net.js?v=5';
+import { RemotePlayer } from './RemotePlayer.js?v=4';
 // Fase E do Plano 2 (docs/PLANO_CONTAS.md): primeiro (e único) ponto onde
 // Game.js sabe algo sobre conta de jogador — só pra reportar resultado de
 // partida pro Ranking. `reportMatchResult` já no-opa sozinho sem sessão
@@ -25,7 +25,7 @@ import {
   makeInputPayload,
   S2C,
   ROLE,
-} from './net/protocol.js?v=4';
+} from './net/protocol.js?v=5';
 
 // Mira do Caçador jogável (Game.fireHunterShot): cone de mira a partir do
 // centro da câmera, não pixel-perfect — evita o problema de raycast contra o
@@ -133,13 +133,14 @@ export class Game {
     this.elapsed = 0;    // tempo decorrido na fase
     this.camoTime = 0;   // tempo total camuflado (só faz sentido no modo Camaleão)
 
-    // Layout da arena por estágio (cicla a cada 4): 1=salão, 2=quartos, 3=galeria,
-    // 4=fábrica abandonada (mapa novo, casco próprio — ver Level.js:_buildFactoryLevel).
-    // Online usa `onlineLayoutFor()` (protocol.js) — rotação determinística por
-    // relógio, calculada aqui de forma SÍNCRONA (o Level é montado antes de
-    // conectar), sem round-trip: o servidor calcula o MESMO valor de forma
-    // independente (room.js) pra escolher spawns/oclusores coerentes com a
-    // geometria que este cliente já construiu.
+    // Layout da arena por estágio (cicla a cada 5): 1=salão, 2=quartos, 3=galeria,
+    // 4=fábrica abandonada, 5=Chameleon Manor (mansão 4 níveis, casco próprio —
+    // ver Level.js:_buildFactoryLevel/_buildChameleonManor). Online usa
+    // `onlineLayoutFor()` (protocol.js) — rotação determinística por relógio,
+    // calculada aqui de forma SÍNCRONA (o Level é montado antes de conectar),
+    // sem round-trip: o servidor calcula o MESMO valor de forma independente
+    // (room.js) pra escolher spawns/oclusores coerentes com a geometria que
+    // este cliente já construiu.
     const layout = this.mode === 'online' ? onlineLayoutFor() : ((this.stage - 1) % 5) + 1;
     this.level = new Level(this.scene, layout, { mobile: this.isMobile });
     this.player = new Player(this.scene, this.level, { isHunter: this.mode === 'hunter' });
@@ -971,6 +972,9 @@ export class Game {
     // na altura certa já de cara (routeY[i], a mesma usada como startY do
     // Seeker daquela rota — ver Level._setRoutes) e depois se corrige sozinho
     // ao vaguear/fugir (mesmo _groundY adaptado, ver Fase B do Plano 3).
+    // `huntTargetRouteIndices` (Level.js, default [0,1]) deixa cada layout
+    // escolher quantos/quais domínios recebem alvo — Chameleon Manor (Plano 5)
+    // usa os 4 (porão/térreo/1º andar/ático), não só os 2 primeiros.
     for (const i of (this.level.huntTargetRouteIndices || [0, 1])) {
       const route = routes[i];
       if (!route) continue;

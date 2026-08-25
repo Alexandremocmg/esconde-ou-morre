@@ -136,7 +136,7 @@ export const LAYOUT_4_OCCLUDERS = [
 // regeneração dos dois acima: pra regerar, `new Level(scene, 5)` (headless, mesmo
 // padrão usado em toda verificação deste mapa) e
 // `level.climbables.map(m => new THREE.Box3().setFromObject(m))`.
-// 121 entradas — bem mais que layout 1 (91) ou 4 (33): o mapa tem 4 níveis físicos
+// 122 entradas — bem mais que layout 1 (91) ou 4 (33): o mapa tem 4 níveis físicos
 // (porão/térreo/1º andar/ático) em vez de 1-3, cada um com sua própria geometria.
 export const LAYOUT_5_OCCLUDERS = [
   { minX: -60, maxX: 60, minY: -3, maxY: 0, minZ: -40.3, maxZ: -39.7 },
@@ -260,6 +260,7 @@ export const LAYOUT_5_OCCLUDERS = [
   { minX: 29.45, maxX: 30.55, minY: 8.5, maxY: 9.2, minZ: -25.35, maxZ: -24.65 },
   { minX: 44.45, maxX: 45.55, minY: 8.5, maxY: 9.2, minZ: -10.35, maxZ: -9.65 },
   { minX: -45.55, maxX: -44.45, minY: 8.5, maxY: 9.2, minZ: 9.65, maxZ: 10.35 },
+  { minX: -45.75, maxX: -44.25, minY: 0.2, maxY: 1.2, minZ: -15.6, maxZ: -15.3 },
 ];
 
 // Lookup por número de layout — room.js usa `onlineLayoutFor()` (protocol.js) pra

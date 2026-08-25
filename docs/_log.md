@@ -105,3 +105,52 @@ usando `occluders` em vez de `climbables`, passarela sem barreira externa,
 props flutuando, corredor estreito demais), verificação sRGB de paleta,
 orçamento de malhas (≤400/mapa) e a metodologia de verificação headless já
 estabelecida (simulação de IA/física antes de qualquer olhar visual).
+
+## 2026-08-25 — Plano 5: mapa "Chameleon Manor" (layout 5), 4 níveis físicos
+
+Maior recurso único já construído no projeto: mansão de 4 domínios verticais
+(porão/térreo/1º andar/ático), ~15× a área da mansão original, 10 fases
+executadas uma a uma com aprovação entre elas ("continue pra Fase N"), a
+partir de uma especificação externa que precisou de adaptação real (sem
+`MeshPhysicalMaterial`, sem grafo de waypoints com arestas — Seeker não tem
+pathfinding). Detalhe completo em
+[`docs/PLANO_CHAMELEON_MANOR.md`](PLANO_CHAMELEON_MANOR.md) (novo). Resumo:
+
+- **Fases 0-2**: casco vazio (4 níveis, 3 escadas), amostragem de cor por
+  pixel (capacidade nova, testada isolada antes de qualquer zona real
+  depender dela), paleta `CHAMELEON` (18 cores, verificada por sRGB).
+- **Fases 3-6**: conteúdo real por domínio — Porão (3 salas), Térreo (6
+  salas, 24 quadros, 1º consumo real de pixelColorable), 1º Andar (4
+  quartos + passagem secreta que desliza um painel de parede de verdade,
+  com resync manual do `Box3` de colisão a cada frame), Ático (claraboia —
+  vão vertical real através de 2 lajes, visão direta ático→Ballroom).
+- **Fase 7**: iluminação por zona REJEITADA como PointLight/SpotLight
+  coloridas — quebraria a garantia sRGB da camuflagem e contradiz uma
+  decisão de design já documentada em `Game.js`. Achado extra: uma mecânica
+  de penumbra-afeta-visão já existiu num plano anterior e foi removida
+  (`Seeker.js:352`) — confirma que zona escura como gameplay já foi tentada
+  e descartada neste projeto. Substituída por luminárias emissivas
+  decorativas (padrão já usado na mansão).
+- **Fase 8 (rebalanceamento medido)**: harness novo usando a classe `Seeker`
+  REAL (não uma aproximação) achou cobertura de patrulha muito abaixo do
+  baseline da mansão — causa raiz: `opts.visionRange` (infra da Fase 0)
+  nunca tinha sido ligado em `Game.js`, então todo o mapa usava o alcance de
+  7,5m calibrado pra cômodos da mansão, 5-10× menores. Corrigido pra 16m +
+  2º Seeker nos 2 domínios com mais salas. Um teste de estabilidade de 10min
+  achou uma rota (Porão) travando quase o tempo todo — bug real que o sweep
+  de colisão de 20-25 amostras/segmento usado em TODAS as fases anteriores
+  não pegava (janela de cruzamento da parede fina demais pra essa
+  resolução). Todas as rotas do mapa foram re-verificadas a 200
+  amostras/segmento depois desse achado.
+- **Fase 9 (Online)**: `ONLINE_LAYOUTS=[1,4,5]`, snapshot de 122 oclusores
+  extraído do `climbables` real (mesmo processo headless do layout 1/4),
+  tabelas de spawn no `server/room.js`. Testado com `ws` cru contra `Room`
+  real (não mockado): spawn, `welcome.layout`, acerto real e bloqueio real
+  por parede.
+- **Fase 10**: 2 hero spots extra (A2, B4) fechando 16/18 (os 2 restantes,
+  S2/A7, dependem de um sistema de pintura por-quadro que é escopo de fase
+  própria); regressão final de malhas × {desktop,mobile} nos 5 layouts —
+  Chameleon Manor fecha em 310 malhas (meta era ≤1500).
+
+Nenhum commit ainda — trabalho aguardando instrução explícita do usuário pra
+commitar (convenção já estabelecida nesta sessão desde o Plano 4).

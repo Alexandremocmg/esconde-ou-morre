@@ -18,6 +18,7 @@ se um doc mudou de categoria, atualize aqui (ver `CLAUDE.md` § Ingest).
 | [`MECANICA_CACADOR.md`](MECANICA_CACADOR.md) | 🟢 | Especificação técnica do modo Caçador: munição, condições de vitória/derrota, HUD, sorteio de papel no lobby. |
 | [`MECANICA_CACADOR_VISAO.md`](MECANICA_CACADOR_VISAO.md) | 🟢 | Design de câmera/FOV, arma de água e Scanner do Caçador (status ✅/🔲 por item); §3 cobre a IA dos alvos-camaleão. |
 | [`PLANO_MANSAO.md`](PLANO_MANSAO.md) | 🟢 | Arquitetura dos mapas (mansão de 3 alas + Fábrica Abandonada): andares, escadas, colisão, mezanino/passarela. |
+| [`PLANO_CHAMELEON_MANOR.md`](PLANO_CHAMELEON_MANOR.md) | 🟢 | Arquitetura do mapa layout 5 (mansão de 4 níveis físicos): domínios verticais, paleta, amostragem por pixel, passagens secretas, desvios da spec original, hero spots, métricas. |
 | [`PLANO_MULTIPLAYER.md`](PLANO_MULTIPLAYER.md) | 🟢 | Especificação do modo Online: servidor autoritativo, protocolo, rotação de mapa por relógio. |
 | [`PLANO_CONTAS.md`](PLANO_CONTAS.md) | 🟢 | Contas de jogador via Supabase (Ranking, Missões, Personalização): schema e limitações. |
 | [`PAINEL_AJUSTE.md`](PAINEL_AJUSTE.md) | 🟢 | Painel de dev (`?tune=1`) pra calibrar parâmetros de movimento ao vivo. |

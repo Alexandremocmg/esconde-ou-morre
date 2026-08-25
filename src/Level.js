@@ -96,7 +96,7 @@ const F_CAT_Y = 4.4;    // altura da passarela elevada (equivalente ao mezanino)
 // decisão explícita do usuário de seguir a escala completa da especificação
 // externa (docs/ESPECIFICACAO_MAPA_CHAMELEON_MANOR (1).md), não uma versão
 // reduzida. Ver .claude/skills/level-design/SKILL.md pro processo (headless
-// antes de visual, sempre).
+// antes de visual, sempre) e docs/PLANO_CHAMELEON_MANOR.md pro histórico.
 //
 // Fase 0 do Plano 5: só o CASCO (piso/parede/teto dos 4 níveis + 3 escadas de
 // transição + rotas-placeholder retangulares). Conteúdo de zona (Ballroom,
@@ -118,11 +118,11 @@ const CM_T = 0.6;            // espessura de parede — mesma da Fábrica
 // MESMO método sRGB de MANSION/FACTORY (script scratchpad/
 // palette_check_chameleon.mjs, sessão, não versionado, agora com 18 cores):
 // mín. par-a-par 0,173, mín. vs. base do boneco (0xeef0f2) 0,208 — acima dos
-// limiares 0,161/0,188. Gerada via HSL (não hex à mão) — algumas
-// combinações "família" (verde-oliva vs. verde-planta, azul-parede vs.
-// azul-lombada, laranja-madeira vs. vermelho-tecido) colidiam por padrão e
-// precisaram de matiz/luminosidade ajustados à parte; o script documenta o
-// processo caso a paleta precise crescer de novo nas próximas fases.
+// limiares 0,161/0,188. Gerada via HSL (não hex à mão) — algumas combinações
+// "família" colidiam por padrão e precisaram de matiz/luminosidade ajustados
+// à parte; o script documenta o processo caso a paleta precise crescer de
+// novo nas próximas fases (as 3 últimas entradas, listraClara/listraEscura/
+// azulejoBanheiro, entraram assim na Fase 4b).
 const CHAMELEON = {
   marmore: 0xA9B6BC,       // marble_white — pilares do Ballroom, hero B1/B6 (cinza-azulado, não branco puro)
   floral: 0xDABEA9,        // wall_floral — papel de parede do 1º andar, hero B2
@@ -1632,7 +1632,7 @@ export class Level {
   }
 
   // Fase 4a do Plano 5 — Térreo (parcial): Ballroom + Hall de Entrada. Só 2
-  // das 6 zonas do térreo nesta fase — routes[1] cobre só essas 2 por
+  // das 6 zonas do térreo — routes[1] cobre só esse laço fechado por
   // enquanto (sem beco sem saída), e a Fase 4b substitui de novo por uma
   // rota estendida quando Galeria/Biblioteca/Corredor/Banheiro existirem.
   // Ao contrário do porão, o térreo já tem baseY=CM_GROUND_Y=0 — mesma
@@ -1740,6 +1740,9 @@ export class Level {
     this._buildBookshelf(-50, 1, { x: 0, z: -1 });
     this._buildBookshelf(-38, 1, { x: 0, z: -1 });
     this._buildBookshelf(-30, 1, { x: 0, z: -1 });
+    // Hero A2 ("Sofá da Biblioteca... atrás do sofá, encostado na parede") —
+    // encosto grudável de _buildArmchair perto da parede norte (sem porta).
+    this._buildArmchair(-45, -15, CHAMELEON.vermelho, 0);
     // Hero S1 ("Lombada de Livro... entre fileiras, prateleira 3, Crouch"):
     // a MESMA estante-base (climbable, pra grudar) + um painel pixelColorable
     // extra 3cm mais à frente que o painel decorativo embutido em
@@ -1779,6 +1782,11 @@ export class Level {
     this._buildManorRoom(13, 32, 10, 10, CHAMELEON.marmore, ['w'], { matName: 'marble', h: ballH });
     // Padrão de azulejo hexagonal pixelColorable (parede norte, sem porta).
     this._addHexPanel(13, 1.7, 27.35, { x: 0, z: 1 }, 8, 3);
+    // Hero B4 ("Toalha do Banheiro... gancho pequeno, parede leste — sem
+    // porta") — cabide (latão) + toalha pendurada, cor pálida já verificada
+    // (reusa azulejoBanheiro, sem precisar de uma cor nova).
+    this._deco(new THREE.CylinderGeometry(0.02, 0.02, 0.12, 6), MANSION.latao, 17.6, 1.9, 34, { rz: Math.PI / 2, colorable: false, metalness: 0.5 });
+    this._addBox(0.02, 0.6, 0.4, CHAMELEON.azulejoBanheiro, 17.55, 1.55, 34, { roughness: 0.9, climbable: false });
 
     // Rota: laço fechado tecendo pelas 6 zonas do térreo — hexágono do
     // Ballroom (gira 360°) → Biblioteca (beco, entra/sai) → Galeria (beco,
@@ -1856,7 +1864,7 @@ export class Level {
   }
 
   // Fase 5 do Plano 5 — 1º Andar: Quarto Principal, Quarto de Hóspedes,
-  // Storage, Banheiro de Luxo + passagem secreta 9.2 (Hóspedes ↔ Storage).
+  // Storage, Banheiro de Luxo + passagem secreta 9.2 (Hóspedes → Storage).
   // Adaptação de escopo: a passagem 9.1 da especificação (Biblioteca → Hall,
   // térreo) foi DEIXADA DE FORA — no layout real construído nas Fases 4a/4b
   // esses dois cômodos não são vizinhos (ficam em lados opostos do Ballroom),
@@ -1974,6 +1982,22 @@ export class Level {
     });
   }
 
+  _addCeiling() {
+    const y = WALL_H;
+    const ceil = new THREE.Mesh(
+      new THREE.PlaneGeometry(HALF * 2, HALF * 2),
+      new THREE.MeshToonMaterial({ color: 0xece7db, gradientMap: toonGradient(), side: THREE.FrontSide })
+    );
+    ceil.rotation.x = Math.PI / 2;
+    ceil.position.y = y;
+    ceil.receiveShadow = true;
+    this.scene.add(ceil);
+    // Rosácea de gesso (anel de boiserie) ao redor do lustre central.
+    this._deco(new THREE.TorusGeometry(1.4, 0.12, 8, 24), 0xe4ddcd, 0, y - 0.06, 0, {
+      rx: Math.PI / 2, colorable: false, roughness: 1.0,
+    });
+  }
+
   // Fase 6 do Plano 5 — Ático: Sótão Aberto + Telhado (sem sala fechada —
   // é o domínio menos visitado do Caçador na spec, "Muito Baixa"/5%). Hero
   // A5 (trave de madeira, canto noroeste) e B5 (chaminé). A claraboia em si
@@ -2082,22 +2106,6 @@ export class Level {
     // Ático — luz natural filtrada pela claraboia (já emissiva desde a Fase
     // 6): só registra a fixture, sem malha nova.
     this._addFixture(0, CM_ROOF_Y - 0.4, -8, 8, 0.6);
-  }
-
-  _addCeiling() {
-    const y = WALL_H;
-    const ceil = new THREE.Mesh(
-      new THREE.PlaneGeometry(HALF * 2, HALF * 2),
-      new THREE.MeshToonMaterial({ color: 0xece7db, gradientMap: toonGradient(), side: THREE.FrontSide })
-    );
-    ceil.rotation.x = Math.PI / 2;
-    ceil.position.y = y;
-    ceil.receiveShadow = true;
-    this.scene.add(ceil);
-    // Rosácea de gesso (anel de boiserie) ao redor do lustre central.
-    this._deco(new THREE.TorusGeometry(1.4, 0.12, 8, 24), 0xe4ddcd, 0, y - 0.06, 0, {
-      rx: Math.PI / 2, colorable: false, roughness: 1.0,
-    });
   }
 
   // ── ALA 1 — SALÃO PRINCIPAL (pé-direito duplo) ──────────────────────────────

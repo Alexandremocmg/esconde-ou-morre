@@ -14,16 +14,20 @@ Camaleões) via um servidor autoritativo, com munição/Scanner e reconexão aut
 
 O visual é **toon / cel-shaded** no espírito do **Meccha Chameleon**: ambiente claro e
 legível, superfícies chapadas com paleta pop e **contorno de desenho** nos Caçadores
-para lê-los como ameaça. Dois cenários hoje, ambos 100% **procedurais** (sem assets
+para lê-los como ameaça. Três cenários hoje, todos 100% **procedurais** (sem assets
 externos de geometria): a **mansão de 2 andares** (salão com pilares, corredor de
 quartos, galeria, mezanino e escadaria — 3 "alas" que se alternam por estágio no modo
-solo) e a **Fábrica Abandonada de Brinquedos/Tinta** (mapa 2, casco próprio, único
-nível + passarela elevada, paleta industrial verificada à parte). No modo **Online**,
-os dois mapas elegíveis circulam sozinhos por **rotação determinística de relógio**
-(`onlineLayoutFor()`, troca a cada hora cheia) — cliente e servidor calculam o mesmo
-mapa sem trocar mensagem nenhuma antes de conectar. Detalhes de cada mapa em
-`docs/PLANO_MANSAO.md`. Os cômodos coloridos (dos dois mapas) funcionam como **cabines
-de camuflagem**.
+solo), a **Fábrica Abandonada de Brinquedos/Tinta** (mapa 2, casco próprio, único
+nível + passarela elevada, paleta industrial verificada à parte) e o **Chameleon
+Manor** (mapa 3, casco próprio, 4 níveis físicos — porão/térreo/1º andar/ático —
+~15× a área da mansão original, amostragem de cor por pixel exato em superfícies
+com padrão, passagem secreta e claraboia com visão vertical real entre andares —
+ver `docs/PLANO_CHAMELEON_MANOR.md`). No modo **Online**, os mapas elegíveis
+circulam sozinhos por **rotação determinística de relógio** (`onlineLayoutFor()`,
+troca a cada hora cheia) — cliente e servidor calculam o mesmo mapa sem trocar
+mensagem nenhuma antes de conectar. Detalhes de cada mapa em `docs/PLANO_MANSAO.md`
+e `docs/PLANO_CHAMELEON_MANOR.md`. Os cômodos coloridos (de todos os mapas)
+funcionam como **cabines de camuflagem**.
 
 Conta de jogador opcional (**Supabase** Auth + Postgres) desbloqueia **Ranking**
 (sobrevivência + vitórias do Caçador), **Missões** e **Personalização** sincronizada
@@ -121,7 +125,7 @@ Fora do modo Online, qualquer host de arquivos estáticos serve a pasta como est
   - **Scanner (📡):** pulso de 8m (3s de duração, 20s de cooldown) que revela direção/distância dos Camaleões-alvo vivos num mini-radar, com vinheta azulada na tela. Disponível no Caçador solo e no Caçador Online.
 - **Reconexão automática (modo Online):** queda de conexão (troca de app, rede instável) ou até um reload de página são recuperados sozinhos — o servidor segura a vaga por 30s (`RECONNECT_GRACE_MS`) e o cliente reconecta com backoff reaproveitando a mesma identidade (`?rejoin=id:token`). Posição/pose não sobrevivem a um reload de página; papel, munição e status de eliminado sim — ver `docs/PLANO_MULTIPLAYER.md`.
 - **Reinício Instantâneo em Memória (0ms de Espera):** Botão **Jogar Novamente** na tela de Game Over/Vitória reseta o estado da partida instantaneamente em memória sem recarregar a página ou refazer downloads 3D.
-- **Dois mapas, rotação sozinha no Online:** mansão (3 alas) + Fábrica Abandonada (mapa 2, casco próprio — `Level.js:_buildFactoryLevel`). Solo cicla os 4 layouts por estágio; Online alterna entre os 2 mapas elegíveis a cada hora cheia, calculado igual dos dois lados sem handshake — ver `docs/PLANO_MANSAO.md` e `docs/PLANO_MULTIPLAYER.md`.
+- **Três mapas, rotação sozinha no Online:** mansão (3 alas) + Fábrica Abandonada (mapa 2, casco próprio — `Level.js:_buildFactoryLevel`) + Chameleon Manor (mapa 3, casco próprio, 4 níveis físicos — `Level.js:_buildChameleonManor`). Solo cicla os 5 layouts por estágio; Online alterna entre os 3 mapas elegíveis a cada hora cheia, calculado igual dos dois lados sem handshake — ver `docs/PLANO_MANSAO.md`, `docs/PLANO_CHAMELEON_MANOR.md` e `docs/PLANO_MULTIPLAYER.md`.
 - **Conta de jogador (Supabase — opcional):** login por e-mail/senha desbloqueia **Ranking** (Sobrevivência e Caçador, top 10), **Missões** com progresso salvo, e **Personalização** (forma do boneco) sincronizada entre aparelhos. Sem login, o jogo continua 100% jogável (progresso local via `sessionStorage`, como sempre foi). Tudo client-reported nesta fase (sem verificação server-side de resultado) — ver `docs/PLANO_CONTAS.md` pelas decisões e limitações conhecidas.
 - **Instalar como App (PWA):** ícone e tela de carregamento próprios, funciona offline depois da 1ª visita (service worker cache-first com atualização em segundo plano). Só registra fora de `localhost`/LAN, pra não brigar com o `Cache-Control: no-store` do `dev_server.py` em desenvolvimento.
 
@@ -152,7 +156,7 @@ src/
   UVPaint.js      # Pincel Livre: raycast na malha animada → UV → canvas 2D (textura de pintura)
   Seeker.js       # IA dos Caçadores: patrulha/caça, visão Toon, reset em memória
   ChameleonTarget.js # Alvos-camaleão do modo Caçador jogável: vagueia/foge/recolore, IA adaptada do Seeker
-  Level.js        # Mansão de 2 andares (3 alas) + Fábrica Abandonada (mapa 2, casco próprio) — mobília e áreas de camuflagem
+  Level.js        # Mansão de 2 andares (3 alas) + Fábrica Abandonada (mapa 2) + Chameleon Manor (mapa 3, 4 níveis físicos) — mobília e áreas de camuflagem
   FollowCamera.js # Câmera 3ª pessoa (Camaleão) com colisão e suporte a Pinch to Zoom
   HunterCamera.js # Câmera 1ª pessoa do Caçador jogável (FOV, olhar livre)
   Net.js          # Cliente WebSocket do modo Online (WebSocket nativo, sem dependência nova)
