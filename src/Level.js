@@ -111,6 +111,37 @@ const CM_ATTIC_Y = 8.5;      // piso do ático (= teto do 1º andar)
 const CM_ROOF_Y = 11;        // teto do ático
 const CM_T = 0.6;            // espessura de parede — mesma da Fábrica
 
+// Paleta CHAMELEON (Fase 2 do Plano 5) — só as cores que são alvo REAL de
+// camuflagem (colorable/pixelColorable), não a tabela decorativa inteira da
+// especificação original (molduras, prateleiras vazias etc. ficam
+// colorable:false, mesmo critério das outras 2 paletas). Verificada com o
+// MESMO método sRGB de MANSION/FACTORY (script scratchpad/
+// palette_check_chameleon.mjs, sessão, não versionado): mín. par-a-par 0,173,
+// mín. vs. base do boneco (0xeef0f2) 0,271 — acima dos limiares 0,161/0,188.
+// Gerada via HSL (não hex à mão): com 15 cores — bem mais que as 9 de MANSION/
+// FACTORY, dado o número maior de zonas temáticas deste mapa — algumas
+// combinações "família" (verde-oliva vs. verde-planta, azul-parede vs.
+// azul-lombada, laranja-madeira vs. vermelho-tecido) colidiam por padrão e
+// precisaram de matiz/luminosidade ajustados à parte; o script documenta o
+// processo caso a paleta precise crescer de novo nas próximas fases.
+const CHAMELEON = {
+  marmore: 0xA9B6BC,       // marble_white — pilares do Ballroom, hero B1/B6 (cinza-azulado, não branco puro)
+  floral: 0xDABEA9,        // wall_floral — papel de parede do 1º andar, hero B2
+  salvia: 0x3C8667,        // wall_sage — paredes da Galeria/corredores, hero A7
+  carvalho: 0x9F7438,      // wood_oak — estantes/piso/portas (Biblioteca, Hall)
+  madeiraEscura: 0x533B2D, // wood_dark — Ático/Porão, hero A4/A5
+  azulejoPreto: 0x262626,  // tile_black — banheiro de luxo (base do padrão hexagonal), hero S4
+  azulejoAzul: 0x356E97,   // tile_blue — banheiro/cozinha industrial
+  vermelho: 0xB63540,      // fabric_red — cortinas/tapetes/sofá, hero A1/A3
+  dourado: 0xC7AB6B,       // fabric_gold — molduras/detalhes da Galeria
+  concreto: 0x808080,      // concrete_gray — Porão/chaminé do Ático, hero B5
+  verde: 0x338830,         // plant_green — vasos/folhagem, hero A6
+  lombada1: 0x8A3B14,      // book_spine_1 — Biblioteca (base do padrão de lombadas), hero S1
+  lombada2: 0x14265D,      // book_spine_2 — Biblioteca, hero S1
+  lombada3: 0x800000,      // book_spine_3 — Biblioteca
+  lombada4: 0x80B635,      // book_spine_4 — Biblioteca
+};
+
 // Waypoint na altura de operação do Caçador.
 function wp(x, z) { return new THREE.Vector3(x, ROUTE_Y, z); }
 
