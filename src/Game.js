@@ -209,17 +209,42 @@ export class Game {
       // entra a partir do estágio THIRD_SEEKER_STAGE. As rotas vêm do layout.
       const routes = this.level.routes;
       const routeY = this.level.routeY || [];
-      const mkSeeker = (i, color) => new Seeker(
+      const mkSeeker = (i, color, opts = {}) => new Seeker(
         this.scene, this.level, this.player, () => this._gameOver(),
-        { difficulty, waypoints: routes[i] || WAYPOINTS_ALT, startY: routeY[i], color }
+        { difficulty, waypoints: routes[i] || WAYPOINTS_ALT, startY: routeY[i], color, ...opts }
       );
       if (this.level.layout === 5) {
         // Chameleon Manor (Plano 5): 4 domínios verticais físicos, 1 Seeker por
         // domínio DESDE O ESTÁGIO 1 — mesma correção que a Fase 6 de
         // docs/PLANO_MANSAO.md já validou pra 3 níveis ("sempre sobrava um nível
         // quase sem vigilância" quando o 2º/3º Caçador entrava tarde).
+        //
+        // Fase 8 (medido, não estimado): harness headless (Seeker real,
+        // amostragem de 888 pontos/domínio, 120s = duração real do 1º
+        // aparecimento deste mapa) mediu cobertura MUITO abaixo do baseline
+        // da mansão (41-54%/90%+) com o visionRange padrão de 7.5m — óbvio
+        // em retrospecto: salas deste mapa (Ballroom 36×24, Galeria 34×20)
+        // são 5-10x maiores que qualquer cômodo da mansão. `opts.visionRange`
+        // já existia desde a Fase 0 pra isso, mas nunca tinha sido ligado
+        // aqui. CM_VISION_RANGE=16 sozinho: Porão 10,7%→19,8%, Térreo
+        // 17,1%→35,4%, 1º Andar 18,8%→47,2%, Ático 32,6%→69,5% — melhora
+        // grande, mas Porão/Térreo (6 e 3 salas cada) continuam abaixo do
+        // piso da mansão com só 1 Seeker. Contingência do plano ("reescrever
+        // a rota primeiro; só se insuficiente, somar um 2º Seeker") — a rota
+        // já cobre todas as salas de cada domínio (não é o problema; é
+        // alcance de visão x área), então: 2º Seeker (rota invertida, mesmo
+        // alcance) nos 2 domínios com mais salas. Mapa não compete em
+        // orçamento de malha com os outros 4 (285-303 malhas, meta ≤1500).
+        const CM_VISION_RANGE = 16;
         const cmColors = [0xd21f1f, 0xb01ecb, 0xd88a1a, 0x1ecb8a];
-        this.seekers = routes.map((_, i) => mkSeeker(i, cmColors[i]));
+        const cmColorsB = [0x8f1414, 0x7a1487, 0x8f5c12, 0x148f5c];
+        this.seekers = routes.map((_, i) => mkSeeker(i, cmColors[i], { visionRange: CM_VISION_RANGE }));
+        for (const i of [0, 1]) { // Porão (3 salas), Térreo (6 salas)
+          this.seekers.push(mkSeeker(i, cmColorsB[i], {
+            visionRange: CM_VISION_RANGE,
+            waypoints: [...(routes[i] || [])].reverse(),
+          }));
+        }
       } else {
         // 0 = térreo; 1 = andares altos (nasce no 2º andar); 2 = térreo em sentido oposto.
         this.seekers = [mkSeeker(0), mkSeeker(1, 0xb01ecb)];

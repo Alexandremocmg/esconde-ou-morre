@@ -1619,6 +1619,15 @@ export class Level {
       wp(-10, 25),                          // centro da Área de Serviço
       wp(-17, 25),                          // porta oeste da Área de Serviço
       wp(-30, 20),                          // corredor aberto de volta ao hub
+      // Fase 8 (achado por simulação de 10min, não pelo sweep raso de 20-25
+      // amostras/segmento das fases anteriores — ver nota em docs/_log.md):
+      // o segmento direto (-30,20)→hub cortava a parede sul da Cozinha
+      // (x∈[-48,-32], z=8) numa janela de t estreita (~0,016 em 20 amostras
+      // ninguém caía dentro) — o Caçador ficava preso deslizando ao longo
+      // dela por minutos. `wp(-30,-18)` mantém x=-30 (a leste da Cozinha,
+      // que só vai até x=-32) até já estar ao norte da parede (z=-8..8) antes
+      // de virar pro hub.
+      wp(-30, -18),
     ];
   }
 
