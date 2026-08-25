@@ -1,4 +1,4 @@
-import { Game } from './Game.js?v=11';
+import { Game } from './Game.js?v=12';
 import { animationManager } from './AnimationManager.js?v=4';
 import { initTunePanel } from './TunePanel.js?v=1';
 import { initMenuUI, updateLoadingStages } from './MenuUI.js?v=4';

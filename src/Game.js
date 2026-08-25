@@ -110,8 +110,6 @@ export class Game {
     // lanterna/arma-viewmodel do Caçador como filhos dela (ver HunterCamera/_addHunterFlashlight).
     this.scene.add(this.camera);
 
-    this._addLights();
-
     // Modo da partida: 'chameleon' (padrão, fuja/camufle-se do Caçador IA), 'hunter'
     // (Caçador jogável, mira e atira nos Camaleões-alvo) ou 'online' (multiplayer —
     // docs/PLANO_MULTIPLAYER.md: servidor autoritativo decide papel/tiro/fim de
@@ -151,6 +149,10 @@ export class Game {
     // este cliente já construiu.
     const layout = this.mode === 'online' ? onlineLayoutFor() : ((this.stage - 1) % 5) + 1;
     this.level = new Level(this.scene, layout, { mobile: this.isMobile });
+    // Depois do Level (não antes, como era até aqui): o frustum da sombra
+    // agora lê a geometria real de this.level.solids pra se dimensionar —
+    // ver _addLights().
+    this._addLights();
     this.player = new Player(this.scene, this.level, { isHunter: this.mode === 'hunter' });
     this.effects = new Effects(this.scene);
     this.audio = new Audio();
@@ -368,13 +370,31 @@ export class Game {
     const shadowRes = 2048;
     key.shadow.mapSize.set(shadowRes, shadowRes);
     key.shadow.radius = 3;                 // borda suave (PCFSoftShadowMap)
-    const s = 15;
+    // Frustum ortográfico da sombra: s=15/far=42 cobre bem a planta ~29×29m
+    // da mansão/fábrica (valor fixo, testado — layouts 1-4 continuam com
+    // esses números exatos, zero mudança). O Chameleon Manor (layout 5) é
+    // 120×80m, MUITO maior — com o valor fixo, a maior parte do piso (tudo
+    // fora de ±15 do centro: Galeria, Biblioteca, Corredor, Porão inteiro...)
+    // ficava fora do frustum, e THREE.js amostra a BORDA do shadow map pra
+    // geometria fora dele — isso é o que aparecia como "linhas piscando" no
+    // piso, um artefato de shadow map, não um problema de malha duplicada.
+    // Só pra esse layout, deriva o tamanho da bounding box REAL de
+    // `this.level.solids` (já populada pelo Level) em vez de outro número
+    // fixo — acompanha sozinho se o mapa mudar de tamanho de novo.
+    let s = 15, far = 42;
+    if (this.level.layout === 5) {
+      const bounds = new THREE.Box3();
+      for (const box of this.level.solids) bounds.union(box);
+      const size = bounds.getSize(new THREE.Vector3());
+      s = Math.max(size.x, size.z) / 2 + 2;
+      far = s * 2 + size.y + 10;
+    }
     key.shadow.camera.left = -s;
     key.shadow.camera.right = s;
     key.shadow.camera.top = s;
     key.shadow.camera.bottom = -s;
     key.shadow.camera.near = 1;
-    key.shadow.camera.far = 42;
+    key.shadow.camera.far = far;
     key.shadow.bias = -0.0004;
     this.scene.add(key);
   }

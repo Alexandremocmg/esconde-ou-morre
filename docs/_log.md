@@ -154,3 +154,37 @@ pathfinding). Detalhe completo em
 
 Nenhum commit ainda — trabalho aguardando instrução explícita do usuário pra
 commitar (convenção já estabelecida nesta sessão desde o Plano 4).
+
+---
+
+## 2026-08-25 — Plano 5 commitado (Fases 0-10) + fix: sombra piscando no Chameleon Manor
+
+Todo o trabalho do Plano 5 (entrada acima) foi commitado por fase a pedido do
+usuário — reconstrução retroativa a partir do diff acumulado, já que nenhuma
+fase tinha sido commitada durante a construção (11 commits, `5899f14`..
+`3bca640`), seguido de push pra `origin/main` e confirmação em produção
+(Vercel + Render, ambos com deploy automático). Também: atalho `?stage=N` em
+`Game.js` (prioridade sobre `sessionStorage['eom-stage']`, não persiste) pra
+pular direto a um estágio sem progredir pelos anteriores — útil pra testar
+qualquer layout sob demanda, não só o Chameleon Manor.
+
+**Bug real encontrado e corrigido**: usuário reportou partes do piso do
+Chameleon Manor "piscando" (linhas, como uma "base" aparecendo por baixo).
+Causa raiz: o frustum ortográfico da sombra da luz-chave (`Game.js:_addLights`)
+é um valor FIXO (`s=15, far=42`) dimensionado pra mansão/fábrica (~29×29m) —
+nunca ajustado quando o Chameleon Manor (120×80m) foi adicionado. A maior
+parte do piso (Galeria, Biblioteca, Corredor, Porão inteiro — tudo fora de
+±15 do centro) ficava fora do frustum; Three.js amostra a borda do shadow map
+pra geometria fora dele, produzindo o artefato de banding/flicker reportado.
+Não era malha duplicada nem z-fighting entre dois pisos, como a hipótese
+inicial supôs — só um frustum pequeno demais pro mapa novo.
+
+Fix: `_addLights()` movido pra depois de `this.level` existir no construtor
+de `Game`; pro layout 5, calcula `s`/`far` a partir da bounding box real de
+`this.level.solids` (união de todos os AABBs) em vez de outro número fixo —
+acompanha sozinho se o mapa mudar de tamanho de novo. Layouts 1-4 mantêm os
+valores originais exatos (`s=15, far=42`, confirmado por inspeção direta no
+jogo rodando) — zero regressão. Verificado: `s≈62.3/far≈150.1` no layout 5,
+piso da Galeria (x=37, bem fora do frustum antigo) sem artefato visível.
+
+Arquivos: `src/Game.js` (fix), `src/main.js` (bump `?v=12`).
