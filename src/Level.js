@@ -1503,6 +1503,11 @@ export class Level {
     // slabWithGaps). Substitui o placeholder retangular de routes[3].
     this.routes[3] = this._buildAtico();
 
+    // Fase 7 do Plano 5: iluminação por zona — ver comentário de arquitetura
+    // no início de _buildZoneLighting() pra por que isto NÃO é a leitura
+    // literal da especificação (PointLight/SpotLight coloridas por zona).
+    this._buildZoneLighting();
+
     // Modo Caçador jogável: alvos nascem nos 4 domínios desde o início (não
     // só térreo+andar-de-cima como mansão/fábrica) — ver Game._spawnHunterTargets.
     this.huntTargetRouteIndices = [0, 1, 2, 3];
@@ -2011,6 +2016,63 @@ export class Level {
       wp(-20, 33),
       wp(-40, 10),
     ];
+  }
+
+  // Fase 7 do Plano 5 — Iluminação por zona. NÃO é a leitura literal da
+  // especificação (PointLight/SpotLight coloridas por cômodo): este projeto
+  // já tem uma decisão de arquitetura anterior e deliberada contra isso —
+  // 2 motivos reais, não estéticos:
+  //   1. Game.js:_addLights() já documenta "cena CLARA e legível... nada de
+  //      âmbar de penumbra" — o jogo INTEIRO usa 1 luz-chave branca +
+  //      hemisfério/ambiente neutros, a mesma para os 5 layouts.
+  //   2. A camuflagem inteira depende de hex == cor percebida (é por isso que
+  //      toda paleta deste plano passa pelo script sRGB) — uma PointLight
+  //      colorida por cima tingiria o MeshToonMaterial e quebraria essa
+  //      garantia bem debaixo da mecânica central do jogo.
+  //   3. (achado nesta sessão) Seeker.js:352 documenta que uma mecânica de
+  //      "penumbra afeta alcance de visão" já existiu E FOI REMOVIDA — outra
+  //      Fase 7, de um plano anterior (mansão). `this.fixtures`/`lightAt()`
+  //      continuam no código (nada os lê mais), só porque candelabros/
+  //      lustres/arandelas ainda os registram por hábito.
+  // Adaptação: "iluminação por zona" vira variação ATMOSFÉRICA barata que já
+  // é o padrão do resto do jogo — luminárias emissivas decorativas (chama/
+  // lâmpada, cor própria, NÃO afeta outros materiais) + registro em
+  // `fixtures` (consistência de dados com o resto do mapa, custo zero de
+  // GPU). "≤8 luzes dinâmicas simultâneas" do plano é sobre THREE.Light de
+  // verdade — como não uso nenhuma aqui, o orçamento nem se aplica (0 << 8).
+  _buildZoneLighting() {
+    // Porão — luz industrial fria: 3 lâmpadas suspensas (cor fria, mesmo
+    // tom de 0xA0C4FF da spec), 1 por sala.
+    const industrialLamp = (x, z) => {
+      const y = CM_GROUND_Y - 0.5;
+      const bulb = this._deco(new THREE.SphereGeometry(0.09, 8, 8), 0x0a0e14, x, y, z, {
+        colorable: false, emissive: 0xa0c4ff, emissiveIntensity: 1.3,
+      });
+      this._deco(new THREE.ConeGeometry(0.22, 0.18, 12, 1, true), CHAMELEON.concreto, x, y + 0.14, z, {
+        colorable: false, metalness: 0.4, roughness: 0.5,
+      });
+      this._flames.push({ mat: bulb.material, phase: Math.random() * 6.28, base: 1.3 });
+      this._addFixture(x, y, z, 6, 0.5);
+    };
+    industrialLamp(-40, 0);   // Cozinha Industrial
+    industrialLamp(-10, 0);   // Adega
+    industrialLamp(-10, 25);  // Área de Serviço
+
+    // Ballroom — 2 arandelas auxiliares nas paredes laterais (o lustre
+    // central já registra fixture própria em _buildBallroomHall).
+    this._buildSconce(-17.4, 2.4, -13);
+    this._buildSconce(17.4, 2.4, -13);
+
+    // Galeria — 4 arandelas cobrindo os 24 quadros em lotes (mesma proporção
+    // sugerida pela spec: "4 SpotLights cobrem 24 quadros em batches").
+    this._buildSconce(30, 2.6, -17.4);
+    this._buildSconce(48, 2.6, -17.4);
+    this._buildSconce(30, 2.6, 1.4);
+    this._buildSconce(48, 2.6, 1.4);
+
+    // Ático — luz natural filtrada pela claraboia (já emissiva desde a Fase
+    // 6): só registra a fixture, sem malha nova.
+    this._addFixture(0, CM_ROOF_Y - 0.4, -8, 8, 0.6);
   }
 
   _addCeiling() {
