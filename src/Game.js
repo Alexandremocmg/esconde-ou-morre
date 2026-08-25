@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { Level } from './Level.js?v=4';
 import { Player } from './Player.js?v=4';
-import { Seeker, WAYPOINTS_ALT } from './Seeker.js?v=4';
+import { Seeker, WAYPOINTS_ALT } from './Seeker.js?v=6';
 import { ChameleonTarget } from './ChameleonTarget.js?v=9';
 import { FollowCamera } from './FollowCamera.js?v=3';
 import { HunterCamera } from './HunterCamera.js?v=3';

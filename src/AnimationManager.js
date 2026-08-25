@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
-import { toonGradient } from './textures.js?v=3';
+import { toonGradient } from './textures.js?v=4';
 
 // UM GLB com a malha decimada e os 7 clipes embutidos, gerado no Blender a
 // partir dos FBX do Mixamo (ver docs/PIPELINE_PERSONAGEM.md). Antes eram 7 FBX

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { buildHumanoid, Gait } from './Character.js?v=3';
-import { toonGradient } from './textures.js?v=3';
-import { animationManager } from './AnimationManager.js?v=3';
+import { toonGradient } from './textures.js?v=4';
+import { animationManager } from './AnimationManager.js?v=4';
 
 // Parâmetros do Caçador
 const BODY_R = 0.6;

@@ -74,6 +74,58 @@ function toTexture(cv, { repeatX = 1, repeatY = 1, aniso = 4 } = {}) {
   return tex;
 }
 
+// 0xRRGGBB → '#rrggbb' (ctx.fillStyle exige string, não número).
+function hexStr(n) { return '#' + (n >>> 0).toString(16).padStart(6, '0'); }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PADRÕES pixelColorable (Plano 5, Fase 4b) — DIFERENTES de MATERIALS/
+// materialMaps() acima: lá, `base` é só o fundo e `draw()` soma detalhe sutil
+// por cima (a cor final visível vem de material.color tingindo tudo). Aqui as
+// DUAS cores de cada padrão JÁ SÃO a cor final — o mesh que as usa precisa de
+// color:0xffffff (sem tingir), porque Player._pixelColorAt lê o canvas bruto
+// via UV; se o material tingisse por cima, o que se VÊ deixaria de bater com
+// o que se AMOSTRA.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Listras verticais (Corredor Central). `stripes` conta faixas claras+escuras
+// alternadas (par, senão a última faixa fica cortada pela repetição do tile).
+export function stripeTexture(colorA, colorB, { size = 64, stripes = 8, aniso = 4 } = {}) {
+  return cached(`stripe:${colorA}:${colorB}:${size}:${stripes}:${aniso}`, () => {
+    const { cv, ctx } = makeCanvas(size, hexStr(colorA));
+    const w = size / stripes;
+    ctx.fillStyle = hexStr(colorB);
+    for (let i = 1; i < stripes; i += 2) ctx.fillRect(Math.round(i * w), 0, Math.ceil(w), size);
+    return toTexture(cv, { aniso });
+  });
+}
+
+// Azulejo hexagonal (Banheiro de Visitas): grid de hexágonos com rejunte
+// visível entre eles (raio -1px). `hexR` em pixels do canvas.
+export function hexTileTexture(tileColor, groutColor, { size = 128, hexR = 14, aniso = 4 } = {}) {
+  return cached(`hextile:${tileColor}:${groutColor}:${size}:${hexR}:${aniso}`, () => {
+    const { cv, ctx } = makeCanvas(size, hexStr(groutColor));
+    ctx.fillStyle = hexStr(tileColor);
+    const w = hexR * Math.sqrt(3), h = hexR * 1.5;
+    for (let row = -1; row * h < size + hexR; row++) {
+      for (let col = -1; col * w < size + hexR; col++) {
+        const cx = col * w + (((row % 2) + 2) % 2 === 1 ? w / 2 : 0);
+        drawHexPath(ctx, cx, row * h, hexR - 1);
+        ctx.fill();
+      }
+    }
+    return toTexture(cv, { aniso });
+  });
+}
+function drawHexPath(ctx, cx, cy, r) {
+  ctx.beginPath();
+  for (let i = 0; i < 6; i++) {
+    const a = (Math.PI / 3) * i - Math.PI / 6;
+    const x = cx + r * Math.cos(a), y = cy + r * Math.sin(a);
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.closePath();
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // PAINÉIS FACETADOS DO BONECO (estilo art toy de vinil técnico — ver referência)
 // Sulcos angulares gravados no corpo. O MESMO traçado alimenta duas saídas:

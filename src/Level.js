@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
-import { materialMaps, toonGradient } from './textures.js?v=3';
+import { materialMaps, toonGradient, stripeTexture, hexTileTexture } from './textures.js?v=4';
 
 // Carregador de imagem compartilhado (quadros, céu). Único asset externo do jogo:
 // arte toon gerada, empacotada em assets/ — segue offline (servida localmente).
@@ -116,10 +116,9 @@ const CM_T = 0.6;            // espessura de parede — mesma da Fábrica
 // especificação original (molduras, prateleiras vazias etc. ficam
 // colorable:false, mesmo critério das outras 2 paletas). Verificada com o
 // MESMO método sRGB de MANSION/FACTORY (script scratchpad/
-// palette_check_chameleon.mjs, sessão, não versionado): mín. par-a-par 0,173,
-// mín. vs. base do boneco (0xeef0f2) 0,271 — acima dos limiares 0,161/0,188.
-// Gerada via HSL (não hex à mão): com 15 cores — bem mais que as 9 de MANSION/
-// FACTORY, dado o número maior de zonas temáticas deste mapa — algumas
+// palette_check_chameleon.mjs, sessão, não versionado, agora com 18 cores):
+// mín. par-a-par 0,173, mín. vs. base do boneco (0xeef0f2) 0,208 — acima dos
+// limiares 0,161/0,188. Gerada via HSL (não hex à mão) — algumas
 // combinações "família" (verde-oliva vs. verde-planta, azul-parede vs.
 // azul-lombada, laranja-madeira vs. vermelho-tecido) colidiam por padrão e
 // precisaram de matiz/luminosidade ajustados à parte; o script documenta o
@@ -140,6 +139,13 @@ const CHAMELEON = {
   lombada2: 0x14265D,      // book_spine_2 — Biblioteca, hero S1
   lombada3: 0x800000,      // book_spine_3 — Biblioteca
   lombada4: 0x80B635,      // book_spine_4 — Biblioteca
+  // Fase 4b — cores de padrão pixelColorable: aqui as DUAS cores de cada par
+  // JÁ SÃO a cor final do canvas (não um base+tint como as demais — ver
+  // textures.js stripeTexture/hexTileTexture), então precisam da MESMA
+  // verificação sRGB que qualquer outra entrada colorable.
+  listraClara: 0xB861B8,    // wall_striped claro — Corredor
+  listraEscura: 0x633663,   // wall_striped escuro — Corredor
+  azulejoBanheiro: 0xDFBBE2, // tile_white (não branco puro) — Banheiro de Visitas, hero B4 (rejunte reusa `concreto`)
 };
 
 // Waypoint na altura de operação do Caçador.
@@ -1413,7 +1419,13 @@ export class Level {
     // Fase 4a do Plano 5: Térreo (parcial) — Ballroom + Hall de Entrada.
     // Só 2 das 6 zonas do térreo nesta fase — routes[1] cobre só essas 2 por
     // enquanto, mesmo espírito iterativo do porão (placeholder → real).
-    this.routes[1] = this._buildBallroomHall();
+    this._buildBallroomHall();
+
+    // Fase 4b do Plano 5: Térreo (resto) — Galeria de Arte Leste, Biblioteca
+    // Oeste, Corredor Central, Banheiro de Visitas. Substitui de novo
+    // routes[1] (agora as 6 zonas do térreo, laço fechado sem beco sem
+    // saída).
+    this.routes[1] = this._buildTerreoResto();
 
     // Modo Caçador jogável: alvos nascem nos 4 domínios desde o início (não
     // só térreo+andar-de-cima como mansão/fábrica) — ver Game._spawnHunterTargets.
@@ -1591,6 +1603,157 @@ export class Level {
       wp(0, 4),   // porta sul do Ballroom
       wp(0, 18),  // centro do Hall
     ];
+  }
+
+  // Fase 4b do Plano 5 — Térreo (resto): Galeria de Arte Leste, Biblioteca
+  // Oeste, Corredor Central, Banheiro de Visitas. Primeiro consumidor REAL da
+  // amostragem por pixel da Fase 1 (painel de lombadas, listras, azulejo
+  // hexagonal) — até aqui só existia como plumbing testado isoladamente.
+  // Galeria/Biblioteca são "becos" de 1 porta só a partir do Ballroom — não é
+  // o beco-sem-saída que a regra de topologia proíbe (aquela é sobre o
+  // Seeker/ChameleonTarget travarem fisicamente numa quina; entrar e sair
+  // pela MESMA porta é patrulha normal, não travamento).
+  _buildTerreoResto() {
+    const ballH = CM_FLOOR1_Y - CM_GROUND_Y; // mesmo pé-direito do térreo (4.5m)
+
+    // Galeria de Arte Leste — porta oeste alinhada com a porta leste do
+    // Ballroom (x=18), 2m de vão aberto entre as duas.
+    this._buildManorRoom(37, -8, 34, 20, CHAMELEON.salvia, ['w'], { matName: 'drywall', h: ballH });
+    // 24 quadros: 9 na parede norte, 9 na sul, 6 na leste (a oeste tem porta).
+    for (let i = 0; i < 9; i++) {
+      const x = 22 + i * 3.75;
+      this._buildPainting(x, 1.7, -17.7, { x: 0, z: 1 }, 1.0, 1.3);
+      this._buildPainting(x, 1.7, 1.7, { x: 0, z: -1 }, 1.0, 1.3);
+    }
+    for (let i = 0; i < 6; i++) {
+      const z = -16 + i * 3.2;
+      this._buildPainting(53.7, 1.7, z, { x: -1, z: 0 }, 1.0, 1.3);
+    }
+    // Hero A6 ("Vaso da Galeria... ao lado do vaso grande, parede sul").
+    this._buildPlant(30, 1.2, 0);
+    this._buildPlant(48, -16.5, 0);
+
+    // Biblioteca Oeste — porta leste alinhada com a porta oeste do Ballroom
+    // (x=-18), 2m de vão aberto.
+    this._buildManorRoom(-37, -8, 34, 20, CHAMELEON.carvalho, ['e'], { matName: 'wood', h: ballH });
+    // 3 estantes comuns (colorable:false, padrão já existente na mansão) +
+    // 1 hero S1 (painel pixelColorable dedicado, ver abaixo).
+    // z=1 (não 2, a própria parede) — mesmo recuo de ~1m usado nos outros
+    // usos de _buildBookshelf na mansão (a caixa fica à FRENTE da parede,
+    // não embutida nela).
+    this._buildBookshelf(-50, 1, { x: 0, z: -1 });
+    this._buildBookshelf(-38, 1, { x: 0, z: -1 });
+    this._buildBookshelf(-30, 1, { x: 0, z: -1 });
+    // Hero S1 ("Lombada de Livro... entre fileiras, prateleira 3, Crouch"):
+    // a MESMA estante-base (climbable, pra grudar) + um painel pixelColorable
+    // extra 3cm mais à frente que o painel decorativo embutido em
+    // _buildBookshelf (colorable:false) — fica na frente no raycast de
+    // _surfaceBehindZone sem precisar tocar aquele helper (usado 4x na
+    // mansão, sempre colorable:false; mudar lá arriscaria regressão).
+    const s1x = -44, s1z = 1, s1dir = { x: 0, z: -1 };
+    this._buildBookshelf(s1x, s1z, s1dir);
+    {
+      const bs = this._mat('bookSpines');
+      const off = 0.5 / 2 + 0.05; // > os 0,02 do painel embutido — vence o raycast
+      const tex = bs.map.clone(); tex.needsUpdate = true;
+      const mesh = new THREE.Mesh(
+        new THREE.PlaneGeometry(2.2 * 0.92, 2.8 * 0.82),
+        new THREE.MeshToonMaterial({ color: 0xffffff, gradientMap: toonGradient(), map: tex })
+      );
+      mesh.position.set(s1x + s1dir.x * off, 2.8 * 0.52, s1z + s1dir.z * off);
+      mesh.rotation.y = this._facing(s1dir);
+      mesh.receiveShadow = true;
+      mesh.userData.colorable = true;
+      const src = this._buildPixelSource(bs.map, null);
+      if (src) { mesh.userData.pixelColorable = true; mesh.userData.pixelSource = src; }
+      this.scene.add(mesh);
+      this.colorables.push(mesh);
+    }
+
+    // Corredor Central — porta norte alinhada com a porta sul do Hall
+    // (z=26), 2m de vão aberto; porta leste liga direto ao Banheiro.
+    this._buildManorRoom(0, 32, 14, 8, CHAMELEON.carvalho, ['n', 'e'], { matName: 'wood', h: ballH });
+    // Padrão de listras pixelColorable (parede sul, sem porta): painel
+    // grande e proeminente — a MESMA lógica do painel do S1 acima (mesh
+    // dedicado, colorable+pixelColorable, cor final já no canvas).
+    this._addStripedPanel(0, 1.7, 35.65, { x: 0, z: -1 }, 10, 3);
+
+    // Banheiro de Visitas — porta oeste alinhada com a porta leste do
+    // Corredor (x=7), 1m de vão aberto.
+    this._buildManorRoom(13, 32, 10, 10, CHAMELEON.marmore, ['w'], { matName: 'marble', h: ballH });
+    // Padrão de azulejo hexagonal pixelColorable (parede norte, sem porta).
+    this._addHexPanel(13, 1.7, 27.35, { x: 0, z: 1 }, 8, 3);
+
+    // Rota: laço fechado tecendo pelas 6 zonas do térreo — hexágono do
+    // Ballroom (gira 360°) → Biblioteca (beco, entra/sai) → Galeria (beco,
+    // entra/sai) → Hall → Corredor → Banheiro (beco, entra/sai) → fecha de
+    // volta ao hexágono (mesmo segmento reto já verificado por simulação na
+    // Fase 4a, que atravessa as portas Ballroom/Hall alinhadas em x=0).
+    const pr = 2, pillarX = 0, pillarZ = -13;
+    const hex = [];
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2;
+      hex.push(wp(pillarX + Math.cos(a) * pr, pillarZ + Math.sin(a) * pr));
+    }
+    return [
+      ...hex,
+      wp(-18, -8),  // porta oeste do Ballroom
+      wp(-37, -8),  // centro da Biblioteca (passa pela porta leste dela)
+      wp(-18, -8),  // volta pela mesma porta
+      wp(0, -11),   // atravessa o salão desviando do pilar em anel (10,-8)
+      wp(18, -8),   // porta leste do Ballroom
+      wp(37, -8),   // centro da Galeria (passa pela porta oeste dela)
+      wp(18, -8),   // volta pela mesma porta
+      wp(14, 3),    // desvia da parede leste E do pilar em anel (3.09,1.51)
+      wp(0, 3),     // alinha em x=0 antes de entrar na porta (evita raspar a quina)
+      wp(0, 4),     // porta sul do Ballroom
+      wp(0, 18),    // centro do Hall
+      wp(0, 32),    // centro do Corredor (passa pelas portas Hall/Corredor)
+      wp(13, 32),   // centro do Banheiro (passa pela porta leste/oeste)
+      wp(0, 32),    // volta pela mesma porta
+      wp(0, 18),    // volta ao centro do Hall
+    ];
+  }
+
+  // Painel pixelColorable de listras (Corredor Central, Fase 4b) — mesh
+  // dedicado (não _deco: precisa de userData.pixelSource, que só _addBox
+  // monta hoje). `dir` aponta pra fora da parede, igual _buildPainting.
+  _addStripedPanel(x, y, z, dir, w, h) {
+    const tex = stripeTexture(CHAMELEON.listraClara, CHAMELEON.listraEscura, { stripes: 10 });
+    const clone = tex.clone(); clone.needsUpdate = true;
+    const mesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(w, h),
+      new THREE.MeshToonMaterial({ color: 0xffffff, gradientMap: toonGradient(), map: clone })
+    );
+    mesh.position.set(x, y, z);
+    mesh.rotation.y = this._facing(dir);
+    mesh.receiveShadow = true;
+    mesh.userData.colorable = true;
+    const src = this._buildPixelSource(tex, null);
+    if (src) { mesh.userData.pixelColorable = true; mesh.userData.pixelSource = src; }
+    this.scene.add(mesh);
+    this.colorables.push(mesh);
+    return mesh;
+  }
+
+  // Painel pixelColorable de azulejo hexagonal (Banheiro de Visitas, Fase
+  // 4b) — mesmo tratamento do painel de listras acima.
+  _addHexPanel(x, y, z, dir, w, h) {
+    const tex = hexTileTexture(CHAMELEON.azulejoBanheiro, CHAMELEON.concreto, { hexR: 14 });
+    const clone = tex.clone(); clone.needsUpdate = true;
+    const mesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(w, h),
+      new THREE.MeshToonMaterial({ color: 0xffffff, gradientMap: toonGradient(), map: clone })
+    );
+    mesh.position.set(x, y, z);
+    mesh.rotation.y = this._facing(dir);
+    mesh.receiveShadow = true;
+    mesh.userData.colorable = true;
+    const src = this._buildPixelSource(tex, null);
+    if (src) { mesh.userData.pixelColorable = true; mesh.userData.pixelSource = src; }
+    this.scene.add(mesh);
+    this.colorables.push(mesh);
+    return mesh;
   }
 
   _addCeiling() {
