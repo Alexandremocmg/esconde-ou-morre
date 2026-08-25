@@ -94,6 +94,11 @@ export class Seeker {
 
     // Rota de patrulha (permite instanciar Caçadores com rotas alternadas).
     this.waypoints = opts.waypoints || WAYPOINTS;
+    // Alcance de visão por instância (default = VISION_RANGE do módulo, igual
+    // sempre foi). Chameleon Manor (Plano 5) tem salas bem maiores que
+    // qualquer cômodo da mansão/fábrica — precisa poder pedir um alcance
+    // maior sem mexer na calibração dos outros 4 layouts.
+    this.visionRange = opts.visionRange || VISION_RANGE;
     const bodyColor = opts.color != null ? opts.color : 0xd21f1f;
     this._bodyColor = bodyColor;
     const startY = opts.startY != null ? opts.startY : EYE_Y;
@@ -178,18 +183,20 @@ export class Seeker {
     // Agora sim monta o modelo animado e leva a arma para a mão.
     this._checkAnimInstance();
 
-    // Cone de visão (visual/debug), apontando +Z a partir dos olhos
-    const coneR = Math.tan(VISION_HALF_ANGLE) * VISION_RANGE;
+    // Cone de visão (visual/debug), apontando +Z a partir dos olhos — usa
+    // this.visionRange (não a constante do módulo), pra bater com o alcance
+    // real desta instância (ver Plano 5: Chameleon Manor pede salas maiores).
+    const coneR = Math.tan(VISION_HALF_ANGLE) * this.visionRange;
     this.visionMat = new THREE.MeshBasicMaterial({
       color: 0xff5a3c, transparent: true, opacity: 0.12,
       side: THREE.DoubleSide, depthWrite: false,
     });
     const cone = new THREE.Mesh(
-      new THREE.ConeGeometry(coneR, VISION_RANGE, 24, 1, true),
+      new THREE.ConeGeometry(coneR, this.visionRange, 24, 1, true),
       this.visionMat
     );
     cone.rotation.x = -Math.PI / 2; // ápice p/ -Z (olhos), base à frente (+Z)
-    cone.position.set(0, 0, VISION_RANGE / 2);
+    cone.position.set(0, 0, this.visionRange / 2);
     this.bodyGroup.add(cone);
 
     scene.add(this.group);
@@ -346,7 +353,7 @@ export class Seeker {
     // agachar (furtividade). A camuflagem segue absoluta — o portão
     // acquired = sees && !camo não muda; agachar afeta só `sees`.
     const crouch = this.player.crouched ? CROUCH_VISION_MULT : 1;
-    const range = VISION_RANGE * crouch;
+    const range = this.visionRange * crouch;
 
     // Testa cabeça, centro e pés; o primeiro ponto dentro do cone, no alcance e
     // com linha de visão livre já conta como "visto".

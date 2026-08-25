@@ -140,7 +140,7 @@ export class Game {
     // conectar), sem round-trip: o servidor calcula o MESMO valor de forma
     // independente (room.js) pra escolher spawns/oclusores coerentes com a
     // geometria que este cliente já construiu.
-    const layout = this.mode === 'online' ? onlineLayoutFor() : ((this.stage - 1) % 4) + 1;
+    const layout = this.mode === 'online' ? onlineLayoutFor() : ((this.stage - 1) % 5) + 1;
     this.level = new Level(this.scene, layout, { mobile: this.isMobile });
     this.player = new Player(this.scene, this.level, { isHunter: this.mode === 'hunter' });
     this.effects = new Effects(this.scene);
@@ -213,9 +213,18 @@ export class Game {
         this.scene, this.level, this.player, () => this._gameOver(),
         { difficulty, waypoints: routes[i] || WAYPOINTS_ALT, startY: routeY[i], color }
       );
-      // 0 = térreo; 1 = andares altos (nasce no 2º andar); 2 = térreo em sentido oposto.
-      this.seekers = [mkSeeker(0), mkSeeker(1, 0xb01ecb)];
-      if (this.stage >= THIRD_SEEKER_STAGE) this.seekers.push(mkSeeker(2, 0xd88a1a));
+      if (this.level.layout === 5) {
+        // Chameleon Manor (Plano 5): 4 domínios verticais físicos, 1 Seeker por
+        // domínio DESDE O ESTÁGIO 1 — mesma correção que a Fase 6 de
+        // docs/PLANO_MANSAO.md já validou pra 3 níveis ("sempre sobrava um nível
+        // quase sem vigilância" quando o 2º/3º Caçador entrava tarde).
+        const cmColors = [0xd21f1f, 0xb01ecb, 0xd88a1a, 0x1ecb8a];
+        this.seekers = routes.map((_, i) => mkSeeker(i, cmColors[i]));
+      } else {
+        // 0 = térreo; 1 = andares altos (nasce no 2º andar); 2 = térreo em sentido oposto.
+        this.seekers = [mkSeeker(0), mkSeeker(1, 0xb01ecb)];
+        if (this.stage >= THIRD_SEEKER_STAGE) this.seekers.push(mkSeeker(2, 0xd88a1a));
+      }
     }
 
     // Placar com Atraso de 30 Segundos (Anti-Cheat Spec)
@@ -937,7 +946,7 @@ export class Game {
     // na altura certa já de cara (routeY[i], a mesma usada como startY do
     // Seeker daquela rota — ver Level._setRoutes) e depois se corrige sozinho
     // ao vaguear/fugir (mesmo _groundY adaptado, ver Fase B do Plano 3).
-    for (const i of [0, 1]) {
+    for (const i of (this.level.huntTargetRouteIndices || [0, 1])) {
       const route = routes[i];
       if (!route) continue;
       const y = routeY[i] != null ? routeY[i] : undefined;

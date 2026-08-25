@@ -87,6 +87,30 @@ const F_WALL_H = 7.6;   // pé-direito único (sem os 3 níveis da mansão)
 const F_ROOM_H = 5.2;   // paredes dos 4 cômodos de canto
 const F_CAT_Y = 4.4;    // altura da passarela elevada (equivalente ao mezanino)
 
+// ─────────────────────────────────────────────────────────────────────────────
+// MAPA 3 — CHAMELEON MANOR (layout=5, Plano 5). Casco PRÓPRIO como a Fábrica
+// (não passa por _build()), mas reaproveita a paleta/materiais da FAMÍLIA
+// mansão (MANSION acima, materiais toon de textures.js) — é tematicamente uma
+// mansão, ao contrário da Fábrica (paleta industrial própria). 4 níveis
+// físicos (porão/térreo/1º andar/ático), ~15× a área da mansão atual —
+// decisão explícita do usuário de seguir a escala completa da especificação
+// externa (docs/ESPECIFICACAO_MAPA_CHAMELEON_MANOR (1).md), não uma versão
+// reduzida. Ver .claude/skills/level-design/SKILL.md pro processo (headless
+// antes de visual, sempre).
+//
+// Fase 0 do Plano 5: só o CASCO (piso/parede/teto dos 4 níveis + 3 escadas de
+// transição + rotas-placeholder retangulares). Conteúdo de zona (Ballroom,
+// Galeria, Biblioteca, amostragem por pixel, passagens secretas...) entra nas
+// fases seguintes — não adicionar aqui sem atualizar o plano.
+const CM_HALF_X = 60;        // meia-largura em X — planta 120m
+const CM_HALF_Z = 40;        // meia-largura em Z — planta 80m
+const CM_BASEMENT_Y = -3;    // piso do porão
+const CM_GROUND_Y = 0;       // piso do térreo (= teto do porão)
+const CM_FLOOR1_Y = 4.5;     // piso do 1º andar (= teto do térreo)
+const CM_ATTIC_Y = 8.5;      // piso do ático (= teto do 1º andar)
+const CM_ROOF_Y = 11;        // teto do ático
+const CM_T = 0.6;            // espessura de parede — mesma da Fábrica
+
 // Waypoint na altura de operação do Caçador.
 function wp(x, z) { return new THREE.Vector3(x, ROUTE_Y, z); }
 
@@ -118,15 +142,21 @@ export class Level {
     this.spawn = new THREE.Vector3(0, 0, 6);      // início do jogador (x,z; y = chão)
     this.routes = [];                             // rotas de patrulha (1 por Caçador)
     this.routeY = [];                             // altura inicial dos olhos por rota (andar)
+    // Quais índices de `routes` o modo Caçador jogável usa como pontos candidatos
+    // de spawn de ChameleonTarget (Game._spawnHunterTargets). Default [0,1] cobre
+    // mansão/fábrica sem mudança de comportamento; Chameleon Manor (layout=5)
+    // sobrescreve para [0,1,2,3] — 4 domínios verticais, não 2.
+    this.huntTargetRouteIndices = [0, 1];
 
     // Materiais animados no loop (bruxuleio de velas) — preenchidos em _build.
     this._flames = [];    // { mat, phase, base } chamas emissivas que tremulam
     this._roomDoors = []; // {x,z} dos vãos de cômodo → mantidos livres no espalhamento
 
-    // layout=4 é um LOCAL diferente (fábrica), casco próprio — não passa por
-    // _build() (paredes/mezanino/paleta da mansão). Layouts 1-3 continuam
-    // exatamente como antes.
+    // layout=4/5 são LOCAIS diferentes (fábrica, chameleon manor), casco
+    // próprio — não passam por _build() (paredes/mezanino/paleta da mansão
+    // base). Layouts 1-3 continuam exatamente como antes.
     if (this.layout === 4) this._buildFactoryLevel();
+    else if (this.layout === 5) this._buildChameleonManor();
     else this._build();
   }
 
@@ -1211,6 +1241,124 @@ export class Level {
     if (doors.includes('w')) doorPts.push({ x: cx - hw, z: cz });
     if (doors.includes('e')) doorPts.push({ x: cx + hw, z: cz });
     return { center: { x: cx, z: cz }, doors: doorPts, w, d };
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // MAPA 3 — CHAMELEON MANOR. Fase 0 (Plano 5): só o CASCO — 4 níveis vazios
+  // (piso/parede/teto), 3 escadas de transição, rotas-placeholder em
+  // retângulo por domínio (substituídas por rotas reais tecendo pelas zonas
+  // nas Fases 3-6). Objetivo desta fase: casco navegável e fisicamente são,
+  // testável isoladamente antes de qualquer conteúdo de zona.
+  // ═══════════════════════════════════════════════════════════════════════
+  _buildChameleonManor() {
+    const HX = CM_HALF_X, HZ = CM_HALF_Z, t = CM_T;
+    // Material de casco provisório (boiserie da família mansão) — cada zona
+    // troca pelo material temático certo nas Fases 3-6; aqui só valida forma.
+    const wd = this._mat('boiserie');
+    const wallOpts = { roughness: wd.roughness, metalness: wd.metalness, map: wd.map, normalMap: wd.normalMap, normalScale: wd.normalScale };
+    const wallRep = (len, h) => ({ x: Math.max(1, len / 3), y: Math.max(1, h / 3) });
+
+    const perimeter = (yFloor, h) => {
+      const cy = yFloor + h / 2;
+      this._addBox(HX * 2, h, t, MANSION.marmore, 0, cy, -HZ, { ...wallOpts, mapRepeat: wallRep(HX * 2, h) });
+      this._addBox(HX * 2, h, t, MANSION.marmore, 0, cy, HZ, { ...wallOpts, mapRepeat: wallRep(HX * 2, h) });
+      this._addBox(t, h, HZ * 2, MANSION.marmore, -HX, cy, 0, { ...wallOpts, mapRepeat: wallRep(HZ * 2, h) });
+      this._addBox(t, h, HZ * 2, MANSION.marmore, HX, cy, 0, { ...wallOpts, mapRepeat: wallRep(HZ * 2, h) });
+    };
+    perimeter(CM_BASEMENT_Y, CM_GROUND_Y - CM_BASEMENT_Y); // porão
+    perimeter(CM_GROUND_Y, CM_FLOOR1_Y - CM_GROUND_Y);     // térreo
+    perimeter(CM_FLOOR1_Y, CM_ATTIC_Y - CM_FLOOR1_Y);      // 1º andar
+    perimeter(CM_ATTIC_Y, CM_ROOF_Y - CM_ATTIC_Y);         // ático
+
+    // Piso do porão: nível mais baixo, nada abaixo dele — só walkable, não
+    // entra em _slabs (mesmo padrão do piso térreo da Fábrica).
+    const cc = this._mat('concrete', { normals: !this._mobile });
+    const basementFloor = new THREE.Mesh(
+      new THREE.BoxGeometry(HX * 2, 1, HZ * 2),
+      this._makeMat({ color: 0xffffff, roughness: cc.roughness, metalness: cc.metalness, map: rep(cc.map, 10, 7) })
+    );
+    basementFloor.position.set(0, CM_BASEMENT_Y - 0.5, 0);
+    basementFloor.receiveShadow = true;
+    this.scene.add(basementFloor);
+    this._addSolid(HX * 2, 1, HZ * 2, 0, CM_BASEMENT_Y - 0.5, 0);
+    this.walkables.push(basementFloor);
+
+    // Lajes térreo/1º andar/ático: cada uma é piso do nível de cima E teto do
+    // de baixo — bloqueiam visão vertical entre domínios. _addSlab já cuida
+    // de walkables+solids+_slabs (mesmo padrão de FLOOR2_Y/MEZZ3_Y da mansão).
+    //
+    // CRÍTICO (landmine já documentada na skill, cometida de novo aqui na
+    // 1ª tentativa e pega só por simulação, não por inspeção): uma laje CHEIA
+    // sem vão nenhum vira TETO SÓLIDO bem em cima de quem sobe a escada — a
+    // pessoa fica presa embaixo dela pra sempre. Cada laje precisa de um vão
+    // retangular exatamente onde a escada daquele nível a atravessa, do mesmo
+    // jeito que o mezanino da mansão deixa "2 poços sobre as escadarias".
+    // `slabWithGap` decompõe a laje em 4 peças ao redor do vão (norte/sul/
+    // oeste/leste), igual ao anel do mezanino, só que com 1 vão em vez de 2.
+    const slabWithGap = (topY, gx, gz, gw, gd) => {
+      const gx0 = gx - gw / 2, gx1 = gx + gw / 2;
+      const gz0 = gz - gd / 2, gz1 = gz + gd / 2;
+      this._addSlab(HX * 2, gz0 + HZ, 0, (-HZ + gz0) / 2, topY);   // norte do vão (z < gz0)
+      this._addSlab(HX * 2, HZ - gz1, 0, (gz1 + HZ) / 2, topY);    // sul do vão (z > gz1)
+      this._addSlab(gx0 + HX, gd, (-HX + gx0) / 2, gz, topY);      // oeste do vão
+      this._addSlab(HX - gx1, gd, (gx1 + HX) / 2, gz, topY);       // leste do vão
+    };
+    // Posição/extensão de cada escada (ver flights abaixo) — o vão de cada
+    // laje usa os MESMOS números. Largura 3 → vão 6 (folga lateral segura, o
+    // trajeto não anda em X). Comprimento do vão = EXATAMENTE o lance +0,8m
+    // (0,4 de cada lado) — NÃO +4: uma margem generosa aqui foi tentada
+    // primeiro e é o bug oposto do landmine já documentado ("escada além da
+    // borda da laje"). Achado por simulação real (não por inspeção): com
+    // margem de 2m no lado de CHEGADA, o jogador termina de subir os degraus,
+    // dá mais um passo pra além do último degrau e CAI — porque o vão
+    // continua aberto (sem laje) por 2m depois de onde a escada realmente
+    // acaba, e não há nada ali pra pisar (não é degrau, não é laje). A laje
+    // precisa voltar a ser sólida quase imediatamente após o último degrau.
+    const st1 = { cx: -40, z0: -30, z1: -22 }; // porão ↔ térreo
+    const st2 = { cx: 40, z0: -30, z1: -20 };  // térreo ↔ 1º andar
+    const st3 = { cx: 0, z0: 20, z1: 28 };     // 1º andar ↔ ático
+    slabWithGap(CM_GROUND_Y, st1.cx, (st1.z0 + st1.z1) / 2, 6, Math.abs(st1.z1 - st1.z0) + 0.8);
+    slabWithGap(CM_FLOOR1_Y, st2.cx, (st2.z0 + st2.z1) / 2, 6, Math.abs(st2.z1 - st2.z0) + 0.8);
+    slabWithGap(CM_ATTIC_Y, st3.cx, (st3.z0 + st3.z1) / 2, 6, Math.abs(st3.z1 - st3.z0) + 0.8);
+
+    // Teto do ático: só visual, sem colisão (mesmo padrão da Fábrica).
+    const roof = new THREE.Mesh(
+      new THREE.PlaneGeometry(HX * 2, HZ * 2),
+      new THREE.MeshToonMaterial({ color: 0x8890a0, gradientMap: toonGradient(), side: THREE.FrontSide })
+    );
+    roof.rotation.x = Math.PI / 2;
+    roof.position.y = CM_ROOF_Y;
+    roof.receiveShadow = true;
+    this.scene.add(roof);
+
+    // 3 escadas de transição, espaçadas pra não se cruzarem em XZ — posições
+    // provisórias desta fase; Fases 3/4a/5/6 as encaixam nas zonas reais.
+    this._addStairFlight(st1.cx, 3, st1.z0, st1.z1, CM_BASEMENT_Y, CM_GROUND_Y, 12); // porão ↔ térreo
+    this._addStairFlight(st2.cx, 3, st2.z0, st2.z1, CM_GROUND_Y, CM_FLOOR1_Y, 16);   // térreo ↔ 1º andar
+    this._addStairFlight(st3.cx, 3, st3.z0, st3.z1, CM_FLOOR1_Y, CM_ATTIC_Y, 14);    // 1º andar ↔ ático
+
+    // Spawn: centro do térreo, longe das escadas.
+    this.spawn.set(0, 0, 0);
+
+    // Rotas-placeholder: 1 loop retangular por domínio, com folga das
+    // paredes — substituídas por rotas reais tecendo pelas zonas nas Fases
+    // 3-6. Y de cada ponto fica em ROUTE_Y (mesma convenção de wp() em toda
+    // a mansão/fábrica) — a altura REAL de cada domínio vem de `routeY`
+    // abaixo + correção ao vivo por _groundY, não do Y guardado no ponto.
+    const inX = HX - 10, inZ = HZ - 10;
+    const rectRoute = () => [wp(-inX, -inZ), wp(inX, -inZ), wp(inX, inZ), wp(-inX, inZ)];
+    this.routes = [rectRoute(), rectRoute(), rectRoute(), rectRoute()]; // porão, térreo, 1º andar, ático
+    this.routeY = [CM_BASEMENT_Y + EYE_Y, CM_GROUND_Y + EYE_Y, CM_FLOOR1_Y + EYE_Y, CM_ATTIC_Y + EYE_Y];
+
+    // Modo Caçador jogável: alvos nascem nos 4 domínios desde o início (não
+    // só térreo+andar-de-cima como mansão/fábrica) — ver Game._spawnHunterTargets.
+    this.huntTargetRouteIndices = [0, 1, 2, 3];
+
+    // Materializa oclusores/colisores de câmera — mesmo passo final de
+    // _build()/_buildFactoryLevel(), repetido aqui porque este layout não
+    // passa por nenhum dos dois.
+    this.occluders = this.climbables.concat(this._slabs);
+    this.cameraColliders = this.climbables.concat(this._slabs);
   }
 
   _addCeiling() {
