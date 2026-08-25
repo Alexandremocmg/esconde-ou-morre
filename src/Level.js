@@ -212,12 +212,55 @@ export class Level {
   }
 
   // Anima a iluminação de cena: velas/lustres bruxuleiam de leve (dá vida à
-  // penumbra sem custo de luz real). Chamado por Game no loop.
-  update(t) {
+  // penumbra sem custo de luz real) + passagens secretas em trânsito (Fase 5,
+  // Plano 5). Chamado por Game no loop.
+  update(t, dt = 0) {
     for (const f of this._flames) {
       const flick = f.base * (1 + 0.10 * Math.sin(t * 11 + f.phase) + 0.06 * Math.sin(t * 27 + f.phase * 1.7));
       f.mat.emissiveIntensity = flick;
     }
+    if (this._secretPassages) this._updateSecretPassages(dt);
+  }
+
+  // Passagens secretas (Fase 5, Plano 5): o painel É um climbable/colorable
+  // NORMAL (`_addBox`, mesmo material da parede) que desliza entre
+  // `closedPos`/`openPos` por lerp. CRÍTICO: `solids` guarda um snapshot
+  // (Box3) tirado na criação — mover mesh.position NÃO move o Box3 sozinho
+  // (ao contrário de climbables/occluders, que são referências ao mesh e
+  // portanto já ficam corretos de graça em qualquer raycast, já que leem a
+  // matrixWorld atual). Por isso o Box3 do painel precisa ser resssincronizado
+  // manualmente a cada frame em trânsito — é essa ressincronização que este
+  // método faz. Não precisa tocar `occluders`/`cameraColliders`: são arrays
+  // de referência ao MESMO mesh, então a oclusão já enxerga a posição nova
+  // sozinha assim que o painel se move.
+  _updateSecretPassages(dt) {
+    for (const p of this._secretPassages) {
+      if (p.state !== 'opening' && p.state !== 'closing') continue;
+      p.progress = Math.min(1, p.progress + dt / p.duration);
+      const [from, to] = p.state === 'opening' ? [p.closedPos, p.openPos] : [p.openPos, p.closedPos];
+      p.mesh.position.lerpVectors(from, to, p.progress);
+      p.box.setFromCenterAndSize(p.mesh.position, p.boxSize);
+      if (p.progress >= 1) p.state = p.state === 'opening' ? 'open' : 'closed';
+    }
+  }
+
+  // Gatilho: proximidade + botão Escalar (Game.js intercepta ANTES de
+  // player.toggleLatch — ver comentário lá). Cooldown 5s (spec) contado a
+  // partir do INÍCIO do movimento, não do fim — evita destrancar o cooldown
+  // cedo demais se o jogador tentar de novo no meio da animação.
+  trySecretPassage(playerPos) {
+    if (!this._secretPassages) return false;
+    const now = performance.now();
+    for (const p of this._secretPassages) {
+      if (now < p.cooldownUntil) continue;
+      if (p.state !== 'open' && p.state !== 'closed') continue;
+      if (playerPos.distanceTo(p.triggerPos) > p.triggerRadius) continue;
+      p.state = p.state === 'closed' ? 'opening' : 'closing';
+      p.progress = 0;
+      p.cooldownUntil = now + 5000;
+      return true;
+    }
+    return false;
   }
 
   // opts.seekerPass=true → colisão SÓ do jogador/câmera (o Caçador ignora). Para
@@ -230,6 +273,7 @@ export class Level {
     );
     if (opts.seekerPass) box.seekerPass = true;
     this.solids.push(box);
+    return box; // Fase 5 (Plano 5): passagens secretas guardam a referência p/ mover em sync com o mesh.
   }
 
   // Registra uma luminária para a estimativa barata de luz (penumbra, Fase 5).
@@ -1427,6 +1471,12 @@ export class Level {
     // saída).
     this.routes[1] = this._buildTerreoResto();
 
+    // Fase 5 do Plano 5: 1º Andar (Quarto Principal, Quarto de Hóspedes,
+    // Storage, Banheiro de Luxo) + passagem secreta 9.2 (Hóspedes ↔ Storage).
+    // Substitui o placeholder retangular de routes[2].
+    this._secretPassages = [];
+    this.routes[2] = this._build1oAndar();
+
     // Modo Caçador jogável: alvos nascem nos 4 domínios desde o início (não
     // só térreo+andar-de-cima como mansão/fábrica) — ver Game._spawnHunterTargets.
     this.huntTargetRouteIndices = [0, 1, 2, 3];
@@ -1445,7 +1495,13 @@ export class Level {
   // não uma paleta de textura própria) e `baseY` (piso do domínio vertical:
   // porão/térreo/1º andar têm Y de piso diferentes, ao contrário da mansão/
   // fábrica que só operam em y=0).
-  _buildManorRoom(cx, cz, w, d, color, doors, { matName = 'boiserie', door = DOOR_MIN, baseY = 0, h = CM_GROUND_Y - CM_BASEMENT_Y } = {}) {
+  // `skip` (Fase 5): paredes ausentes daqui — nem cheias nem com vão de
+  // porta normal — porque outro método monta essa parede à parte (ex.:
+  // _buildSecretPassage9_2, que precisa da própria divisão em segmentos pra
+  // encaixar o painel móvel; se _buildManorRoom também desenhasse essa
+  // parede, ela ficaria SEMPRE sólida por baixo do painel, e a passagem
+  // nunca abriria de verdade).
+  _buildManorRoom(cx, cz, w, d, color, doors, { matName = 'boiserie', door = DOOR_MIN, baseY = 0, h = CM_GROUND_Y - CM_BASEMENT_Y, skip = [] } = {}) {
     const hw = w / 2, hd = d / 2, t = CM_T;
     const mt = this._mat(matName);
     const opts = { roughness: mt.roughness, metalness: mt.metalness, map: mt.map, normalMap: mt.normalMap, normalScale: mt.normalScale };
@@ -1467,10 +1523,10 @@ export class Level {
       this._addBox(t, h, seg, color, xPos, cy, cz + (door / 2 + seg / 2), { ...opts, mapRepeat: rep2(seg) });
     };
 
-    wallAlongX(cz - hd, doors.includes('n'));
-    wallAlongX(cz + hd, doors.includes('s'));
-    wallAlongZ(cx - hw, doors.includes('w'));
-    wallAlongZ(cx + hw, doors.includes('e'));
+    if (!skip.includes('n')) wallAlongX(cz - hd, doors.includes('n'));
+    if (!skip.includes('s')) wallAlongX(cz + hd, doors.includes('s'));
+    if (!skip.includes('w')) wallAlongZ(cx - hw, doors.includes('w'));
+    if (!skip.includes('e')) wallAlongZ(cx + hw, doors.includes('e'));
 
     const doorPts = [];
     if (doors.includes('n')) doorPts.push({ x: cx, z: cz - hd });
@@ -1737,9 +1793,12 @@ export class Level {
   }
 
   // Painel pixelColorable de azulejo hexagonal (Banheiro de Visitas, Fase
-  // 4b) — mesmo tratamento do painel de listras acima.
-  _addHexPanel(x, y, z, dir, w, h) {
-    const tex = hexTileTexture(CHAMELEON.azulejoBanheiro, CHAMELEON.concreto, { hexR: 14 });
+  // 4b; reutilizado com cores próprias pelo hero S4 do Banheiro de Luxo,
+  // Fase 5) — mesmo tratamento do painel de listras acima. `tileColor`/
+  // `groutColor` default nos valores já usados na Fase 4b (call site de lá
+  // continua idêntico).
+  _addHexPanel(x, y, z, dir, w, h, tileColor = CHAMELEON.azulejoBanheiro, groutColor = CHAMELEON.concreto) {
+    const tex = hexTileTexture(tileColor, groutColor, { hexR: 14 });
     const clone = tex.clone(); clone.needsUpdate = true;
     const mesh = new THREE.Mesh(
       new THREE.PlaneGeometry(w, h),
@@ -1754,6 +1813,114 @@ export class Level {
     this.scene.add(mesh);
     this.colorables.push(mesh);
     return mesh;
+  }
+
+  // Fase 5 do Plano 5 — 1º Andar: Quarto Principal, Quarto de Hóspedes,
+  // Storage, Banheiro de Luxo + passagem secreta 9.2 (Hóspedes ↔ Storage).
+  // Adaptação de escopo: a passagem 9.1 da especificação (Biblioteca → Hall,
+  // térreo) foi DEIXADA DE FORA — no layout real construído nas Fases 4a/4b
+  // esses dois cômodos não são vizinhos (ficam em lados opostos do Ballroom),
+  // então um "painel secreto" ali exigiria um túnel novo sem relação com
+  // nenhuma parede existente, não uma passagem de verdade. A 9.2 (Hóspedes ↔
+  // Storage) already fica dentro do MESMO andar sendo construído agora — os
+  // dois cômodos são vizinhos por design, então é essa que valida o mecanismo
+  // de verdade.
+  _build1oAndar() {
+    const baseY = CM_FLOOR1_Y, h = CM_ATTIC_Y - CM_FLOOR1_Y;
+
+    // Quarto Principal — hero B2 ("Cama do Quarto... atrás da cabeceira").
+    this._buildManorRoom(-35, -8, 28, 20, CHAMELEON.floral, ['s', 'e'], { matName: 'drywall', h, baseY });
+    this._buildBed(-35, -15, MANSION.porcelana);
+
+    // Quarto de Hóspedes — só porta norte; a parede leste é CUSTOM (não
+    // _buildManorRoom): 2 segmentos fixos + o painel móvel da passagem 9.2,
+    // no lugar de uma porta normal.
+    this._buildManorRoom(-35, 20, 28, 16, CHAMELEON.azulejoAzul, ['n'], { matName: 'drywall', h, baseY, skip: ['e'] });
+    this._buildSecretPassage9_2(baseY, h);
+
+    // Storage — porta oeste (só alcançável de fora pela passagem secreta ou
+    // contornando por fora; ver rota). Hero B3 ("Tecidos do Storage").
+    this._buildManorRoom(-11, 20, 16, 16, CHAMELEON.carvalho, ['w'], { matName: 'wood', h, baseY });
+    const crateB3 = (x, z, s) => this._addBox(s, s, s, CHAMELEON.dourado, x, baseY + s / 2, z, { roughness: 0.85, seekerPass: true });
+    crateB3(-8, 24, 0.9);
+    crateB3(-6.5, 25, 0.8);
+    crateB3(-14, 15, 0.85);
+
+    // Banheiro de Luxo — hero S4 ("Azulejo... parede entre banheira e
+    // espelho, tile_black"). Painel pixelColorable dedicado (mesmo padrão
+    // hexagonal da Fase 4b, cor azulejoPreto em vez de azulejoBanheiro — o
+    // hero S4 pede tile_black explicitamente, diferente do S-tier já feito).
+    this._buildManorRoom(25, -8, 20, 16, CHAMELEON.marmore, ['w'], { matName: 'marble', h, baseY });
+    // Espelho e painel na MESMA parede leste (sólida — a porta é a oeste) —
+    // "entre banheira e espelho" da spec, adaptado: painel ao lado do
+    // espelho na única parede cheia disponível, não na parede da porta.
+    this._buildMirror(34.65, baseY + 2.2, -8, { x: -1, z: 0 }, 1.4, 2.0);
+    this._addHexPanel(34.65, baseY + 1.9, -3, { x: -1, z: 0 }, 3, 2.6, CHAMELEON.azulejoPreto);
+
+    // Rota: QP (hero B2) → Banheiro (hero S4) → QP → QH (gatilho da
+    // passagem) → contorna por FORA (o Seeker nunca abre a passagem — ela só
+    // responde ao botão Escalar do jogador) → Storage (hero B3) → fecha o
+    // laço de volta a QP.
+    return [
+      wp(-35, -8),   // centro do Quarto Principal
+      wp(-21, -8),   // porta leste do QP
+      wp(25, -8),    // centro do Banheiro (passa pela porta oeste dele)
+      wp(-21, -8),   // volta pela porta do QP
+      wp(-35, -8),   // volta ao centro do QP
+      wp(-35, 2),    // porta sul do QP
+      wp(-35, 20),   // centro do Quarto de Hóspedes (gatilho da passagem 9.2)
+      wp(-35, 12),   // porta norte (NUNCA pela passagem secreta)
+      wp(-35, 10),   // limpa a parede antes de virar (evita raspar a quina)
+      wp(-20, 10),   // contorna por fora, ao norte dos dois cômodos
+      wp(-20, 20),   // alinha em x=-20 (fora da parede oeste do Storage) antes de entrar
+      wp(-19, 20),   // porta oeste do Storage
+      wp(-11, 20),   // centro do Storage (hero B3)
+      wp(-19, 20),   // retraça de volta (fecha o laço pelo mesmo caminho seguro)
+      wp(-20, 20),
+      wp(-20, 10),
+      wp(-35, 10),
+      wp(-35, 12),   // porta norte do QH
+    ];
+  }
+
+  // Passagem secreta 9.2 (Plano 5, Fase 5): parede leste do Quarto de
+  // Hóspedes, vão de 1,6m centrado em z=20. 2 segmentos fixos (norte/sul do
+  // vão) via _addBox normal + 1 painel MÓVEL (mesma aparência — cor/material
+  // idênticos, "pista sutil" da spec fica só no papel-de-parede meio
+  // desbotado, sem malha nova pra isso). Desliza (não gira 90° como a spec
+  // literal pede — mesmo princípio de adaptação já usado no resto do plano:
+  // a 9.1 da própria spec já usa "desliza", e girar de verdade exigiria um
+  // pivô fora do centro que este projeto não tem infra pra montar barato)
+  // 1,6m pra dentro do segmento sul, ficando "engavetado" dentro da parede.
+  _buildSecretPassage9_2(baseY, h) {
+    const cx = -21, cz = 20, gapW = 1.6, wallLen = 16; // parede leste do QH (d=16)
+    const hd = wallLen / 2;
+    const gz0 = cz - gapW / 2, gz1 = cz + gapW / 2;
+    const wd = this._mat('wood');
+    const opts = { roughness: wd.roughness, metalness: 0, map: wd.map, normalMap: wd.normalMap, normalScale: wd.normalScale };
+    const segN = (gz0 - (cz - hd));
+    const segS = ((cz + hd) - gz1);
+    this._addBox(CM_T, h, segN, CHAMELEON.azulejoAzul, cx, baseY + h / 2, cz - hd + segN / 2, { ...opts, mapRepeat: { x: 1, y: Math.max(1, h / 3) } });
+    this._addBox(CM_T, h, segS, CHAMELEON.azulejoAzul, cx, baseY + h / 2, cz + hd - segS / 2, { ...opts, mapRepeat: { x: 1, y: Math.max(1, h / 3) } });
+
+    const closedPos = new THREE.Vector3(cx, baseY + h / 2, cz);
+    const openPos = new THREE.Vector3(cx, baseY + h / 2, cz + gapW); // engaveta dentro do segmento sul
+    // _addBox já chama _addSolid por dentro (mesh climbable/colorável/sólido
+    // normal, aparência idêntica aos 2 segmentos fixos acima) — o Box3 que
+    // ele cria é sempre o ÚLTIMO empurrado em `this.solids`, então pegamos a
+    // referência dali em vez de duplicar a criação do solid.
+    const mesh = this._addBox(CM_T, h, gapW, CHAMELEON.azulejoAzul, closedPos.x, closedPos.y, closedPos.z, {
+      ...opts, mapRepeat: { x: 1, y: Math.max(1, h / 3) },
+    });
+    const box = this.solids[this.solids.length - 1];
+
+    this._secretPassages.push({
+      mesh, box, closedPos, openPos,
+      boxSize: new THREE.Vector3(CM_T, h, gapW),
+      state: 'closed', progress: 0, cooldownUntil: 0, duration: 0.9,
+      triggerPos: new THREE.Vector3(cx + 1.2, baseY + 1, cz),
+      triggerRadius: 2.2,
+    });
   }
 
   _addCeiling() {

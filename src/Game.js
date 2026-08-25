@@ -792,7 +792,7 @@ export class Game {
       }
     }
     const t = this._clock.elapsedTime;
-    this.level.update?.(t);                 // girofles/painéis piscando
+    this.level.update?.(t, dt);              // girofles/painéis piscando + passagens secretas
     this.effects.update(dt, this.camera);
     this.follow.update(dt, this.player, this.level.cameraColliders || this.level.climbables);
     this._updateOcclusion(dt);
@@ -1588,7 +1588,14 @@ export class Game {
     if (this._btnClimb) {
       this._btnClimb.addEventListener('pointerdown', (e) => {
         e.preventDefault();
-        this.player.toggleLatch(this.camera);
+        // Passagens secretas (Fase 5, Plano 5): mesmo botão Escalar, mas
+        // intercepta ANTES de toggleLatch — perto de um painel, o toque
+        // abre/fecha a passagem em vez de grudar na parede. Longe de
+        // qualquer passagem, trySecretPassage devolve false e o
+        // comportamento de sempre (toggleLatch) segue normal.
+        if (!this.level.trySecretPassage?.(this.player.object.position)) {
+          this.player.toggleLatch(this.camera);
+        }
         if (navigator.vibrate) try { navigator.vibrate(12); } catch (_) {}
       });
     }
