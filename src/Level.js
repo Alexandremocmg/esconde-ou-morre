@@ -1398,15 +1398,26 @@ export class Level {
     // pessoa fica presa embaixo dela pra sempre. Cada laje precisa de um vão
     // retangular exatamente onde a escada daquele nível a atravessa, do mesmo
     // jeito que o mezanino da mansão deixa "2 poços sobre as escadarias".
-    // `slabWithGap` decompõe a laje em 4 peças ao redor do vão (norte/sul/
-    // oeste/leste), igual ao anel do mezanino, só que com 1 vão em vez de 2.
-    const slabWithGap = (topY, gx, gz, gw, gd) => {
-      const gx0 = gx - gw / 2, gx1 = gx + gw / 2;
-      const gz0 = gz - gd / 2, gz1 = gz + gd / 2;
-      this._addSlab(HX * 2, gz0 + HZ, 0, (-HZ + gz0) / 2, topY);   // norte do vão (z < gz0)
-      this._addSlab(HX * 2, HZ - gz1, 0, (gz1 + HZ) / 2, topY);    // sul do vão (z > gz1)
-      this._addSlab(gx0 + HX, gd, (-HX + gx0) / 2, gz, topY);      // oeste do vão
-      this._addSlab(HX - gx1, gd, (gx1 + HX) / 2, gz, topY);       // leste do vão
+    // `slabWithGaps` decompõe a laje em faixas de Z ao redor de N vãos (cada
+    // vão vira até 3 peças na sua própria faixa — oeste/leste do vão, ou a
+    // faixa inteira se o vão cobre toda a largura — e as faixas SEM vão
+    // ficam como 1 peça só). Generalização de "1 vão só" (usada por
+    // porão/térreo/1º andar) pra "2 vãos" (Fase 6: ático precisa do vão da
+    // escada E do vão da claraboia sobre o Ballroom, na MESMA laje) — os
+    // vãos não podem se sobrepor em Z (não é o caso aqui: a escada fica em
+    // z≈24, a claraboia em z≈-8).
+    const slabWithGaps = (topY, gaps) => {
+      const sorted = [...gaps].sort((a, b) => (a.gz - a.gd / 2) - (b.gz - b.gd / 2));
+      let zCur = -HZ;
+      for (const g of sorted) {
+        const gx0 = g.gx - g.gw / 2, gx1 = g.gx + g.gw / 2;
+        const gz0 = g.gz - g.gd / 2, gz1 = g.gz + g.gd / 2;
+        if (gz0 > zCur) this._addSlab(HX * 2, gz0 - zCur, 0, (zCur + gz0) / 2, topY); // faixa cheia antes do vão
+        if (gx0 > -HX) this._addSlab(gx0 + HX, g.gd, (-HX + gx0) / 2, g.gz, topY);    // oeste do vão
+        if (gx1 < HX) this._addSlab(HX - gx1, g.gd, (gx1 + HX) / 2, g.gz, topY);      // leste do vão
+        zCur = gz1;
+      }
+      if (zCur < HZ) this._addSlab(HX * 2, HZ - zCur, 0, (zCur + HZ) / 2, topY); // faixa cheia depois do último vão
     };
     // Posição/extensão de cada escada (ver flights abaixo) — o vão de cada
     // laje usa os MESMOS números. Largura 3 → vão 6 (folga lateral segura, o
@@ -1422,9 +1433,19 @@ export class Level {
     const st1 = { cx: -40, z0: -30, z1: -22 }; // porão ↔ térreo
     const st2 = { cx: 40, z0: -30, z1: -20 };  // térreo ↔ 1º andar
     const st3 = { cx: 0, z0: 20, z1: 28 };     // 1º andar ↔ ático
-    slabWithGap(CM_GROUND_Y, st1.cx, (st1.z0 + st1.z1) / 2, 6, Math.abs(st1.z1 - st1.z0) + 0.8);
-    slabWithGap(CM_FLOOR1_Y, st2.cx, (st2.z0 + st2.z1) / 2, 6, Math.abs(st2.z1 - st2.z0) + 0.8);
-    slabWithGap(CM_ATTIC_Y, st3.cx, (st3.z0 + st3.z1) / 2, 6, Math.abs(st3.z1 - st3.z0) + 0.8);
+    // Claraboia (Fase 6, Plano 5): vão adicional em x=0,z=-8 — bem acima do
+    // centro do Ballroom (térreo) — nas lajes de CM_FLOOR1_Y E CM_ATTIC_Y (as
+    // DUAS lajes entre o ático e o Ballroom), formando um poço vertical de
+    // verdade. Cai também na laje do 1º andar de propósito: "buraco
+    // proposital" da spec — quem andar sobre ele em QUALQUER um dos 2
+    // andares cai até o Ballroom, não só no ático.
+    const skylight = { gx: 0, gz: -8, gw: 6, gd: 6 };
+    const st1Gap = { gx: st1.cx, gz: (st1.z0 + st1.z1) / 2, gw: 6, gd: Math.abs(st1.z1 - st1.z0) + 0.8 };
+    const st2Gap = { gx: st2.cx, gz: (st2.z0 + st2.z1) / 2, gw: 6, gd: Math.abs(st2.z1 - st2.z0) + 0.8 };
+    const st3Gap = { gx: st3.cx, gz: (st3.z0 + st3.z1) / 2, gw: 6, gd: Math.abs(st3.z1 - st3.z0) + 0.8 };
+    slabWithGaps(CM_GROUND_Y, [st1Gap]);
+    slabWithGaps(CM_FLOOR1_Y, [st2Gap, skylight]);
+    slabWithGaps(CM_ATTIC_Y, [st3Gap, skylight]);
 
     // Teto do ático: só visual, sem colisão (mesmo padrão da Fábrica).
     const roof = new THREE.Mesh(
@@ -1476,6 +1497,11 @@ export class Level {
     // Substitui o placeholder retangular de routes[2].
     this._secretPassages = [];
     this.routes[2] = this._build1oAndar();
+
+    // Fase 6 do Plano 5: Ático (Sótão + Telhado) + claraboia sobre o
+    // Ballroom (poço vertical já aberto nas lajes acima, via
+    // slabWithGaps). Substitui o placeholder retangular de routes[3].
+    this.routes[3] = this._buildAtico();
 
     // Modo Caçador jogável: alvos nascem nos 4 domínios desde o início (não
     // só térreo+andar-de-cima como mansão/fábrica) — ver Game._spawnHunterTargets.
@@ -1864,7 +1890,18 @@ export class Level {
     return [
       wp(-35, -8),   // centro do Quarto Principal
       wp(-21, -8),   // porta leste do QP
+      // Desvia do vão da claraboia (Fase 6: x∈[-3,3], z∈[-11,-5], nas lajes
+      // FLOOR1_Y e ATTIC_Y) — sem isso o trajeto reto QP↔Banheiro atravessa
+      // o buraco bem em z=-8.
+      wp(-3, -8),
+      wp(-3, -3),
+      wp(3, -3),
+      wp(3, -8),
       wp(25, -8),    // centro do Banheiro (passa pela porta oeste dele)
+      wp(3, -8),
+      wp(3, -3),
+      wp(-3, -3),
+      wp(-3, -8),
       wp(-21, -8),   // volta pela porta do QP
       wp(-35, -8),   // volta ao centro do QP
       wp(-35, 2),    // porta sul do QP
@@ -1921,6 +1958,59 @@ export class Level {
       triggerPos: new THREE.Vector3(cx + 1.2, baseY + 1, cz),
       triggerRadius: 2.2,
     });
+  }
+
+  // Fase 6 do Plano 5 — Ático: Sótão Aberto + Telhado (sem sala fechada —
+  // é o domínio menos visitado do Caçador na spec, "Muito Baixa"/5%). Hero
+  // A5 (trave de madeira, canto noroeste) e B5 (chaminé). A claraboia em si
+  // (vidro emissivo, mesmo truque de _buildWindow, NÃO MeshPhysicalMaterial
+  // — decisão de arquitetura do plano) fica aqui: uma placa horizontal logo
+  // abaixo do telhado, tampando o poço vertical por cima; o poço em si
+  // (visão ático→Ballroom) já foi aberto nas lajes por slabWithGaps, em
+  // _buildChameleonManor.
+  _buildAtico() {
+    const baseY = CM_ATTIC_Y, h = CM_ROOF_Y - CM_ATTIC_Y;
+
+    // Claraboia: vidro frio emissivo (mesma receita de _buildWindow) tampando
+    // o poço por cima — climbable/colorável:false, mas ENTRA em climbables
+    // (portanto em occluders) de propósito: "vidro... mas oclusor" da spec.
+    this._addBox(6, 0.15, 6, 0x0d1622, 0, CM_ROOF_Y - 0.4, -8, {
+      colorable: false, roughness: 0.15, metalness: 0.1,
+      emissive: 0x6fa8d8, emissiveIntensity: 0.5,
+    });
+
+    // Hero A5 ("Teto do Ático... trave de madeira, canto noroeste, Flat/
+    // Climb — Seeker raramente olha pra cima"): viga rente ao telhado baixo.
+    this._addBox(10, 0.3, 0.5, CHAMELEON.madeiraEscura, -42, baseY + h - 0.4, -30, { roughness: 0.9 });
+
+    // Hero B5 ("Chaminé do Ático... lateral, concrete_gray, Stand/Flat —
+    // exposto ao céu"): estrutura vertical atravessando o telhado.
+    this._addBox(1.4, h + 1.0, 1.4, CHAMELEON.concreto, 40, baseY + h / 2, 15, { roughness: 1.0 });
+
+    // Baús/caixas espalhados (madeira envelhecida) — densidade barata do
+    // sótão, sem sala fechada.
+    const trunk = (x, z) => this._addBox(1.1, 0.7, 0.7, CHAMELEON.madeiraEscura, x, baseY + 0.35, z, { roughness: 0.9, seekerPass: true });
+    trunk(-35, 15); trunk(-33.5, 16); trunk(30, -25); trunk(45, -10); trunk(-45, 10);
+
+    // Rota: laço amplo pelo sótão, desviando do vão da claraboia (x∈[-3,3],
+    // z∈[-11,-5] — a MESMA laje serve de piso do ático, então o buraco
+    // também existe aqui) e do desembarque da escada (x≈0, z∈[20,28]).
+    return [
+      wp(-40, -30),  // perto da trave (hero A5)
+      wp(-40, 10),
+      wp(-20, 10),
+      wp(-20, -20),
+      wp(-6, -20),
+      wp(-6, -3),    // desvia do vão da claraboia por fora (oeste/sul)
+      wp(6, -3),
+      wp(6, -20),
+      wp(20, -20),
+      wp(20, 10),
+      wp(37, 15),    // perto da chaminé (hero B5, em 40,15 — 2m de folga do corpo dela)
+      wp(20, 33),    // contorna o desembarque da escada (x≈0, z∈[20,28]) por fora
+      wp(-20, 33),
+      wp(-40, 10),
+    ];
   }
 
   _addCeiling() {
