@@ -1410,6 +1410,11 @@ export class Level {
     // rota tecendo pelas salas de verdade.
     this.routes[0] = this._buildPorao(st1);
 
+    // Fase 4a do Plano 5: Térreo (parcial) — Ballroom + Hall de Entrada.
+    // Só 2 das 6 zonas do térreo nesta fase — routes[1] cobre só essas 2 por
+    // enquanto, mesmo espírito iterativo do porão (placeholder → real).
+    this.routes[1] = this._buildBallroomHall();
+
     // Modo Caçador jogável: alvos nascem nos 4 domínios desde o início (não
     // só térreo+andar-de-cima como mansão/fábrica) — ver Game._spawnHunterTargets.
     this.huntTargetRouteIndices = [0, 1, 2, 3];
@@ -1515,6 +1520,76 @@ export class Level {
       wp(-10, 25),                          // centro da Área de Serviço
       wp(-17, 25),                          // porta oeste da Área de Serviço
       wp(-30, 20),                          // corredor aberto de volta ao hub
+    ];
+  }
+
+  // Fase 4a do Plano 5 — Térreo (parcial): Ballroom + Hall de Entrada. Só 2
+  // das 6 zonas do térreo nesta fase — routes[1] cobre só essas 2 por
+  // enquanto (sem beco sem saída), e a Fase 4b substitui de novo por uma
+  // rota estendida quando Galeria/Biblioteca/Corredor/Banheiro existirem.
+  // Ao contrário do porão, o térreo já tem baseY=CM_GROUND_Y=0 — mesma
+  // convenção da mansão/fábrica — então os helpers existentes
+  // (_buildPillar/_buildChandelier/_buildRug/_buildPedestalPiece) funcionam
+  // direto, sem parâmetro de altura extra.
+  _buildBallroomHall() {
+    const ballH = CM_FLOOR1_Y - CM_GROUND_Y; // pé-direito do térreo (4.5m)
+
+    this._buildManorRoom(0, -8, 36, 24, CHAMELEON.marmore, ['s', 'w', 'e'], { matName: 'marble', h: ballH }); // Ballroom
+    this._buildManorRoom(0, 18, 20, 16, CHAMELEON.carvalho, ['n', 's'], { matName: 'wood', h: ballH });       // Hall de Entrada
+
+    // Lustre central, sobre o vão livre do salão (não sobre o pilar central
+    // — ver abaixo — pra não sobrepor as duas malhas no mesmo eixo vertical).
+    this._buildChandelier(0, -8, ballH - 1.4);
+
+    // 5 pilares de moldura em anel (grandiosidade) + 1 pilar central — hero
+    // spot S3 ("lado interno do pilar central", Seeker gira ao redor):
+    // deslocado do centro geométrico do salão pra não colidir com o lustre,
+    // e é ao REDOR dele (não do centro vazio) que o loop de patrulha (mais
+    // abaixo) circula — aproximação do "gira 360°" da especificação sem
+    // inventar um estado novo de IA (Seeker não tem "girar no lugar").
+    const ringR = 10, ringCx = 0, ringCz = -8;
+    for (let i = 0; i < 5; i++) {
+      const a = (i / 5) * Math.PI * 2;
+      this._buildPillar(ringCx + Math.cos(a) * ringR, ringCz + Math.sin(a) * ringR, ballH - 0.3);
+    }
+    const pillarX = 0, pillarZ = -13; // hero S3
+    this._buildPillar(pillarX, pillarZ, ballH - 0.3);
+
+    // Hero spot A1 ("Cortina do Ballroom... atrás de cortina leste"): painel
+    // grudável/colorável (não _deco — precisa ocluir de verdade pra "atrás
+    // da cortina" funcionar), afastado 0.6m da parede leste pra sobrar vão
+    // pro jogador se encaixar atrás. z=-2 (não z do pilar/porta leste, cz=-8
+    // — evita sentar bem na frente do vão que a Fase 4b vai ligar à Galeria).
+    this._addBox(1.6, 3.5, 0.3, CHAMELEON.vermelho, 17.4, 1.75, -2, { roughness: 0.9 });
+
+    // Hero spot B1 ("Sob a mesa de centro"): mesa decorativa (_deco, sem
+    // colisão — mesmo tratamento do tapete persa da mansão, "esconderijo"
+    // por cor/pose, não por enclausuramento físico real).
+    this._deco(new THREE.CylinderGeometry(1.2, 1.2, 0.06, 20), CHAMELEON.marmore, 0, 0.7, -3, { cast: true });
+    for (const [lx, lz] of [[-1.0, -3.9], [1.0, -3.9], [-1.0, -2.1], [1.0, -2.1]])
+      this._deco(new THREE.BoxGeometry(0.06, 0.7, 0.06), CHAMELEON.carvalho, lx, 0.35, lz, { colorable: false });
+
+    // Hero spot A3 ("Tapete do Hall... centro do tapete vermelho, Deitado").
+    this._buildRug(0, 18, 6, 10, 0.02, CHAMELEON.vermelho);
+
+    // Hero spot B6 ("Estatueta do Hall... base da estatueta abstrata").
+    this._buildPedestalPiece(6, 14, 0);
+
+    // Rota: laço apertado (raio ~2m) ao redor do pilar central (hero S3,
+    // aproximação do "gira 360°" do salão) → porta sul do Ballroom → centro
+    // do Hall (perto do tapete/estatueta) → fecha o laço de volta ao início
+    // (segmento reto atravessa as duas portas alinhadas em x=0, verificado
+    // por simulação headless).
+    const pr = 2;
+    const hex = [];
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2;
+      hex.push(wp(pillarX + Math.cos(a) * pr, pillarZ + Math.sin(a) * pr));
+    }
+    return [
+      ...hex,
+      wp(0, 4),   // porta sul do Ballroom
+      wp(0, 18),  // centro do Hall
     ];
   }
 
