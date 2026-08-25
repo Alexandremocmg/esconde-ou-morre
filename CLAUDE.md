@@ -67,3 +67,7 @@ Ao ser pedido pra "avaliar mudanças" ou fazer um "health check":
 - [`docs/_index.md`](docs/_index.md) — índice de toda a documentação em `docs/`.
 - [`docs/_log.md`](docs/_log.md) — log cronológico de trabalho entre sessões.
 - [`README.md`](README.md) — visão geral do jogo, como rodar, mapa de arquivos.
+- [`.claude/skills/level-design/SKILL.md`](.claude/skills/level-design/SKILL.md) —
+  skill de projeto para criar/modificar mapas (`Level.js`): arquitetura, contrato
+  de saída pra IA, landmines conhecidas, verificação headless. Carrega sozinha
+  quando o pedido é sobre mapa/nível/fase nova.

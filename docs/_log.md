@@ -59,3 +59,27 @@ motivada diretamente pelos dois problemas de processo registrados nas
 entradas acima: sessões paralelas sem coordenação, e doc atualizado com
 comentário espelhado no código esquecido. Sem mudança de código de jogo —
 só documentação/processo.
+
+## 2026-08-25 — Skill de projeto `level-design`
+
+Usuário trouxe um documento genérico de "skill pack" para agentes de PCG
+(Perlin/WFC, erosão hidráulica, chunk streaming, bioma por umidade/altura,
+seed compartilhado na UI) como base pra criar um mapa novo. Avaliação: a
+maior parte não se aplica — este projeto não gera layout por seed/algoritmo,
+usa um número pequeno e fixo de mapas hand-authored escolhidos por índice
+(`mulberry32` semeado pelo número do layout só varia DECORAÇÃO, nunca
+paredes/salas/rotas — determinismo exigido pelo modo Online, cujo servidor
+nunca roda `Level.js`).
+
+Criada `.claude/skills/level-design/SKILL.md` (skill de projeto, git-tracked,
+compartilhada com qualquer sessão) capturando o que REALMENTE já funciona
+aqui: os dois padrões de arquitetura (estender `_build()` vs. casco próprio
+tipo `_buildFactoryLevel`), o contrato de saída obrigatório pra IA
+(`routes`/`routeY`/`colorables`/`climbables`/`solids`/`walkables`/
+`occluders`), a regra de topologia sem beco-sem-saída (Seeker/ChameleonTarget
+não têm pathfinding), 6 landmines já documentadas em `docs/PLANO_MANSAO.md`
+(escada além da borda da laje, sonda de chão partindo dos olhos, bigodes
+usando `occluders` em vez de `climbables`, passarela sem barreira externa,
+props flutuando, corredor estreito demais), verificação sRGB de paleta,
+orçamento de malhas (≤400/mapa) e a metodologia de verificação headless já
+estabelecida (simulação de IA/física antes de qualquer olhar visual).
