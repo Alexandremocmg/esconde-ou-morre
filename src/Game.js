@@ -45,10 +45,10 @@ const HUNTER_FLASHLIGHT_RANGE = 14;
 const HUNTER_FLASHLIGHT_ANGLE_DEG = 28;
 
 // Scanner / Visão Reveladora (Fase 3, docs/MECANICA_CACADOR_VISAO.md §3). MVP "ping
-// simplificado": os ChameleonTarget de hoje são bonecos parados sem IA de esconderijo/
-// troca de cor (ChameleonTarget.js), então o pulso revela direção/distância de todo alvo
-// vivo dentro do alcance — sem o sinal de "movimento/troca de cor" do briefing original,
-// que não existe hoje (religar quando os alvos ganharem esse comportamento).
+// simplificado": desde o Plano 3, os ChameleonTarget já têm comportamento próprio
+// (vagueiam/fogem/recolorem, ChameleonTarget.js), mas o pulso continua revelando
+// direção/distância de todo alvo vivo dentro do alcance, sem diferenciar bem/mal
+// camuflado — decisão de escopo consciente, não mais falta de sinal nos alvos.
 const SCANNER_RANGE = 8;          // m — raio do pulso pedido
 const SCANNER_DURATION_MS = 3000; // duração do pulso ativo
 const SCANNER_COOLDOWN_MS = 20000; // recarga entre usos
