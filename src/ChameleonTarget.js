@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { animationManager } from './AnimationManager.js?v=3';
-import { toonGradient } from './textures.js?v=3';
-import { approachAngle } from './Seeker.js?v=4';
+import { animationManager } from './AnimationManager.js?v=4';
+import { toonGradient } from './textures.js?v=4';
+import { approachAngle } from './Seeker.js?v=6';
 import { TUNE } from './Tuning.js?v=1';
 
 // Alvo do modo Caçador jogável (Game.js): um Camaleão-boneco plantado num ponto

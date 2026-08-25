@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { animationManager } from './AnimationManager.js?v=3';
-import { GUN_OFFSET, GUN_ROT } from './Seeker.js?v=4';
-import { INTERP_DELAY_MS, GROUND_Y } from './net/protocol.js?v=4';
+import { animationManager } from './AnimationManager.js?v=4';
+import { GUN_OFFSET, GUN_ROT } from './Seeker.js?v=6';
+import { INTERP_DELAY_MS, GROUND_Y } from './net/protocol.js?v=5';
 import { createPaintTexture, stampCircle, strokeBetween } from './UVPaint.js?v=1';
 
 // Altura total do avatar (Player.js: HALF_EXTENT*2, SCALE=0.8). Ficou presa em 0.9

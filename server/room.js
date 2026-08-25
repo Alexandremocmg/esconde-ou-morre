@@ -46,6 +46,7 @@ const ROOM_CAPACITY = 1 + MAX_CHAMELEONS;
 const HUNTER_SPAWN_BY_LAYOUT = {
   1: { x: -6, y: GROUND_Y, z: 8 },   // mansão (salão) — this.spawn.set(-6, 0, 8)
   4: { x: 0, y: GROUND_Y, z: -2 },   // fábrica — this.spawn.set(0, 0, -2)
+  5: { x: 0, y: GROUND_Y, z: 0 },    // Chameleon Manor (térreo/Ballroom) — this.spawn.set(0, 0, 0)
 };
 
 // Base dos spawns dos Camaleões por layout: mesmo canto/área aberta de onde o Caçador
@@ -54,10 +55,12 @@ const HUNTER_SPAWN_BY_LAYOUT = {
 const CHAMELEON_SPAWN_BASE_BY_LAYOUT = {
   1: { x: -3, z: 8 },  // mesmo canto SW aberto do Caçador
   4: { x: 0, z: 1.5 }, // piso aberto central, longe dos tanques de tinta (±3,∓3) e das escadas (x=0, |z|>=6)
+  5: { x: 0, z: 0 },   // centro do Ballroom, longe do pilar central (0,-13) e do anel de pilares (raio 10 de (0,-8))
 };
 const CHAMELEON_SPAWN_RADIUS_BY_LAYOUT = {
   1: 2.2, // ainda dentro do cômodo aberto, testado sem colisão
   4: 1.6, // idem — clareia os tanques (raio ~2.55 da origem) e a escada
+  5: 2.0, // clareia o pilar em anel mais próximo (~3.4m da origem) com folga
 };
 
 // `index` é a ordem de entrada entre os Camaleões (0, 1, 2...), não um id — divide o

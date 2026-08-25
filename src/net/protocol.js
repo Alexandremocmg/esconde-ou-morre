@@ -148,7 +148,7 @@ export const MAX_CHAMELEONS = 4;
 // número do layout, com PRNG semeado (mulberry32): geometria/solids/cores batem entre
 // clientes sem o servidor precisar rodar Level.js (que depende de canvas/DOM e não
 // roda em Node).
-export const ONLINE_LAYOUTS = [1, 4]; // 1 = mansão (salão), 4 = fábrica abandonada
+export const ONLINE_LAYOUTS = [1, 4, 5]; // 1 = mansão (salão), 4 = fábrica abandonada, 5 = Chameleon Manor
 
 // Escolhe o layout do Online por ROTAÇÃO DETERMINÍSTICA de relógio, não por decisão
 // do servidor comunicada numa mensagem — a alternativa (servidor sorteia por sala,
