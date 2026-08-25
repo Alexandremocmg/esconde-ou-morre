@@ -1,4 +1,4 @@
-import { C2S, S2C, TICK_MS, RECONNECT_GRACE_MS, PROD_WS_URL, HOST_LOCAL_OU_LAN } from './net/protocol.js?v=3';
+import { C2S, S2C, TICK_MS, RECONNECT_GRACE_MS, PROD_WS_URL, HOST_LOCAL_OU_LAN } from './net/protocol.js?v=4';
 
 // Mesma lógica de escolha de servidor que só existia dentro de Game.js
 // (_wsUrl) — movida pra cá (Fase B, Plano 2) porque "Continuar Partida" no
