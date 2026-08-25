@@ -1777,6 +1777,37 @@ export class Game {
     }
     sessionStorage.setItem('eom-stage', String(this.stage));
 
+    // Layout/surviveTime/nº de Seekers/dificuldade são todos calculados só
+    // no construtor a partir de `this.stage` (linhas ~127-153) — mudar
+    // `this.stage` aqui nunca os recalculava. Bug real: "Próximo estágio"
+    // incrementava o número no HUD, mas o mapa, o timer e a dificuldade
+    // continuavam os do estágio anterior pra sempre (o Chameleon Manor, por
+    // exemplo, nunca aparecia jogando normal — só via `?stage=5` direto).
+    // Não existe Level.dispose() (reconstruir o nível in-place vazaria
+    // memória de GPU), então um reload é o jeito seguro de recalcular tudo
+    // do zero lendo `sessionStorage['eom-stage']` — mesmo padrão que
+    // main.js:startGame() já usa pra trocar de MODO. Fora do Online: lá o
+    // layout é fixo por SALA (server/room.js:_layout), não por estágio —
+    // recarregar forçaria reconexão e poderia trocar a sala/o layout no
+    // meio de uma sequência de partidas com o mesmo grupo.
+    if ((nextStage || backToMenu) && this.mode !== 'online') {
+      const url = new URL(location.href);
+      url.searchParams.delete('stage'); // senão o reload reaplicaria o valor antigo pra sempre
+      if (nextStage) {
+        // `continue=1`: main.js clica sozinho no card do modo salvo assim que
+        // a página recarrega, senão o jogador cairia de volta no menu
+        // principal a cada "Próximo estágio" em vez de continuar direto pro
+        // jogo. NÃO usar em backToMenu: "Voltar ao Menu"/"Recomeçar" já
+        // mostram a tela principal de propósito (MenuUI.js:284-287) — pular
+        // isso e cair direto numa partida nova ignoraria o clique do jogador.
+        url.searchParams.set('continue', '1');
+      } else {
+        url.searchParams.delete('continue');
+      }
+      location.href = url.toString();
+      return;
+    }
+
     if (this._elStage) this._elStage.textContent = String(this.stage);
 
     this.elapsed = 0;

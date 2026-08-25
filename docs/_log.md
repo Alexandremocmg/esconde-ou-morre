@@ -187,4 +187,54 @@ valores originais exatos (`s=15, far=42`, confirmado por inspeção direta no
 jogo rodando) — zero regressão. Verificado: `s≈62.3/far≈150.1` no layout 5,
 piso da Galeria (x=37, bem fora do frustum antigo) sem artefato visível.
 
+---
+
+## 2026-08-25 — Revisão completa do projeto + fix P0: progressão de fase era cosmética
+
+Usuário pediu uma revisão completa do projeto. Achado mais grave (P0): em
+`Game.restartInPlace()`, `this.stage++` nunca recalculava nada que dependia
+dele — `layout`, `surviveTime` e a contagem/velocidade dos Seekers só são
+calculados no construtor de `Game`. Confirmado empiricamente (chamando
+`restartInPlace(true,false)` 4× no jogo rodando): `stage` foi de 1→5, mas
+`layout` ficou travado em 1, `surviveTime` em 60 e os Seekers em 2. Na
+prática, jogando a progressão normal ("Próximo estágio"), o Chameleon Manor
+(layout 5) **nunca aparecia** — só era alcançável via `?stage=5` direto.
+Bug pré-existente, não introduzido pelo Plano 5 (afetava igualmente o ciclo
+1↔2↔3 da mansão antes dele).
+
+Outros achados da revisão (não corrigidos nesta rodada, ficam de pendência):
+`server/index.js` cria o `WebSocketServer` sem `maxPayload` nem handler de
+`error` (DoS trivial); `sw.js` é cache-first pra `index.html` também, então
+um PWA instalado serve HTML velho por uma visita a cada deploy (mesma causa
+raiz do bug já corrigido no commit `a00144f`); zero testes automatizados/CI
+no repo, apesar de já existirem harnesses headless bons (descartados depois
+de rodados); `game-studio.md` é cruft de skill não relacionada, commitado na
+raiz por engano.
+
+**Fix do P0**: sem `Level.dispose()` (reconstruir o nível in-place vazaria
+memória de GPU), a correção é um `location.reload()` dentro de
+`restartInPlace()` sempre que `nextStage`/`backToMenu` muda o estágio, fora
+do modo Online (lá o layout é fixo por SALA — `server/room.js:_layout` — não
+por estágio; recarregar forçaria reconexão à toa). Como `boot()` só roda
+dentro de `startGame()`, que só é chamado por um clique real no menu, um
+reload cru derrubaria o jogador de volta na tela principal a cada avanço de
+fase. Resolvido com `?continue=1` (setado só quando `nextStage`, nunca em
+`backToMenu` — "Voltar ao Menu"/"Recomeçar" já mostram a tela principal de
+propósito, `MenuUI.js:284-287`): `main.js`, depois de `initMenuUI()` já ter
+registrado seus listeners, clica sozinho no card do modo salvo em
+`sessionStorage['eom-mode']` — mesmo padrão que "Continuar Partida" já usa
+pra simular escolha de modo sem duplicar a lógica de boot.
+
+Verificado no jogo rodando, progressão real (sem `?stage=N`): stage 1→2→3→4→5
+avançou layout 1→2→3→4→5 e `surviveTime`/nº de Seekers corretos em cada um
+(120s/6 Seekers no 5); stage 5→6 voltou pro layout 1 (ciclo de 5 fechando
+certo); "Voltar ao Menu" a partir de um estágio avançado recarrega e mostra
+o menu de verdade (sem auto-continuar pra uma partida nova), com
+`sessionStorage['eom-stage']` corretamente resetado pra 1; modo Online
+confirmado SEM reload (mesmo comportamento de antes, `restartInPlace`
+continua in-place).
+
+Arquivos: `src/Game.js` (fix), `src/main.js` (auto-continue), `index.html`
+(bump `?v=9`).
+
 Arquivos: `src/Game.js` (fix), `src/main.js` (bump `?v=12`).

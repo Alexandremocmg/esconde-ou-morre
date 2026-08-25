@@ -1,4 +1,4 @@
-import { Game } from './Game.js?v=12';
+import { Game } from './Game.js?v=14';
 import { animationManager } from './AnimationManager.js?v=4';
 import { initTunePanel } from './TunePanel.js?v=1';
 import { initMenuUI, updateLoadingStages } from './MenuUI.js?v=4';
@@ -254,3 +254,20 @@ initMenuUI({
   },
   onAuthChange,
 });
+
+// Retomada automática após "Próximo estágio"/"Voltar ao Menu" em modo solo
+// (Game.js:restartInPlace) — sem Level.dispose(), recalcular layout/
+// dificuldade por estágio exige um reload de página inteira, e sem isto o
+// jogador cairia de volta na tela de menu principal a cada avanço de fase em
+// vez de continuar direto pro jogo. `?continue=1` (setado pelo próprio
+// reload) simula o clique real no card do modo já salvo — mesmo padrão de
+// "Continuar Partida" acima — disparando a mesma tela de loading e o mesmo
+// onModeChosen() de sempre, sem caminho de boot novo. Precisa rodar DEPOIS
+// de initMenuUI(): é o listener registrado lá (não o de cima, que só grava
+// sessionStorage) que faz showScreen('loading') + chama onModeChosen() —
+// clicar antes disso existir é o clique cair no vazio, tela nunca avança.
+if (modePick && new URLSearchParams(location.search).has('continue')) {
+  const rawSaved = sessionStorage.getItem('eom-mode');
+  const saved = VALID_MODES.includes(rawSaved) ? rawSaved : null;
+  document.querySelector(`#mode-pick button[data-mode="${saved}"]`)?.click();
+}
