@@ -1405,6 +1405,11 @@ export class Level {
     this.routes = [rectRoute(), rectRoute(), rectRoute(), rectRoute()]; // porão, térreo, 1º andar, ático
     this.routeY = [CM_BASEMENT_Y + EYE_Y, CM_GROUND_Y + EYE_Y, CM_FLOOR1_Y + EYE_Y, CM_ATTIC_Y + EYE_Y];
 
+    // Fase 3 do Plano 5: Porão real (Cozinha Industrial, Adega, Área de
+    // Serviço) — substitui o placeholder retangular de routes[0] por uma
+    // rota tecendo pelas salas de verdade.
+    this.routes[0] = this._buildPorao(st1);
+
     // Modo Caçador jogável: alvos nascem nos 4 domínios desde o início (não
     // só térreo+andar-de-cima como mansão/fábrica) — ver Game._spawnHunterTargets.
     this.huntTargetRouteIndices = [0, 1, 2, 3];
@@ -1414,6 +1419,103 @@ export class Level {
     // passa por nenhum dos dois.
     this.occluders = this.climbables.concat(this._slabs);
     this.cameraColliders = this.climbables.concat(this._slabs);
+  }
+
+  // Sala genérica da mansão-casco (adaptada de _buildFactoryRoom: mesmas
+  // closures de porta partida em 2 segmentos, mesma convenção n=cz-hd/
+  // s=cz+hd/w=cx-hw/e=cx+hw) — parametrizada por nome de material (Chameleon
+  // Manor reaproveita materiais existentes de textures.js por zona temática,
+  // não uma paleta de textura própria) e `baseY` (piso do domínio vertical:
+  // porão/térreo/1º andar têm Y de piso diferentes, ao contrário da mansão/
+  // fábrica que só operam em y=0).
+  _buildManorRoom(cx, cz, w, d, color, doors, { matName = 'boiserie', door = DOOR_MIN, baseY = 0, h = CM_GROUND_Y - CM_BASEMENT_Y } = {}) {
+    const hw = w / 2, hd = d / 2, t = CM_T;
+    const mt = this._mat(matName);
+    const opts = { roughness: mt.roughness, metalness: mt.metalness, map: mt.map, normalMap: mt.normalMap, normalScale: mt.normalScale };
+    const rep2 = (len) => ({ x: Math.max(1, len / 3), y: Math.max(1, h / 3) });
+    const cy = baseY + h / 2;
+
+    const wallAlongX = (zPos, hasDoor) => {
+      if (!hasDoor) { this._addBox(w, h, t, color, cx, cy, zPos, { ...opts, mapRepeat: rep2(w) }); return; }
+      const seg = (w - door) / 2;
+      if (seg <= 0.2) return;
+      this._addBox(seg, h, t, color, cx - (door / 2 + seg / 2), cy, zPos, { ...opts, mapRepeat: rep2(seg) });
+      this._addBox(seg, h, t, color, cx + (door / 2 + seg / 2), cy, zPos, { ...opts, mapRepeat: rep2(seg) });
+    };
+    const wallAlongZ = (xPos, hasDoor) => {
+      if (!hasDoor) { this._addBox(t, h, d, color, xPos, cy, cz, { ...opts, mapRepeat: rep2(d) }); return; }
+      const seg = (d - door) / 2;
+      if (seg <= 0.2) return;
+      this._addBox(t, h, seg, color, xPos, cy, cz - (door / 2 + seg / 2), { ...opts, mapRepeat: rep2(seg) });
+      this._addBox(t, h, seg, color, xPos, cy, cz + (door / 2 + seg / 2), { ...opts, mapRepeat: rep2(seg) });
+    };
+
+    wallAlongX(cz - hd, doors.includes('n'));
+    wallAlongX(cz + hd, doors.includes('s'));
+    wallAlongZ(cx - hw, doors.includes('w'));
+    wallAlongZ(cx + hw, doors.includes('e'));
+
+    const doorPts = [];
+    if (doors.includes('n')) doorPts.push({ x: cx, z: cz - hd });
+    if (doors.includes('s')) doorPts.push({ x: cx, z: cz + hd });
+    if (doors.includes('w')) doorPts.push({ x: cx - hw, z: cz });
+    if (doors.includes('e')) doorPts.push({ x: cx + hw, z: cz });
+    return { center: { x: cx, z: cz }, doors: doorPts, w, d };
+  }
+
+  // Fase 3 do Plano 5 — Porão real: Cozinha Industrial, Adega e Área de
+  // Serviço, ligadas num laço sem beco sem saída (hub das escadas `st1` →
+  // Cozinha → Adega → Área de Serviço → de volta ao hub pelo chão aberto do
+  // porão) — regra de topologia da skill de level design (Seeker/
+  // ChameleonTarget não têm pathfinding, só bigodes reativos + rota em loop).
+  // Hero spots da especificação localizados aqui: S5 (3 caixas de papelão,
+  // canto sul da Cozinha) e A4 (fileira de barris, lado leste da Adega).
+  _buildPorao(st1) {
+    const baseY = CM_BASEMENT_Y, h = CM_GROUND_Y - CM_BASEMENT_Y;
+
+    this._buildManorRoom(-40, 0, 16, 16, CHAMELEON.azulejoAzul, ['n', 'e'], { matName: 'metal', baseY, h });     // Cozinha Industrial
+    this._buildManorRoom(-10, 0, 16, 16, CHAMELEON.concreto, ['w', 's'], { matName: 'concrete', baseY, h });     // Adega
+    this._buildManorRoom(-10, 25, 14, 12, CHAMELEON.concreto, ['n', 'w'], { matName: 'concrete', baseY, h });    // Área de Serviço
+
+    // Hero spot S5: 3 caixas de papelão no canto sul da Cozinha — mesmo
+    // padrão de caixa-esconderijo já provado na Fábrica (_addBox pequena,
+    // seekerPass:true: sólida pro jogador, mas o Seeker desliza por cima do
+    // desvio em vez de travar contra ela).
+    const crate = (x, z, s) => this._addBox(s, s, s, CHAMELEON.carvalho, x, baseY + s / 2, z, { roughness: 0.85, seekerPass: true });
+    crate(-36, 5, 1.0);
+    crate(-34.7, 5.3, 0.9);
+    crate(-35.5, 6.2, 0.85);
+
+    // Hero spot A4: fileira de barris no lado leste da Adega — cilindro
+    // visual + solid/climbable adicionados manualmente (mesmo tratamento que
+    // _addBox dá de graça, mas _addCylinder não: ver Level.js:376-388, essa
+    // função só empurra pra `colorables`, nunca pra `climbables`/`solids`).
+    const barrel = (x, z) => {
+      const mesh = this._addCylinder(0.5, 1.3, CHAMELEON.madeiraEscura, x, z, { y: baseY + 0.65 });
+      mesh.userData.climbable = true;
+      this.climbables.push(mesh);
+      this._addSolid(1.0, 1.3, 1.0, x, baseY + 0.65, z, { seekerPass: true });
+    };
+    barrel(-3.5, -4);
+    barrel(-3.5, -1);
+    barrel(-3.5, 2);
+    barrel(-3.5, 5);
+
+    // Rota tecendo pelas 3 salas, de volta ao hub das escadas — substitui o
+    // placeholder retangular de routes[0] em _buildChameleonManor().
+    return [
+      wp(st1.cx, st1.z1 + 4),               // hub das escadas (fora do vão físico dos degraus)
+      wp(-40, -8),                          // porta norte da Cozinha
+      wp(-40, 0),                           // centro da Cozinha
+      wp(-32, 0),                           // porta leste da Cozinha
+      wp(-18, 0),                           // porta oeste da Adega
+      wp(-10, 0),                           // centro da Adega
+      wp(-10, 8),                           // porta sul da Adega
+      wp(-10, 19),                          // porta norte da Área de Serviço
+      wp(-10, 25),                          // centro da Área de Serviço
+      wp(-17, 25),                          // porta oeste da Área de Serviço
+      wp(-30, 20),                          // corredor aberto de volta ao hub
+    ];
   }
 
   _addCeiling() {
