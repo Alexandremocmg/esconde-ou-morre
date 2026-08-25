@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import { Level } from './Level.js?v=3';
-import { Player } from './Player.js?v=3';
+import { Level } from './Level.js?v=4';
+import { Player } from './Player.js?v=4';
 import { Seeker, WAYPOINTS_ALT } from './Seeker.js?v=4';
 import { ChameleonTarget } from './ChameleonTarget.js?v=9';
 import { FollowCamera } from './FollowCamera.js?v=3';
@@ -25,7 +25,7 @@ import {
   makeInputPayload,
   S2C,
   ROLE,
-} from './net/protocol.js?v=3';
+} from './net/protocol.js?v=4';
 
 // Mira do Caçador jogável (Game.fireHunterShot): cone de mira a partir do
 // centro da câmera, não pixel-perfect — evita o problema de raycast contra o

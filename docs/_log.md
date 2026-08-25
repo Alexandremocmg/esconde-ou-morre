@@ -60,6 +60,28 @@ entradas acima: sessões paralelas sem coordenação, e doc atualizado com
 comentário espelhado no código esquecido. Sem mudança de código de jogo —
 só documentação/processo.
 
+## 2026-08-25 — Cache stale no PWA: `?v=N` não tinha sido bumpado
+
+Ao sincronizar com o commit acima e aplicar a própria convenção de
+cache-busting que o `CLAUDE.md` novo formaliza, achado: `Level.js` (mapa
+novo + alturas de parede), `Player.js` (fixes de escalada) e
+`net/protocol.js` (`onlineLayoutFor`) receberam mudanças reais em sessões
+anteriores mas ficaram esquecidos em `?v=3` — a mesma URL de antes das
+mudanças — em todos os import sites (`Game.js`, `Net.js`, `RemotePlayer.js`).
+
+Isoladamente isso não seria bug (Vercel manda `Cache-Control: public,
+max-age=0, must-revalidate`, então fetch normal sempre revalida). O
+problema real é o `sw.js` do PWA: estratégia cache-first, devolve o que já
+tem em cache pra aquela URL exata na hora e só atualiza em segundo plano
+pra próxima visita. Quem já tinha o PWA instalado antes dessas mudanças
+podia ficar preso no código antigo por uma visita extra ou mais.
+`occluders.js` foi checado e descartado (nenhum arquivo do cliente importa
+ele de verdade — só campos com nome parecido tipo `level.occluders`).
+
+Corrigido: bump `?v=3` → `?v=4` nos 4 import sites dos 3 arquivos.
+Verificado com `node --check` e boot headless (Playwright, zero erros de
+console) antes do commit. Commit `a00144f`.
+
 ## 2026-08-25 — Skill de projeto `level-design`
 
 Usuário trouxe um documento genérico de "skill pack" para agentes de PCG
