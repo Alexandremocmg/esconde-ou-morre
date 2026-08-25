@@ -13,11 +13,22 @@ Camaleões) via um servidor autoritativo, com munição/Scanner e reconexão aut
 `docs/PLANO_LOBBY_MULTIPLAYER.md`.
 
 O visual é **toon / cel-shaded** no espírito do **Meccha Chameleon**: ambiente claro e
-legível, superfícies chapadas com paleta pop (creme, azul-céu, coral, roxo, menta,
-laranja, amarelo-ouro) e **contorno de desenho** nos Caçadores para lê-los como ameaça.
-O cenário é uma **mansão de 2 andares** (salão com pilares, corredor de quartos,
-galeria, mezanino e escadaria) cujos cômodos coloridos funcionam como **cabines de
-camuflagem**. Todo o visual é **procedural** — sem assets externos.
+legível, superfícies chapadas com paleta pop e **contorno de desenho** nos Caçadores
+para lê-los como ameaça. Dois cenários hoje, ambos 100% **procedurais** (sem assets
+externos de geometria): a **mansão de 2 andares** (salão com pilares, corredor de
+quartos, galeria, mezanino e escadaria — 3 "alas" que se alternam por estágio no modo
+solo) e a **Fábrica Abandonada de Brinquedos/Tinta** (mapa 2, casco próprio, único
+nível + passarela elevada, paleta industrial verificada à parte). No modo **Online**,
+os dois mapas elegíveis circulam sozinhos por **rotação determinística de relógio**
+(`onlineLayoutFor()`, troca a cada hora cheia) — cliente e servidor calculam o mesmo
+mapa sem trocar mensagem nenhuma antes de conectar. Detalhes de cada mapa em
+`docs/PLANO_MANSAO.md`. Os cômodos coloridos (dos dois mapas) funcionam como **cabines
+de camuflagem**.
+
+Conta de jogador opcional (**Supabase** Auth + Postgres) desbloqueia **Ranking**
+(sobrevivência + vitórias do Caçador), **Missões** e **Personalização** sincronizada
+entre aparelhos — ver `docs/PLANO_CONTAS.md`. O jogo também pode ser **instalado como
+app (PWA)** no celular, com ícone e tela de carregamento próprios.
 
 > A direção de arte e o histórico das fases estão em
 > [`docs/PLANO_TOON.md`](docs/PLANO_TOON.md) (virada toon, com status de implementação).
@@ -63,9 +74,10 @@ Abra `http://localhost:8000` e clique em **JOGAR**.
 > ⚠️ Evite `python -m http.server`: sem os headers no-store, o navegador (e um eventual
 > túnel) servem módulos ES em cache — misturando versões e podendo travar a inicialização.
 
-> Única dependência externa: `three@0.161.0` (build + `addons/`) via CDN (unpkg),
-> declarada no `importmap` do `index.html`. O restante — texturas, geometria e áudio —
-> é 100% procedural.
+> Duas dependências externas, as duas via CDN/ESM no `importmap` do `index.html` — sem
+> `npm install` nenhum no cliente: `three@0.161.0` (build + `addons/`, unpkg) e
+> `@supabase/supabase-js@2` (esm.sh, só carrega/pesa se o jogador usar login — ver
+> `docs/PLANO_CONTAS.md`). O restante — texturas, geometria e áudio — é 100% procedural.
 
 ## Deploy
 
@@ -73,7 +85,9 @@ Abra `http://localhost:8000` e clique em **JOGAR**.
 automático a cada push em `main`) — e servidor autoritativo do modo Online no
 Render.com (Blueprint `render.yaml`, serviço `esconde-ou-morre-server`). Detalhes e
 histórico de verificação em `docs/PLANO_MULTIPLAYER.md`, seção "Hospedagem
-(produção)".
+(produção)". Conta de jogador (login/Ranking/Missões/Personalização) usa um projeto
+Supabase próprio (`esconde-ou-morre`, região `sa-east-1`, plano free) — client-side
+apenas, sem servidor adicional; detalhes em `docs/PLANO_CONTAS.md`.
 
 Fora do modo Online, qualquer host de arquivos estáticos serve a pasta como está
 (GitHub Pages, Netlify, Vercel, S3, etc.) — publique a raiz do repositório.
@@ -107,11 +121,16 @@ Fora do modo Online, qualquer host de arquivos estáticos serve a pasta como est
   - **Scanner (📡):** pulso de 8m (3s de duração, 20s de cooldown) que revela direção/distância dos Camaleões-alvo vivos num mini-radar, com vinheta azulada na tela. Disponível no Caçador solo e no Caçador Online.
 - **Reconexão automática (modo Online):** queda de conexão (troca de app, rede instável) ou até um reload de página são recuperados sozinhos — o servidor segura a vaga por 30s (`RECONNECT_GRACE_MS`) e o cliente reconecta com backoff reaproveitando a mesma identidade (`?rejoin=id:token`). Posição/pose não sobrevivem a um reload de página; papel, munição e status de eliminado sim — ver `docs/PLANO_MULTIPLAYER.md`.
 - **Reinício Instantâneo em Memória (0ms de Espera):** Botão **Jogar Novamente** na tela de Game Over/Vitória reseta o estado da partida instantaneamente em memória sem recarregar a página ou refazer downloads 3D.
+- **Dois mapas, rotação sozinha no Online:** mansão (3 alas) + Fábrica Abandonada (mapa 2, casco próprio — `Level.js:_buildFactoryLevel`). Solo cicla os 4 layouts por estágio; Online alterna entre os 2 mapas elegíveis a cada hora cheia, calculado igual dos dois lados sem handshake — ver `docs/PLANO_MANSAO.md` e `docs/PLANO_MULTIPLAYER.md`.
+- **Conta de jogador (Supabase — opcional):** login por e-mail/senha desbloqueia **Ranking** (Sobrevivência e Caçador, top 10), **Missões** com progresso salvo, e **Personalização** (forma do boneco) sincronizada entre aparelhos. Sem login, o jogo continua 100% jogável (progresso local via `sessionStorage`, como sempre foi). Tudo client-reported nesta fase (sem verificação server-side de resultado) — ver `docs/PLANO_CONTAS.md` pelas decisões e limitações conhecidas.
+- **Instalar como App (PWA):** ícone e tela de carregamento próprios, funciona offline depois da 1ª visita (service worker cache-first com atualização em segundo plano). Só registra fora de `localhost`/LAN, pra não brigar com o `Cache-Control: no-store` do `dev_server.py` em desenvolvimento.
 
 ## Estrutura
 
 ```
 index.html        # HUD Glassmorphic, menus radiais, preloader 3D, overlays e importmap
+manifest.json      # Manifest do PWA (ícones, start_url, display standalone)
+sw.js              # Service worker do PWA — cache-first c/ atualização em 2º plano, só fora de dev
 css/style.css     # Estilização Glassmorphism, botões em arco, menus radiais
 dev_server.py     # Servidor de dev com Cache-Control: no-store (use este)
 server/           # Servidor autoritativo do modo Online (docs/PLANO_MULTIPLAYER.md) — Node + ws, isolado do cliente
@@ -120,23 +139,25 @@ public/
   models/         # character_animated.glb (personagem + 9 clipes) e water_gun.glb (arma do Caçador)
 assets/
   menu/           # Ilustração de fundo + recorte decorativo do menu (docs/TRIPO_3D.md não se aplica — arte 2D, não 3D)
+  icons/          # Ícones do PWA (192/512/512-maskable/apple-touch-icon)
 scripts/
   gerar_personagem_glb.py # Pipeline Mixamo FBX → Blender → character_animated.glb (docs/PIPELINE_PERSONAGEM.md)
 src/
-  main.js         # Boot, preloader 3D, gestos e fullscreen
-  MenuUI.js       # Telas do menu (principal/escolha de modo/loading) e modais (Config/Como Jogar/Em breve)
+  main.js         # Boot, preloader 3D, gestos, fullscreen e registro do service worker
+  MenuUI.js       # Telas do menu (principal/escolha de modo/loading), auth (login/conta) e modais (Config/Ranking/Missões/Créditos)
+  Auth.js         # Client Supabase (login/signup/sessão), report de resultado de partida e progresso de missão — docs/PLANO_CONTAS.md
   AnimationManager.js # Loader do GLB único, instancia/clona o personagem e a arma (createBlaster)
   Game.js         # Orquestra partida, menus radiais, pinch zoom e reinício em memória
   Player.js       # Física do jogador, amostragem de cor, modos de pose e pulo
   UVPaint.js      # Pincel Livre: raycast na malha animada → UV → canvas 2D (textura de pintura)
   Seeker.js       # IA dos Caçadores: patrulha/caça, visão Toon, reset em memória
   ChameleonTarget.js # Alvos-camaleão do modo Caçador jogável: vagueia/foge/recolore, IA adaptada do Seeker
-  Level.js        # Mansão de 2 andares, mobília e áreas de camuflagem
+  Level.js        # Mansão de 2 andares (3 alas) + Fábrica Abandonada (mapa 2, casco próprio) — mobília e áreas de camuflagem
   FollowCamera.js # Câmera 3ª pessoa (Camaleão) com colisão e suporte a Pinch to Zoom
   HunterCamera.js # Câmera 1ª pessoa do Caçador jogável (FOV, olhar livre)
   Net.js          # Cliente WebSocket do modo Online (WebSocket nativo, sem dependência nova)
   RemotePlayer.js # Avatar remoto interpolado do modo Online
-  net/            # protocol.js + hittest.js — compartilhados verbatim com server/ (sem imports)
+  net/            # protocol.js + hittest.js + occluders.js — compartilhados verbatim com server/ (sem imports)
   Joystick.js     # Joystick flutuante dinâmico com vibração haptática (resposta analógica, ver Tuning.js)
   Tuning.js       # Parâmetros calibrados ao vivo (deadzone/curva/giro/velocidade) — docs/PAINEL_AJUSTE.md
   TunePanel.js    # Painel ⚙️ (?tune=1) que edita Tuning.js em runtime
