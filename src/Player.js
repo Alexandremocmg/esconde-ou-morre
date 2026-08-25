@@ -1,10 +1,10 @@
 import * as THREE from 'three';
 import { buildBody, Gait } from './Character.js?v=3';
-import { toonGradient, toonGradientGloss } from './textures.js?v=3';
-import { animationManager } from './AnimationManager.js?v=3';
+import { toonGradient, toonGradientGloss } from './textures.js?v=4';
+import { animationManager } from './AnimationManager.js?v=4';
 import { TUNE } from './Tuning.js?v=1';
 import { createPaintTexture, strokeBetween, clearTexture, raycastAnimatedSkinnedMesh } from './UVPaint.js?v=1';
-import { makePaintStroke, MAX_PAINT_STROKES_PER_MSG } from './net/protocol.js?v=4';
+import { makePaintStroke, MAX_PAINT_STROKES_PER_MSG } from './net/protocol.js?v=5';
 
 const PAINT_THROTTLE_MS = 1000 / 45; // ~45 atualizações de textura por segundo (dentro dos 30-60 alvo)
 
@@ -213,6 +213,14 @@ export class Player {
     this._axX = new THREE.Vector3();
     this._axY = new THREE.Vector3();
     this._axZ = new THREE.Vector3();
+    // Amostragem por pixel (Plano 5, Fase 1): cor reutilizável (evita alocar um
+    // THREE.Color por raycast) + cache de isCamouflaged() por frame — com até 4
+    // Seekers no Chameleon Manor chamando isCamouflaged() no mesmo frame, calcular
+    // 1x e reaproveitar evita 4x o trabalho (raycast + amostragem de pixel) por tick.
+    this._pixelColorTmp = new THREE.Color();
+    this._frameTick = 0;
+    this._camoFrame = -1;
+    this._camoValue = false;
     // Extensão REAL (AABB) da parede atualmente grudada — cacheada por objeto, só
     // recalculada quando `latchedObject` muda (ver _updateLatched). Usada pra travar
     // o personagem antes do BISEL arredondado da própria caixa (RoundedBoxGeometry).
@@ -292,8 +300,8 @@ export class Player {
       this._raycaster.setFromCamera({ x: 0, y: 0 }, camera);
       this._raycaster.far = 15;
       const hits = this._raycaster.intersectObjects(this.level.colorables, false);
-      if (hits.length > 0 && hits[0].object.material) {
-        sampledColor = hits[0].object.material.color;
+      if (hits.length > 0) {
+        sampledColor = this._pixelColorAt(hits[0]) || (hits[0].object.material ? hits[0].object.material.color : null);
       }
     }
 
@@ -412,11 +420,50 @@ export class Player {
     z.skinTex.needsUpdate = true;
   }
 
+  // Amostra a cor de um pixel EXATO de uma superfície com padrão procedural
+  // (Level.js: userData.pixelColorable) — em vez da cor média/sólida de
+  // material.color. `hit.uv` é o ponto exato do raycast em espaço UV local;
+  // pixelSource.repeatX/Y reflete o MESMO repeat que a textura usa nesse mesh
+  // específico (superfícies grandes tileiam o padrão — sem isso a amostra
+  // pegaria sempre o pixel (0,0) do padrão-base, ignorando a repetição real).
+  // Cache de pixels montado 1x em Level.js na criação do objeto — nunca por
+  // frame: getImageData() do canvas inteiro seria caro demais pra chamar a
+  // cada raycast.
+  // Retorna um THREE.Color REUTILIZADO (não clone) — leia o valor imediatamente,
+  // não guarde a referência entre frames (mesmo cuidado que outros _tmp* daqui).
+  _pixelColorAt(hit) {
+    const obj = hit.object;
+    const src = obj.userData.pixelColorable ? obj.userData.pixelSource : null;
+    if (!src || !hit.uv) return null;
+    let u = (hit.uv.x * src.repeatX) % 1; if (u < 0) u += 1;
+    let v = (hit.uv.y * src.repeatY) % 1; if (v < 0) v += 1;
+    const px = Math.min(src.width - 1, Math.max(0, Math.floor(u * src.width)));
+    // Flip de V: UV cresce pra cima, canvas cresce pra baixo — mesma fórmula
+    // já usada em UVPaint.js/paintAtScreenPoint pra essa conversão.
+    const py = Math.min(src.height - 1, Math.max(0, Math.floor((1 - v) * src.height)));
+    const i = (py * src.width + px) * 4;
+    // getImageData devolve bytes sRGB; THREE.Color guarda LINEAR (ver toSRGB
+    // acima) — sem esta conversão, a cor amostrada ficaria sistematicamente
+    // "clara/lavada" comparada a uma cor de material.color equivalente.
+    return this._pixelColorTmp
+      .setRGB(src.data[i] / 255, src.data[i + 1] / 255, src.data[i + 2] / 255)
+      .convertSRGBToLinear();
+  }
+
   // Camuflado quando TODAS as zonas batem com a superfície correspondente:
   //  • grudado (P1): cada zona vs. a superfície ATRÁS dela (rodapé/parede);
   //  • deitado (P3c): todas as zonas vs. o TAPETE embaixo ("virar tapete").
   // Camuflado = pior zona dentro do limiar. sRGB (toSRGB) + histerese (_camo).
+  // Cacheado por frame (_frameTick, incrementado 1x no início de update()):
+  // até 4 Seekers (Chameleon Manor) podem chamar isto no mesmo tick — computar
+  // 1x e reaproveitar evita recalcular o mesmo raycast+amostragem 4x.
   isCamouflaged() {
+    if (this._camoFrame === this._frameTick) return this._camoValue;
+    this._camoFrame = this._frameTick;
+    return (this._camoValue = this._computeCamouflaged());
+  }
+
+  _computeCamouflaged() {
     let surfFor;
     if (this.prone) {
       const floor = this._surfaceBelowColor();
@@ -452,7 +499,11 @@ export class Player {
     this._raycaster.set(origin, back);
     this._raycaster.far = RADIUS + 0.6;
     const hit = this._raycaster.intersectObjects(this.level.colorables, false)[0];
-    if (hit && hit.object.material) return hit.object.material.color;
+    if (hit) {
+      const pixel = this._pixelColorAt(hit);
+      if (pixel) return pixel;
+      if (hit.object.material) return hit.object.material.color;
+    }
     return this.latchedObject.material ? this.latchedObject.material.color : null;
   }
 
@@ -633,6 +684,7 @@ export class Player {
 
   update(dt, joy, camera) {
     this._checkAnimInstance();
+    this._frameTick++; // invalida o cache de isCamouflaged() deste frame (ver isCamouflaged)
 
     if (this.prone) this._updateProne(dt, joy);
     else if (this.state === 'grounded') this._updateGrounded(dt, joy, camera);
@@ -1126,7 +1178,8 @@ export class Player {
     this._raycaster.set(this._tmpV.copy(this.position), DOWN);
     this._raycaster.far = 1.5;
     const hit = this._raycaster.intersectObjects(this.level.colorables, false)[0];
-    return hit && hit.object.material ? hit.object.material.color : null;
+    if (!hit) return null;
+    return this._pixelColorAt(hit) || (hit.object.material ? hit.object.material.color : null);
   }
 
   // Conta-gotas MIRADO por ZONA (Fase 5a + P1): cada zona amostra a superfície na
@@ -1149,9 +1202,16 @@ export class Player {
       // Fallback: grudado e a mira não pegou nada → usa a própria superfície grudada.
       if (!mat && this.state === 'latched' && this.latchedObject) mat = this.latchedObject.material;
       if (mat && mat.color) {
-        z.target.copy(mat.color);
+        // Pixel exato quando a superfície tem padrão procedural (userData.
+        // pixelColorable); senão, a cor média do material — como sempre foi.
+        const pixel = hit ? this._pixelColorAt(hit) : null;
+        const sampled = pixel || mat.color;
+        z.target.copy(sampled);
         this._stampZone(z, mat.map);
-        if (!any) any = mat.color;
+        // `any` sai da função — clona pra não ficar apontando pro Color
+        // reutilizado (_pixelColorTmp), que a próxima zona deste MESMO loop
+        // pode sobrescrever antes do retorno.
+        if (!any) any = pixel ? sampled.clone() : sampled;
       }
     }
     return any;

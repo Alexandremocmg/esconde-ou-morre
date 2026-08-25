@@ -253,8 +253,15 @@ export class Level {
   // Corpo grudável/colorável (parede, pilar, móvel alto). Cada climbable tem
   // material ÚNICO (a oclusão o muta por-objeto — nunca compartilhar). `mat` é um
   // pacote de materialMaps() (camoSafe garantido pelos chamadores).
+  //
+  // `pixelColorable` (Plano 5, Fase 1): a camuflagem passa a amostrar o pixel
+  // EXATO da textura de padrão (`map`) em vez da cor média do material — para
+  // superfícies como listras/hexágonos onde "acertar" depende de alinhar com
+  // o padrão, não só a cor geral. Exige `map` (sem padrão não há o que amostrar
+  // por pixel) e `map.image` ser um `<canvas>` (todo material procedural de
+  // textures.js já é — ver materialMaps()/CanvasTexture).
   _addBox(w, h, d, color, x, y, z, {
-    climbable = true, colorable = true,
+    climbable = true, colorable = true, pixelColorable = false,
     map = null, mapRepeat = null, roughness = 0.85, metalness = 0.0,
     normalMap = null, normalScale = 1,
     emissive = null, emissiveIntensity = 0, seekerPass = false,
@@ -281,11 +288,28 @@ export class Level {
     mesh.receiveShadow = true;
     mesh.userData.climbable = climbable;
     mesh.userData.colorable = colorable;
+    if (pixelColorable && map) {
+      const src = this._buildPixelSource(map, mapRepeat);
+      if (src) { mesh.userData.pixelColorable = true; mesh.userData.pixelSource = src; }
+    }
     this.scene.add(mesh);
     if (climbable) this.climbables.push(mesh);
     if (colorable) this.colorables.push(mesh);
     this._addSolid(w, h, d, x, y, z, { seekerPass });
     return mesh;
+  }
+
+  // Lê o canvas-fonte de uma textura procedural pra fora do pipeline de GPU —
+  // 1x por objeto, na criação, nunca por-frame (getImageData() do canvas
+  // inteiro é caro). `repeatX/Y` precisa ser o MESMO valor aplicado à textura
+  // deste mesh (mapRepeat), senão a amostra ignora a repetição real do padrão
+  // numa parede grande. Consumido por Player._pixelColorAt.
+  _buildPixelSource(map, mapRepeat) {
+    const img = map.image;
+    if (!img || !img.getContext) return null; // não é CanvasTexture — sem pixel pra ler
+    const w = img.width, h = img.height;
+    const data = img.getContext('2d').getImageData(0, 0, w, h).data;
+    return { data, width: w, height: h, repeatX: mapRepeat ? mapRepeat.x : 1, repeatY: mapRepeat ? mapRepeat.y : 1 };
   }
 
   // Parede de boiserie (painéis em relevo) na cor creme de mármore — alvo claro
