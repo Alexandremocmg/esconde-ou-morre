@@ -122,8 +122,16 @@ export class Game {
     document.body.classList.toggle('mode-hunter', this.mode === 'hunter');
     document.body.classList.toggle('mode-online', this.mode === 'online');
 
-    // Estágio atual (persiste entre reloads para permitir progressão).
-    this.stage = Math.max(1, parseInt(sessionStorage.getItem('eom-stage') || '1', 10) || 1);
+    // Estágio atual (persiste entre reloads para permitir progressão). Atalho de
+    // teste `?stage=N` (ex.: ?stage=5 pra ir direto ao Chameleon Manor sem
+    // progredir pelos 4 anteriores) tem prioridade sobre o valor salvo, mas não
+    // é persistido — um reload sem o parâmetro volta ao progresso normal salvo
+    // em sessionStorage (mesmo mecanismo manual já documentado em
+    // net/occluders.js:96, só que como parâmetro de URL em vez de console).
+    const stageParam = parseInt(new URLSearchParams(location.search).get('stage'), 10);
+    this.stage = stageParam > 0
+      ? stageParam
+      : Math.max(1, parseInt(sessionStorage.getItem('eom-stage') || '1', 10) || 1);
     this.surviveTime = BASE_SURVIVE + (this.stage - 1) * SURVIVE_PER_STAGE;
     const difficulty = 1 + (this.stage - 1) * DIFF_PER_STAGE;
 
