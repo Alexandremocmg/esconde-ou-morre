@@ -109,6 +109,14 @@ export class Room {
     console.log(`[room] tick loop a cada ${TICK_MS.toFixed(1)}ms`);
   }
 
+  // Só usado por test/helpers.mjs (cada teste sobe uma Room própria — sem
+  // parar o interval, o processo do test runner nunca fecha sozinho) e
+  // opcionalmente por um shutdown gracioso no futuro. Produção hoje sai por
+  // process.exit() direto (index.js:SIGINT), então nunca precisou disto.
+  stop() {
+    if (this._interval) { clearInterval(this._interval); this._interval = null; }
+  }
+
   // ------------------------------------------------------------- ciclo de vida
   // Ponto de entrada de toda conexão nova. Primeiro tenta RECONECTAR a um cliente
   // que caiu há pouco (identidade vem na própria URL de upgrade do WebSocket —

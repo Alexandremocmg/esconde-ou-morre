@@ -1,0 +1,50 @@
+name: Testes
+
+# Cobre exatamente o que a revisão completa do projeto (2026-08-25) apontou como
+# faltando: zero verificação automática rodando a cada mudança, apesar de já
+# existirem harnesses headless bons (sempre em scratchpad/, descartados depois de
+# rodados). Isto formaliza os que valem a pena manter — servidor Online (docs/
+# PLANO_MULTIPLAYER.md) — sem tentar mockar Three.js/canvas pra testar Level.js
+# aqui (a skill de level-design já documenta esses mocks como descartáveis de
+# propósito; formalizá-los arriscaria virar uma 2ª implementação de Three.js que
+# apodrece sem ninguém notar — ver server/testHelpers.mjs pro mesmo raciocínio
+# aplicado ao `ws`).
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  server-tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: server/package-lock.json
+      - run: npm install
+      - run: npm test
+
+  syntax-check:
+    # Gate rápido e barato: pega erro de sintaxe/import quebrado em QUALQUER
+    # arquivo antes mesmo de rodar teste nenhum — mesmo `node --check` que esta
+    # sessão já rodava manualmente depois de cada edição, agora automático.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: node --check em src/ e server/
+        run: |
+          set -e
+          find src server -name '*.js' -o -name '*.mjs' | while read -r f; do
+            echo "checking $f"
+            node --check "$f"
+          done

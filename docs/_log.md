@@ -292,3 +292,70 @@ a rede fresca e atualiza o cache; navegação offline cai pro cache; asset
 continua ignorado — 4/4 passaram.
 
 Arquivos: `server/index.js`, `server/room.js`, `sw.js`.
+
+---
+
+## 2026-08-25 — Fix P2: testes automatizados + CI pro servidor Online
+
+Último item "de pendência" da revisão completa (entrada de duas acima):
+zero testes automatizados/CI no repo, apesar de já existirem harnesses
+headless bons (descartados em `scratchpad/` depois de rodados).
+
+**Decisão de escopo**: formalizar isto só pro servidor Online
+(`server/`), não pro `Level.js`/geometria do cliente. A skill de
+level-design já documenta que os mocks de Three.js/canvas usados pra
+verificação headless de mapa são deliberadamente descartáveis
+(`.claude/skills/level-design/SKILL.md`) — comitar uma versão permanente
+arriscaria virar uma 2ª implementação (parcial, sempre defasada) da API
+do Three.js que apodrece sem ninguém notar, pra um ganho que já é
+coberto pelo processo manual (headless → browser) documentado ali. O
+servidor não tem esse problema: `server/room.js` é lógica pura de estado
++ protocolo, testável contra a peça REAL (`ws` de verdade, não mockado)
+sem esse risco.
+
+**`server/testHelpers.mjs`** (novo, fora de `test/` e sem o prefixo
+`test-`/`.test.` de propósito — nomes assim são pegos pela descoberta
+automática do `node --test` e rodavam como um "teste" vazio próprio):
+sobe um `Room` + `WebSocketServer` de verdade numa porta efêmera
+(`port: 0`), conecta clientes `ws` reais. Achado real ao escrever isto:
+a sala transmite `SNAPSHOT` a 20Hz o tempo todo — um `ws.once('message',
+...)` anexado só depois de esperar o evento `'open'` tem uma janela de
+corrida real (o evento pode disparar nesse meio-tempo e ser perdido,
+já que EventEmitter não enfileira eventos sem ouvinte), pegando um
+SNAPSHOT no lugar do WELCOME esperado. Resolvido com fila por-socket
+alimentada por um listener único anexado no mesmo tick síncrono da
+criação do `WebSocket`, e um `waitForMessage(ws, predicate)` que ignora
+SNAPSHOTs/etc. até achar o tipo esperado (ou devolve `null` no timeout,
+sem lançar) — sem isto, boa parte da suíte ficava ora passando ora
+travando dependendo de quando o tick calhava de disparar.
+
+`Room` ganhou um `stop()` (só usado por testes — produção sai por
+`process.exit()` direto, nunca precisou disto) pra parar o
+`setInterval` do tick; sem ele, cada teste que sobe uma sala própria
+deixaria um timer rodando pra sempre e o `node --test` nunca fecharia
+sozinho.
+
+**`server/test/`**: `hardening.test.mjs` (promove os testes manuais do
+fix P1 — maxPayload fecha com 1009, flood não derruba o processo,
+`wss.on('error')` sobrevive a EADDRINUSE), `room.test.mjs` (capacidade
+do lobby + atribuição de papel, sala cheia recusa com `MATCH_OVER`+4001,
+`revive` reabre partida sem reconectar, validação de PAINT
+descarta-o-inválido-retransmite-o-válido e rejeita lote acima do
+limite, reconexão via `?rejoin=` devolve o mesmo id/role), e
+`protocol.test.mjs` (funções puras de `net/protocol.js` — determinismo/
+domínio de `onlineLayoutFor`, arredondamento de `makeInputPayload`/
+`makePaintStroke`). `server/package.json` ganhou `"test": "node --test"`
+— **`node --test test/` (com diretório explícito) não funcionou** nesta
+versão do Node (24.11.0, erro `MODULE_NOT_FOUND` tentando resolver
+`test` como módulo) — só a descoberta automática sem argumento funciona.
+
+**`.github/workflows/test.yml`** (novo): roda `npm test` em `server/`
+(Node 20) + um `node --check` em todo `.js`/`.mjs` de `src/`+`server/`
+como gate rápido de sintaxe — em push/PR pra `main`.
+
+16/16 testes passando, confirmado estável em 4 execuções seguidas
+(nenhuma flakiness residual da corrida contra SNAPSHOT).
+
+Arquivos: `server/room.js` (`stop()`), `server/testHelpers.mjs` (novo),
+`server/test/*.test.mjs` (novo), `server/package.json`,
+`.github/workflows/test.yml` (novo).
