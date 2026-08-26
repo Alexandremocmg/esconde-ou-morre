@@ -359,3 +359,19 @@ como gate rápido de sintaxe — em push/PR pra `main`.
 Arquivos: `server/room.js` (`stop()`), `server/testHelpers.mjs` (novo),
 `server/test/*.test.mjs` (novo), `server/package.json`,
 `.github/workflows/test.yml` (novo).
+
+---
+
+## 2026-08-26 — Fix P3: remove game-studio.md (cruft não relacionado)
+
+Último item da revisão completa do projeto. `game-studio.md` (raiz do
+repo, frontmatter de skill "Turn a one-line, casual game idea into a
+real, deployed, multiplayer browser game... via the Higgsfield game
+pipeline") não tem nenhuma relação com este projeto — entrou por engano
+no commit `d59d982` ("feat: personagem 3D Tripo + Mixamo..."), um commit
+sobre pipeline de personagem sem nada a ver com o conteúdo do arquivo.
+Confirmado antes de remover: nenhum código/doc do repo referencia o
+arquivo (só a entrada de log da própria revisão completa, que fica —
+é histórico).
+
+Arquivos: `game-studio.md` (removido).
