@@ -38,6 +38,13 @@ import { OCCLUDERS_BY_LAYOUT, isOccluded } from '../src/net/occluders.js';
 // 1º e CHAMELEON pra todo o resto, então só o limite de capacidade precisava mudar.
 const ROOM_CAPACITY = 1 + MAX_CHAMELEONS;
 
+// Rate limit por cliente (_onMessage): o cliente legítimo manda INPUT no máximo a
+// TICK_HZ (20/s, protocol.js) + ocasionais FIRE/PAINT/JOIN/REVIVE — 40/s dá 2x de
+// folga sobre isso sem deixar um cliente malicioso inundar o processo com
+// JSON.parse + trabalho de jogo em cada mensagem (o `maxPayload` do WebSocketServer
+// em index.js limita o TAMANHO de cada mensagem, não a FREQUÊNCIA).
+const MAX_MSGS_PER_SEC = 40;
+
 // Pontos de spawn do Caçador copiados de Level.js (this.spawn.set(...) de cada
 // layout elegível pro Online — protocol.js:ONLINE_LAYOUTS). `y: GROUND_Y`, não 0 —
 // Player.position (o que os snapshots reais vão carregar) é a altura do CENTRO da
@@ -198,6 +205,11 @@ export class Room {
       nextFireAt: 0,
       lastInputAt: Date.now(),
       disconnectedAt: 0,
+      // Rate limit (_onMessage) — janela deslizante de 1s, reiniciada sozinha na
+      // primeira mensagem de cada janela nova (ver _onMessage). Sobrevive a
+      // _reattach de propósito (o client object é reaproveitado, não recriado).
+      _msgWindowStart: Date.now(),
+      _msgCount: 0,
       // Munição: valores por padrão, corrigidos por _handleJoin() assim que o JOIN
       // chegar (sempre antes do primeiro tiro possível — ver protocol.js C2S.JOIN).
       // Só importa pra quem é HUNTER; o Camaleão nunca lê os próprios.
@@ -284,6 +296,16 @@ export class Room {
   }
 
   _onMessage(client, raw) {
+    // Rate limit ANTES do JSON.parse — é o parse (+ o trabalho de jogo depois
+    // dele) que a inundação custa caro pra evitar, não o rótulo da mensagem.
+    const now = Date.now();
+    if (now - client._msgWindowStart >= 1000) {
+      client._msgWindowStart = now;
+      client._msgCount = 0;
+    }
+    client._msgCount++;
+    if (client._msgCount > MAX_MSGS_PER_SEC) return; // flood — ignorado em silêncio, mesmo espírito do cooldown de tiro
+
     let msg;
     try { msg = JSON.parse(raw); } catch (_) { return; }
     client.lastInputAt = Date.now();
