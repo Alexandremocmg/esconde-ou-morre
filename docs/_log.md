@@ -237,4 +237,58 @@ continua in-place).
 Arquivos: `src/Game.js` (fix), `src/main.js` (auto-continue), `index.html`
 (bump `?v=9`).
 
-Arquivos: `src/Game.js` (fix), `src/main.js` (bump `?v=12`).
+---
+
+## 2026-08-25 — Fix P1: servidor exposto a payload gigante/flood + PWA sw.js
+
+Dois dos achados "de pendência" da revisão completa (entrada acima) corrigidos
+a pedido do usuário.
+
+**Servidor (`server/index.js`, `server/room.js`)**: `WebSocketServer` não
+tinha `maxPayload` (o default do `ws` é 100 MiB por mensagem — um cliente
+mandava uma única mensagem gigante e o processo bufferizava/tentava
+`JSON.parse` nela à toa) nem handler de `error` em nenhum nível (um erro de
+socket sem NENHUM listener de `'error'` vira exceção não capturada e derruba
+o processo Node inteiro — todo mundo na sala cai junto por causa de UMA
+conexão ruim). Também não existia rate limit por mensagem — só o cooldown de
+tiro já existente (`_handleFire`), que não cobre `INPUT`/`PAINT`/`JOIN`.
+
+Fix: `maxPayload: 64 * 1024` no `WebSocketServer` (bem acima da maior
+mensagem legítima — PAINT com 400 traços, protocol.js:MAX_PAINT_STROKES_PER_MSG,
+≈32KB — mas 1500× menor que o default); `wss.on('error', ...)` e
+`ws.on('error', ...)` por conexão (registrado antes de `room.addClient`);
+rate limit de `MAX_MSGS_PER_SEC=40` por cliente em `_onMessage` (janela
+deslizante de 1s, checada ANTES do `JSON.parse` — é o parse + trabalho de
+jogo depois dele que a inundação custa caro pra evitar), 2× a cadência real
+de INPUT (TICK_HZ=20/s) com folga pra FIRE/PAINT/JOIN ocasionais.
+
+Verificado com um cliente `ws` cru contra o servidor real (não mockado):
+handshake normal ok; mensagem de ~1MB fecha a conexão com código 1009
+("message too big") em vez de travar o processo; flood de 200 mensagens de
+uma vez não derruba o servidor nem trava o socket (continua respondendo
+depois); nova conexão depois de tudo isso ainda funciona normal — 4/4
+testes passaram. Bônus: o handler de `wss.on('error')` foi exercitado de
+verdade sem querer — uma 2ª instância do servidor de teste tentou subir na
+mesma porta (EADDRINUSE) e só logou o erro em vez de derrubar o processo,
+confirmando o fix num cenário real, não só no script de teste.
+
+**PWA (`sw.js`)**: cache-first pra `index.html` também (não só pros assets
+versionados `?v=N`) fazia um PWA instalado servir o HTML de ANTES do deploy
+mais recente — e com ele os imports `?v=N` antigos — só atualizando na
+visita seguinte. Mesma causa raiz do bug já corrigido à mão uma vez (commit
+`a00144f`), agora fechada na fonte. Fix: requisições de navegação
+(`req.mode === 'navigate'` — cobre `/`, reload, e qualquer query string que
+main.js use nela) passam a ser NETWORK-FIRST com fallback pro cache; todo o
+resto (assets `?v=N`, CDN externo) continua cache-first com atualização em
+segundo plano, inalterado.
+
+Não deu pra registrar o Service Worker de verdade no Browser pane desta
+sessão (ambiente sandboxed bloqueia com `ERR_NETWORK_CHANGED` — limitação do
+harness, não do código: `fetch('/sw.js')` direto funciona normal, 200 OK).
+Verificado em vez disso com um teste isolado (Node + `vm`, mockando
+`self`/`caches`/`fetch` do escopo de Service Worker): navegação online serve
+a rede fresca e atualiza o cache; navegação offline cai pro cache; asset
+`?v=N` continua cache-first com atualização em 2º plano; método não-GET
+continua ignorado — 4/4 passaram.
+
+Arquivos: `server/index.js`, `server/room.js`, `sw.js`.
