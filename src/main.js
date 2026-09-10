@@ -1,8 +1,8 @@
-import { Game } from './Game.js?v=14';
+import { Game } from './Game.js?v=19';
 import { animationManager } from './AnimationManager.js?v=4';
 import { initTunePanel } from './TunePanel.js?v=1';
 import { initMenuUI, updateLoadingStages } from './MenuUI.js?v=4';
-import { resolveWsUrl, hasResumableSession } from './Net.js?v=5';
+import { resolveWsUrl, hasResumableSession } from './Net.js?v=6';
 import { getProfile, updateProfile } from './Auth.js?v=3';
 
 // Painel de ajuste ao vivo (⚙️) — só aparece com ?tune=1 na URL, ver TunePanel.js.
@@ -88,6 +88,14 @@ if (modePick) {
     btn.classList.toggle('on', btn.dataset.mode === saved);
     btn.addEventListener('click', () => {
       sessionStorage.setItem('eom-mode', btn.dataset.mode);
+      const roomInput = document.getElementById('room-code-input');
+      if (btn.dataset.mode === 'online') {
+        const code = (roomInput?.value || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
+        if (code) sessionStorage.setItem('eom-room-code', code);
+        else sessionStorage.removeItem('eom-room-code');
+      } else {
+        sessionStorage.removeItem('eom-room-code');
+      }
       for (const b of modePick.querySelectorAll('button')) b.classList.toggle('on', b === btn);
     });
   }

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { Level } from './Level.js?v=25';
-import { Player } from './Player.js?v=7';
+import { Player } from './Player.js?v=8';
 import { Seeker, WAYPOINTS_ALT } from './Seeker.js?v=6';
 import { ChameleonTarget } from './ChameleonTarget.js?v=10';
 import { FollowCamera } from './FollowCamera.js?v=3';
@@ -9,7 +9,7 @@ import { Joystick } from './Joystick.js?v=3';
 import { Effects } from './Effects.js?v=3';
 import { Audio } from './Audio.js?v=3';
 import { animationManager } from './AnimationManager.js?v=4';
-import { Net, resolveWsUrl } from './Net.js?v=5';
+import { Net, resolveWsUrl } from './Net.js?v=6';
 import { RemotePlayer } from './RemotePlayer.js?v=4';
 // Fase E do Plano 2 (docs/PLANO_CONTAS.md): primeiro (e único) ponto onde
 // Game.js sabe algo sobre conta de jogador — só pra reportar resultado de
@@ -25,7 +25,7 @@ import {
   makeInputPayload,
   S2C,
   ROLE,
-} from './net/protocol.js?v=5';
+} from './net/protocol.js?v=6';
 
 // Mira do Caçador jogável (Game.fireHunterShot): cone de mira a partir do
 // centro da câmera, não pixel-perfect — evita o problema de raycast contra o
@@ -87,6 +87,10 @@ export class Game {
     // Renderer
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: !this.isMobile });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, this.isMobile ? 1.5 : 2));
+    this._qualityPixelRatio = Math.min(window.devicePixelRatio, this.isMobile ? 1.5 : 2);
+    this._qualityElapsed = 0;
+    this._qualityFrames = 0;
+    this._qualityReduced = false;
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     // Look TOON (estilo Meccha Chameleon): sem tone mapping, para as cores chapadas
@@ -142,12 +146,19 @@ export class Game {
     // Layout da arena por estágio (cicla a cada 5): 1=salão, 2=quartos, 3=galeria,
     // 4=fábrica abandonada, 5=Chameleon Manor (mansão 4 níveis, casco próprio —
     // ver Level.js:_buildFactoryLevel/_buildChameleonManor). Online usa
-    // `onlineLayoutFor()` (protocol.js) — rotação determinística por relógio,
-    // calculada aqui de forma SÍNCRONA (o Level é montado antes de conectar),
-    // sem round-trip: o servidor calcula o MESMO valor de forma independente
-    // (room.js) pra escolher spawns/oclusores coerentes com a geometria que
-    // este cliente já construiu.
-    const layout = this.mode === 'online' ? onlineLayoutFor() : ((this.stage - 1) % 5) + 1;
+    // `onlineLayoutFor()` (protocol.js) escolhe um mapa inicial de forma síncrona;
+    // o WELCOME do servidor confirma a sala e pode pedir uma recriação imediata
+    // caso o relógio local tenha escolhido outro layout.
+    // Em uma reconexão, o layout salvo pela última sala tem prioridade sobre o
+    // relógio local. O primeiro WELCOME confirma esse valor e corrige a cena se
+    // dois aparelhos tiverem atravessado a virada de hora em momentos diferentes.
+    const savedOnlineLayout = this.mode === 'online'
+      ? parseInt(sessionStorage.getItem('eom-online-layout') || '', 10)
+      : NaN;
+    const layout = this.mode === 'online'
+      ? ([1, 4, 5].includes(savedOnlineLayout) ? savedOnlineLayout : onlineLayoutFor())
+      : ((this.stage - 1) % 5) + 1;
+    this._onlineLayout = layout;
     this.level = new Level(this.scene, layout, { mobile: this.isMobile });
     // Depois do Level (não antes, como era até aqui): o frustum da sombra
     // agora lê a geometria real de this.level.solids pra se dimensionar —
@@ -164,8 +175,8 @@ export class Game {
     // WebSocket só dispara depois que esta função síncrona termina, mas isso não devia
     // ser uma invariante implícita).
     const ammoSel = document.getElementById('ammo-select');
-    const ammoOpt = ammoSel ? parseInt(ammoSel.value, 10) : 5;
-    this.maxWaterAmmo = isNaN(ammoOpt) ? 5 : ammoOpt;
+    const ammoOpt = ammoSel ? parseInt(ammoSel.value, 10) : 8;
+    this.maxWaterAmmo = isNaN(ammoOpt) ? 8 : ammoOpt;
     this.waterAmmo = this.maxWaterAmmo;
     const infCheck = document.getElementById('infinite-ammo-toggle');
     this.infiniteAmmo = infCheck ? infCheck.checked : false;
@@ -304,6 +315,7 @@ export class Game {
       hint.textContent = 'Conectando à sala...'; // trocado por papel/instrução ao chegar o "welcome"
     }
     this._hintEl = hint;
+    this._setupTutorial();
 
     // Oclusão da câmera: blocos entre a câmera e o jogador desvanecem para não
     // esconder o personagem (ex.: grudado na face traseira de um bloco).
@@ -331,10 +343,12 @@ export class Game {
     this._elStage = document.getElementById('stage-num');
     this._elElapsed = document.getElementById('timer-elapsed');
     this._elGoal = document.getElementById('timer-goal');
+    this._elGoalCap = document.getElementById('timer-goal-cap');
     this._elCamo = document.getElementById('timer-camo');
     this._elFill = document.getElementById('timer-fill');
     if (this._elStage) this._elStage.textContent = String(this.stage);
     if (this._elGoal) this._elGoal.textContent = fmtTime(this.surviveTime);
+    this._updateRoleHudText();
 
     // Botões da tela de Game Over e Vitória (Recomeço instantâneo sem recarregar 3D)
     const goRestart = document.getElementById('go-restart');
@@ -438,8 +452,24 @@ export class Game {
       const welcome = await this.net.connect({ ammo: this.maxWaterAmmo, infiniteAmmo: this.infiniteAmmo });
       this._onlineConnected = true;
       this.onlineRole = welcome.role;
+      if (Number.isFinite(welcome.layout) && welcome.layout !== this._onlineLayout) {
+        // A sala é autoritativa. Guardamos o layout e recriamos o cliente para
+        // que Level, colisão, spawns e oclusores nasçam todos no mapa correto.
+        sessionStorage.setItem('eom-online-layout', String(welcome.layout));
+        location.reload();
+        return;
+      }
+      sessionStorage.setItem('eom-online-layout', String(welcome.layout));
+      // A duração autoritativa pertence à sala. O cliente começa com o valor
+      // solo apenas para montar o HUD enquanto conecta; corrige assim que o
+      // WELCOME chega para não exibir 1:00 numa rodada online de 3:00.
+      if (Number.isFinite(welcome.matchDuration) && welcome.matchDuration > 0) {
+        this.surviveTime = welcome.matchDuration;
+        if (this._elGoal) this._elGoal.textContent = fmtTime(this.surviveTime);
+      }
       this._onlineMatchStartAt = welcome.matchStartAt || 0; // docs/PLANO_LOBBY_COUNTDOWN.md
       this.player.isHunter = welcome.role === ROLE.HUNTER;
+      this._updateRoleHudText();
       this.player.position.set(welcome.spawn.x, this.player.position.y, welcome.spawn.z);
 
       // Chrome de UI específico do papel Caçador (botão de tiro, munição, Scanner) —
@@ -771,6 +801,7 @@ export class Game {
 
   _tick = () => {
     const dt = Math.min(this._clock.getDelta(), 0.05); // clamp anti-tab-switch
+    this._updateAdaptiveQuality(dt);
     if (!this.over && !this.won && !this._eliminatedSpectating) {
       this.player.update(dt, this.joystick.value, this.camera);
       for (const s of this.seekers) {
@@ -1268,10 +1299,14 @@ export class Game {
   _updateHud() {
     const camo = this.player.isCamouflaged();
     const latched = this.player.state === 'latched';
-    this._badge.textContent = camo ? 'CAMUFLADO' : (latched ? 'PAREDE' : (this.player.statue ? 'ESTÁTUA' : (this.player.crouched ? 'AGACHADO' : 'CHÃO')));
+    const reason = this.player.getCamouflageReason();
+    this._badge.textContent = camo ? 'CAMUFLADO' : (latched ? (reason === 'color' ? 'COR ERRADA' : 'PAREDE') : (this.player.statue ? 'ESTÁTUA' : (this.player.crouched ? 'AGACHADO' : 'CHÃO')));
     this._badge.classList.toggle('latched', latched && !camo);
     this._badge.classList.toggle('camo', camo);
+    this._badge.classList.toggle('mismatch', !camo && reason === 'color');
     this._chip.style.background = `#${this.player.material.color.getHexString()}`;
+    this._updateRoleHudText();
+    this._updateCamouflageHint(camo, reason, latched);
 
     // Botão Escalar: destaca quando próximo a uma parede/superfície
     if (this._btnClimb) {
@@ -1288,11 +1323,79 @@ export class Game {
     // Placar: tempo decorrido e tempo camuflado (com Atraso de 30s Anti-Cheat)
     const shown = Math.min(this.elapsed, this.surviveTime);
     if (this._elElapsed) this._elElapsed.textContent = fmtTime(shown);
-    if (this._elCamo) this._elCamo.textContent = `🫥 ${fmtTime(this.delayedCamoTime || 0)}`;
+    if (this._elCamo) {
+      const hunter = this.mode === 'hunter' || (this.mode === 'online' && this.onlineRole === ROLE.HUNTER);
+      this._elCamo.textContent = hunter
+        ? `⏱ ${fmtTime(Math.max(0, this.surviveTime - this.elapsed))}`
+        : `🫥 ${fmtTime(this.delayedCamoTime || 0)}`;
+    }
     if (this._elFill) {
       const pct = this.surviveTime > 0 ? (shown / this.surviveTime) * 100 : 0;
       this._elFill.style.width = `${Math.min(100, pct)}%`;
     }
+  }
+
+  _updateAdaptiveQuality(dt) {
+    if (!this.isMobile || this._qualityReduced) return;
+    this._qualityElapsed += dt;
+    this._qualityFrames++;
+    if (this._qualityElapsed < 2) return;
+    const fps = this._qualityFrames / this._qualityElapsed;
+    this._qualityElapsed = 0;
+    this._qualityFrames = 0;
+    if (fps < 24 && this._qualityPixelRatio > 1) {
+      this._qualityPixelRatio = 1;
+      this.renderer.setPixelRatio(this._qualityPixelRatio);
+      this._qualityReduced = true;
+      if (this._hintEl && this.mode !== 'online') this._hintEl.textContent = '⚙️ Ajustando a qualidade para manter o jogo fluido.';
+    }
+  }
+
+  _updateCamouflageHint(camo, reason, latched) {
+    if (!this._hintEl || this.mode === 'hunter') return;
+    if (this.mode === 'online' && (!this.onlineRole || this._eliminatedSpectating || this._onlineMatchStartAt > Date.now())) return;
+    if (camo) this._hintEl.textContent = '🫥 CAMUFLADO — fique imóvel ou mude de esconderijo quando o Caçador se aproximar.';
+    else if (reason === 'color' && latched) this._hintEl.textContent = '🎨 COR INCOMPATÍVEL — copie a superfície atrás de cada parte do corpo.';
+    else if (reason === 'surface') this._hintEl.textContent = '🧱 SUPERFÍCIE INVÁLIDA — encoste numa parede colorida ou deite sobre um tapete.';
+    else this._hintEl.textContent = '🧱 GRUDE NUMA SUPERFÍCIE — só apoiado você pode ficar camuflado.';
+  }
+
+  _setupTutorial() {
+    if (this.mode === 'online') return;
+    const el = document.getElementById('tutorial');
+    const text = document.getElementById('tutorial-text');
+    const next = document.getElementById('tutorial-next');
+    const skip = document.getElementById('tutorial-skip');
+    if (!el || !text || !next || !skip) return;
+    const key = `eom-tutorial-${this.mode}`;
+    if (sessionStorage.getItem(key) === '1') return;
+    const steps = this.mode === 'hunter'
+      ? ['Encontre um Camaleão no cenário.', 'Mire com a retícula e toque em 💦 para disparar.', 'Use o Scanner 📡 perto de você e acerte todos antes que a água acabe.']
+      : ['Mire numa parede ou tapete e toque em 🎨 para copiar a cor.', 'Toque em 🧱 para grudar na superfície colorida.', 'Quando o indicador mostrar CAMUFLADO, fique imóvel e sobreviva.'];
+    let index = 0;
+    const render = () => {
+      text.textContent = steps[index];
+      next.textContent = index === steps.length - 1 ? 'Começar' : 'Próximo';
+    };
+    const finish = () => { sessionStorage.setItem(key, '1'); el.classList.add('hidden'); };
+    next.addEventListener('click', () => { if (index === steps.length - 1) finish(); else { index++; render(); } });
+    skip.addEventListener('click', finish);
+    render();
+    el.classList.remove('hidden');
+  }
+
+  _updateRoleHudText() {
+    const hunter = this.mode === 'hunter' || (this.mode === 'online' && this.onlineRole === ROLE.HUNTER);
+    const camo = !hunter;
+    if (this._elGoalCap) this._elGoalCap.textContent = hunter ? 'encontre todos' : 'sobreviva';
+    if (this._elCamo) {
+      this._elCamo.title = hunter ? 'Tempo restante da partida' : 'Tempo total camuflado (Atualizado a cada 30s)';
+      if (hunter) this._elCamo.textContent = `⏱ ${fmtTime(Math.max(0, this.surviveTime - this.elapsed))}`;
+    }
+    const hint = document.getElementById('hint');
+    if (hint) hint.textContent = hunter
+      ? 'Mire com a retícula e toque em 💦 para atirar. Encontre e acerte todos os Camaleões antes que a água acabe.'
+      : 'Mire numa superfície e toque em 🎨 para sugar a cor. Grude numa superfície da mesma cor para se camuflar. Sobreviva ao Caçador vermelho.';
   }
 
   fireWaterJet(seeker, dt) {
@@ -1823,8 +1926,8 @@ export class Game {
 
     // Atualiza configurações de munição do Caçador
     const ammoSel = document.getElementById('ammo-select');
-    const ammoOpt = ammoSel ? parseInt(ammoSel.value, 10) : 5;
-    this.maxWaterAmmo = isNaN(ammoOpt) ? 5 : ammoOpt;
+    const ammoOpt = ammoSel ? parseInt(ammoSel.value, 10) : 8;
+    this.maxWaterAmmo = isNaN(ammoOpt) ? 8 : ammoOpt;
     this.waterAmmo = this.maxWaterAmmo;
     const infCheck = document.getElementById('infinite-ammo-toggle');
     this.infiniteAmmo = infCheck ? infCheck.checked : false;

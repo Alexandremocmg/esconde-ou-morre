@@ -4,7 +4,7 @@ import { toonGradient, toonGradientGloss } from './textures.js?v=4';
 import { animationManager } from './AnimationManager.js?v=4';
 import { TUNE } from './Tuning.js?v=1';
 import { createPaintTexture, strokeBetween, clearTexture, raycastAnimatedSkinnedMesh } from './UVPaint.js?v=1';
-import { makePaintStroke, MAX_PAINT_STROKES_PER_MSG } from './net/protocol.js?v=5';
+import { makePaintStroke, MAX_PAINT_STROKES_PER_MSG } from './net/protocol.js?v=6';
 
 const PAINT_THROTTLE_MS = 1000 / 45; // ~45 atualizações de textura por segundo (dentro dos 30-60 alvo)
 
@@ -467,17 +467,17 @@ export class Player {
     let surfFor;
     if (this.prone) {
       const floor = this._surfaceBelowColor();
-      if (!floor) { this._camo = false; return false; } // fora de tapete → exposto
+      if (!floor) { this._camo = false; this._camoReason = 'surface'; return false; } // fora de tapete → exposto
       surfFor = () => floor;
     } else if (this.state === 'latched' && this.latchedObject) {
       surfFor = (z) => this._surfaceBehindZone(z);
     } else {
-      this._camo = false; return false;
+      this._camo = false; this._camoReason = 'support'; return false;
     }
     let maxDiff = 0;
     for (const z of this.zones) {
       const surf = surfFor(z);
-      if (!surf) { this._camo = false; return false; }
+      if (!surf) { this._camo = false; this._camoReason = 'surface'; return false; }
       const c = z.mat.color;
       const d = Math.max(
         Math.abs(toSRGB(c.r) - toSRGB(surf.r)),
@@ -486,9 +486,19 @@ export class Player {
       );
       if (d > maxDiff) maxDiff = d;
     }
-    if (this._camo) { if (maxDiff > CAMO_EXIT) this._camo = false; }
-    else if (maxDiff < CAMO_ENTER) this._camo = true;
+    if (this._camo) {
+      if (maxDiff > CAMO_EXIT) { this._camo = false; this._camoReason = 'color'; }
+    } else if (maxDiff < CAMO_ENTER) {
+      this._camo = true; this._camoReason = 'ok';
+    } else {
+      this._camoReason = 'color';
+    }
     return this._camo;
+  }
+
+  getCamouflageReason() {
+    this.isCamouflaged();
+    return this._camoReason || 'support';
   }
 
   // Cor da superfície colorável logo ATRÁS de uma zona (raycast −normal a partir da

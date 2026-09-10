@@ -9,12 +9,14 @@ Instruções de uso deste índice: [`../CLAUDE.md`](../CLAUDE.md).
 - 📦 **histórico** — registro de uma fase de desenvolvimento já concluída e
   absorvida no código. Ainda útil como contexto/arqueologia, mas não
   necessariamente atualizado depois que a fase fechou.
+- 📝 **planejado** — trabalho proposto, ainda não representa comportamento implementado.
 
 Esta classificação é um ponto de partida, não uma auditoria linha-a-linha —
 se um doc mudou de categoria, atualize aqui (ver `CLAUDE.md` § Ingest).
 
 | Doc | Status | Resumo |
 | --- | --- | --- |
+| [`PLANO_CORRECOES.md`](PLANO_CORRECOES.md) | 📝 | Plano priorizado de correções e melhorias: regras, online, camuflagem, tutorial, apresentação e critérios de aceite. |
 | [`MECANICA_CACADOR.md`](MECANICA_CACADOR.md) | 🟢 | Especificação técnica do modo Caçador: munição, condições de vitória/derrota, HUD, sorteio de papel no lobby. |
 | [`MECANICA_CACADOR_VISAO.md`](MECANICA_CACADOR_VISAO.md) | 🟢 | Design de câmera/FOV, arma de água e Scanner do Caçador (status ✅/🔲 por item); §3 cobre a IA dos alvos-camaleão. |
 | [`PLANO_MANSAO.md`](PLANO_MANSAO.md) | 🟢 | Arquitetura dos mapas (mansão de 3 alas + Fábrica Abandonada): andares, escadas, colisão, mezanino/passarela. |

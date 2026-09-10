@@ -66,7 +66,7 @@ navegador (WebSocket nativo)                    Node + ws (server/)
 | Cliente de rede | `src/Net.js` | Conecta, envia input/tiro, expõe eventos |
 | Avatar remoto | `src/RemotePlayer.js` | Interpola snapshots (buffer 100ms), escolhe animação pelo estado recebido |
 | Pincel Livre (rede) | `protocol.js` (`C2S.PAINT`/`S2C.PLAYER_PAINT`), `server/room.js` (`_handlePaint`), `RemotePlayer.js` (`applyPaintStrokes`) | Lista compacta de traços (não pixels — mesma regra do §4.4), evento por-ação em vez de por-tick; servidor guarda o acumulado de cada jogador só pra repassar a quem entra depois (WELCOME) |
-| Servidor | `server/index.js` + `server/room.js` | Sala única, papel por ordem de entrada, tick 20Hz, valida tiro, decide fim de partida, segura vaga de quem reconecta |
+| Servidor | `server/index.js` + `server/room.js` | Salas em memória por código (com entrada pública padrão), papel por ordem de entrada, tick 20Hz, valida tiro, decide fim de partida, segura vaga de quem reconecta |
 | Integração no jogo | `src/Game.js` (`this.mode === 'online'`) | 3º modo ao lado de `chameleon`/`hunter`; reaproveita `HunterCamera` p/ o papel Caçador |
 | Reconexão | `src/Net.js` + `server/room.js` (`_reattach`/`_purgeStale`) | Backoff automático + retomada via `sessionStorage` — ver §3.2 |
 
@@ -193,24 +193,13 @@ resetar munição, sem reviver se já estava eliminado).
         arquivo: se a geometria de um layout mudar em `Level.js`, o snapshot
         correspondente fica desatualizado em silêncio — precisa ser regerado
         manualmente.
-3. **Dois mapas no Online, escolhidos por rotação determinística de relógio
-   (`onlineLayoutFor()` em protocol.js).** `Level` é função pura do número do layout,
-   com PRNG semeado (`mulberry32`, `Level.js`) — os dois clientes produzem
-   geometria/`solids`/cores idênticos sem o servidor precisar rodar `Level.js` (que
-   depende de `canvas`/DOM e não roda em Node). Em vez do servidor decidir por sala e
-   comunicar a escolha (exigiria o cliente esperar o `welcome` antes de montar o
-   `Level` — mudança de arquitetura grande, mexeria no boot de TODOS os modos, não só
-   Online), cliente e servidor calculam o MESMO valor de forma pura e síncrona a
-   partir de `Date.now()` (rotaciona a cada hora cheia UTC) — sem round-trip, sem
-   payload novo. `server/room.js` só CONSULTA essa função uma vez por sala (quando o
-   1º cliente entra numa sala vazia, `this._layout` fica fixo pelo resto da vida da
-   sala) — do contrário duas partes da MESMA sala poderiam discordar da geometria se
-   o relógio virasse durante a partida. Risco aceito (mesmo espírito do Débito 1):
-   dois jogadores conectando bem na virada da hora podem calcular valores diferentes
-   e desincronizar — janela de milissegundos, sem impacto de segurança/dados, só
-   visual, autocorrige na sessão seguinte. Os spawns em `server/room.js`
-   (`HUNTER_SPAWN_BY_LAYOUT`/`_chameleonSpawn`) foram copiados manualmente do `spawn`
-   de cada layout.
+3. **Mapas no Online definidos pela sala.** `onlineLayoutFor()` ainda escolhe um
+   mapa inicial quando a cena precisa ser montada antes da conexão, mas o servidor
+   fixa `this._layout` ao formar a sala e envia esse valor no `WELCOME`. O cliente
+   compara os dois valores, salva o layout da sessão e recria a cena quando houver
+   divergência; assim relógios diferentes ou uma virada de hora não deixam jogadores
+   na geometria errada. `Level` continua sendo função pura do número do layout, com
+   PRNG semeado, e os spawns/oclusores seguem a tabela do servidor.
 4. **Cor nunca vai pela rede como pixels.** A "estampa" da camuflagem
    (`Player._stampZone`) é derivada de `(material, texSize, aniso)`, não de dados por
    pixel — os canvases usam `Math.random()` não semeado (`textures.js`), então dois

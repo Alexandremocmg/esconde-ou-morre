@@ -14,7 +14,7 @@
      em main.js só fora de dev (ver comentário lá — cache agressivo do
      service worker atrapalharia o ciclo de no-cache do dev_server.py). -->
 <link rel="manifest" href="manifest.json" />
-<link rel="stylesheet" href="css/style.css?v=9" />
+<link rel="stylesheet" href="css/style.css?v=11" />
 
 <!-- Three.js e Supabase via CDN (ES Modules), sem bundler nem npm no cliente.
      Requer servidor local: `python -m http.server` ou `npx serve`. -->
@@ -51,7 +51,7 @@
     <div id="state-badge">CHÃO</div>
     <div id="color-chip"><span></span>camuflagem</div>
     <div id="water-ammo-hud" class="water-ammo-badge" title="Munição de Jatos de Água do Caçador">
-      <span class="ammo-ic">💧</span><span id="ammo-count">5</span> / <span id="ammo-max">5</span>
+      <span class="ammo-ic">💧</span><span id="ammo-count">8</span> / <span id="ammo-max">8</span>
     </div>
     <!-- Modo Caçador jogável: quantos Camaleões-alvo faltam acertar -->
     <div id="targets-hud" class="water-ammo-badge" title="Camaleões restantes">
@@ -73,11 +73,19 @@
         <span id="timer-elapsed">0:00</span>
         <span class="t-sep">/</span>
         <span id="timer-goal">1:00</span>
-        <span class="t-cap">sobreviva</span>
+        <span id="timer-goal-cap" class="t-cap">sobreviva</span>
       </div>
     </div>
   </div>
   <div id="hint">Mire numa superfície e toque em 🎨 para sugar a cor (conta-gotas). Grude numa superfície da mesma cor para se camuflar. Sobreviva ao Caçador vermelho.</div>
+
+  <div id="tutorial" class="tutorial hidden" role="dialog" aria-label="Tutorial rápido">
+    <div class="tutorial-card">
+      <span class="tutorial-kicker">PRIMEIROS PASSOS</span>
+      <p id="tutorial-text"></p>
+      <div class="tutorial-actions"><button id="tutorial-skip" class="btn-ghost" type="button">Pular</button><button id="tutorial-next" class="btn-primary" type="button">Próximo</button></div>
+    </div>
+  </div>
 
   <!-- Joystick virtual (metade esquerda da tela) -->
   <div id="joystick-zone">
@@ -308,6 +316,10 @@
         </button>
       </div>
 
+      <label class="room-code-field" for="room-code-input">Código da sala (opcional)
+        <input id="room-code-input" type="text" inputmode="text" maxlength="8" autocomplete="off" placeholder="Ex.: LAGOA">
+      </label>
+
       <div class="mode-bottom-bar">
         <button class="mode-back-btn" id="mode-back-btn" type="button">← Voltar</button>
         <p class="mode-room-note">👑 Primeiro jogador da sala será o Caçador.<br>Até 4 jogadores adicionais entram como Camaleões.</p>
@@ -361,7 +373,7 @@
             <select id="ammo-select">
               <option value="1">1 Jato (Hardcore)</option>
               <option value="3">3 Jatos</option>
-              <option value="5" selected>5 Jatos (Padrão)</option>
+              <option value="8" selected>8 Jatos (Padrão)</option>
               <option value="10">10 Jatos</option>
               <option value="15">15 Jatos</option>
               <option value="30">30 Jatos</option>

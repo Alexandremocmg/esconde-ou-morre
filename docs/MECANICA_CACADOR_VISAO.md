@@ -70,7 +70,7 @@
 | Item | Status | Referência atual / Gap |
 | --- | --- | --- |
 | Projétil de alta dispersão (splatter/shotgun) | parcialmente implementado | hoje é hitscan por cone de mira, não dispersão real |
-| Tanque de 5–8 cargas | ✅ implementado (mais flexível) | `waterAmmo` configurável 1–30, padrão 5 — ver `MECANICA_CACADOR.md §3.2` |
+| Tanque de 5–8 cargas | ✅ implementado (mais flexível) | `waterAmmo` configurável 1–30, padrão 8 — ver `MECANICA_CACADOR.md §3.2` |
 | Penalidade de tiro errado (cooldown de bomba 2–3s) | ✅ implementado | `HUNTER_MISS_COOLDOWN_MS = 2600` em `Game.js`, aplicado só quando `best` é `null` |
 | Quebra do shader de camuflagem + tinta neon fluorescente ao acertar | parcialmente implementado | elimina/desbota, mas sem o flash neon |
 

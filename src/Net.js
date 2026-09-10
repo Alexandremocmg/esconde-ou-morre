@@ -1,4 +1,4 @@
-import { C2S, S2C, TICK_MS, RECONNECT_GRACE_MS, PROD_WS_URL, HOST_LOCAL_OU_LAN } from './net/protocol.js?v=5';
+import { C2S, S2C, TICK_MS, RECONNECT_GRACE_MS, PROD_WS_URL, HOST_LOCAL_OU_LAN } from './net/protocol.js?v=6';
 
 // Mesma lógica de escolha de servidor que só existia dentro de Game.js
 // (_wsUrl) — movida pra cá (Fase B, Plano 2) porque "Continuar Partida" no
@@ -8,9 +8,12 @@ import { C2S, S2C, TICK_MS, RECONNECT_GRACE_MS, PROD_WS_URL, HOST_LOCAL_OU_LAN }
 export function resolveWsUrl() {
   const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
   const override = new URLSearchParams(location.search).get('ws');
-  if (override) return /^wss?:\/\//.test(override) ? override : `${scheme}://${override}`;
-  if (HOST_LOCAL_OU_LAN.test(location.hostname)) return `${scheme}://${location.hostname}:8787`;
-  return PROD_WS_URL;
+  const base = override
+    ? (/^wss?:\/\//.test(override) ? override : `${scheme}://${override}`)
+    : (HOST_LOCAL_OU_LAN.test(location.hostname) ? `${scheme}://${location.hostname}:8787` : PROD_WS_URL);
+  const room = sessionStorage.getItem('eom-room-code');
+  if (!room || !/^[A-Z0-9]{4,8}$/.test(room)) return base;
+  return `${base}${base.includes('?') ? '&' : '?'}room=${encodeURIComponent(room)}`;
 }
 
 // Chave de sessionStorage pra sobreviver a um RELOAD DE VERDADE da página (o

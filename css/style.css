@@ -107,6 +107,7 @@ body {
   backdrop-filter: blur(6px);
 }
 #state-badge.latched { color: #0b0e13; background: #e0a94a; border-color: #e0a94a; }
+#state-badge.mismatch { color: #fff; background: #c94b55; border-color: #f07a82; }
 #state-badge.camo { color: #0b0e13; background: var(--accent); border-color: var(--accent); }
 
 /* Penumbra: aparece quando o jogador está numa zona escura (o Caçador te enxerga
@@ -244,6 +245,16 @@ body {
   z-index: 5;
 }
 @media (max-width: 720px) { #hint { display: none; } }
+
+.tutorial { position: fixed; inset: 0; display: flex; align-items: flex-end; justify-content: center; padding: 0 18px 92px; background: rgba(4, 8, 14, 0.16); z-index: 12; pointer-events: auto; }
+.tutorial.hidden { display: none; }
+.tutorial-card { width: min(420px, 92vw); padding: 18px 20px 16px; border: 1px solid rgba(255,255,255,.22); border-radius: 18px; background: rgba(15, 24, 35, .92); box-shadow: 0 12px 38px rgba(0,0,0,.35); backdrop-filter: blur(12px); }
+.tutorial-kicker { color: var(--accent); font-size: 10px; font-weight: 800; letter-spacing: .12em; }
+.tutorial-card p { margin: 8px 0 16px; color: var(--ui); font-size: 14px; line-height: 1.4; }
+.tutorial-actions { display: flex; justify-content: flex-end; gap: 9px; }
+.room-code-field { display: none; align-items: center; gap: 8px; margin: 12px auto 0; width: min(280px, 86vw); color: var(--ui-dim); font-size: 11px; }
+.room-code-field input { flex: 1; min-width: 0; padding: 8px 10px; border-radius: 9px; border: 1px solid rgba(255,255,255,.2); background: rgba(0,0,0,.3); color: var(--ui); font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+body:has(#screen-mode.active) .room-code-field { display: flex; }
 
 /* ---------- Joystick ---------- */
 /* A zona de toque recua da borda pela safe-area (mín. 8px) para não roubar o
@@ -454,13 +465,16 @@ body.painting-active #paint-debug-panel { display: block; }
 /* ---------- Modo Caçador jogável ----------
    btn-fire ocupa o mesmo lugar/estilo de btn-paint (herda .action-paint); os
    dois nunca aparecem juntos, então não precisam de posição própria. */
+#water-ammo-hud,
 #btn-fire,
 #targets-hud { display: none; }
+body.mode-hunter #water-ammo-hud { display: flex; }
 body.mode-hunter #btn-fire { display: flex; }
 body.mode-hunter #btn-paint,
 body.mode-hunter #btn-pose { display: none; }
 body.mode-hunter #targets-hud { display: flex; }
 body.mode-hunter .stat-camo { display: none; }
+body.mode-hunter #color-chip { display: none; }
 
 /* Cooldown do disparo (normal ou penalidade de erro — Fase 2) ou do Scanner (Fase 3):
    esmaece o botão, sem travar o toque (o gate real é _nextFireAt/_scannerCooldown em

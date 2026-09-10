@@ -18,10 +18,36 @@ const PORT = parseInt(process.argv[2] || process.env.PORT || '8787', 10);
 // bufferizar/tentar JSON.parse, sem custo nenhum pro atacante).
 const MAX_WS_PAYLOAD_BYTES = 64 * 1024;
 
-const room = new Room();
-room.start();
+const rooms = new Map();
+function roomCode(req) {
+  try {
+    const value = new URL(req.url || '/', 'ws://localhost').searchParams.get('room');
+    return /^[A-Z0-9]{4,8}$/.test(value || '') ? value : 'PUBLIC';
+  } catch (_) { return 'PUBLIC'; }
+}
+function getRoom(code) {
+  let room = rooms.get(code);
+  if (!room) {
+    room = new Room();
+    room.start();
+    rooms.set(code, room);
+  }
+  return room;
+}
 
 const wss = new WebSocketServer({ port: PORT, maxPayload: MAX_WS_PAYLOAD_BYTES });
+
+// Salas vazias deixam de consumir o tick e a memória do processo. A vaga de uma
+// sala com alguém desconectado ainda é preservada pelo próprio Room durante a
+// janela de reconexão; só removemos quando não há nenhum estado restante.
+const roomCleanup = setInterval(() => {
+  for (const [code, room] of rooms) {
+    if (room.clients.size === 0) {
+      room.stop();
+      rooms.delete(code);
+    }
+  }
+}, 30000);
 
 wss.on('connection', (ws, req) => {
   // Sem NENHUM listener de 'error' num `ws` individual, um erro de socket
@@ -34,7 +60,7 @@ wss.on('connection', (ws, req) => {
   });
   // `req` (o upgrade HTTP original) carrega a query string — é onde uma tentativa
   // de reconexão manda `?rejoin=<id>:<token>` (ver room.js:_parseRejoin/Net.js).
-  room.addClient(ws, req);
+  getRoom(roomCode(req)).addClient(ws, req);
 });
 
 // Mesmo motivo do handler acima, mas pro servidor como um todo (erro de bind
@@ -44,10 +70,12 @@ wss.on('error', (err) => {
 });
 
 wss.on('listening', () => {
-  console.log(`[server] ws://localhost:${PORT} — sala única, aguardando jogadores`);
+  console.log(`[server] ws://localhost:${PORT} — salas por código, aguardando jogadores`);
 });
 
 process.on('SIGINT', () => {
   console.log('\n[server] encerrando...');
+  clearInterval(roomCleanup);
+  for (const room of rooms.values()) room.stop();
   wss.close(() => process.exit(0));
 });

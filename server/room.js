@@ -224,6 +224,7 @@ export class Room {
       ammo: HUNTER_AMMO_DEFAULT,
       maxAmmo: HUNTER_AMMO_DEFAULT,
       infiniteAmmo: false,
+      joinConfigured: false,
       // Fase 4 do pincel 3D: acumulado de comandos de traço já
       // validados deste cliente — só pra um jogador que entra DEPOIS ver a
       // pintura de quem já estava (ver WELCOME/_reattach, que inclui isto
@@ -338,10 +339,14 @@ export class Room {
   // só a de quem o servidor decidiu que é o Caçador.
   _handleJoin(client, msg) {
     if (client.role !== ROLE.HUNTER) return;
+    // JOIN só configura a munição na entrada. Repeti-lo durante uma partida
+    // não pode recarregar a reserva nem alternar munição infinita.
+    if (client.joinConfigured) return;
     client.infiniteAmmo = !!msg.infiniteAmmo;
     const ammo = Number(msg.ammo);
     client.maxAmmo = Number.isFinite(ammo) && ammo > 0 ? Math.floor(ammo) : HUNTER_AMMO_DEFAULT;
     client.ammo = client.maxAmmo;
+    client.joinConfigured = true;
   }
 
   // "Jogar novamente" sem reconectar (Game.js:restartInPlace). Sem isto, `eliminated`
@@ -351,6 +356,9 @@ export class Room {
   // (_handleFire recusa enquanto _over). Quem clicar primeiro reabre a partida pra
   // ambos — v1 não tem "pronto?" de lobby, então o 1º clique já vale.
   _onRevive(client) {
+    // Só existe revanche depois que a sala encerrou a rodada. Um Camaleão
+    // eliminado não pode se ressuscitar no meio da partida.
+    if (!this._over) return;
     client.eliminated = false;
     if (this._over) {
       this._over = false;
@@ -367,11 +375,12 @@ export class Room {
   }
 
   _applyInput(client, msg) {
-    // Confiança na posição é o Débito 1 documentado no plano — v1 retransmite, não
-    // valida. O que o servidor JÁ decide sozinho (papel/tiro/fim de partida) não
-    // depende deste método.
+    // O servidor ainda não simula a colisão completa, mas rejeita valores que não
+    // podem representar um jogador no mapa. Isso impede teleporte para coordenadas
+    // absurdas e mantém a autoridade futura compatível com o formato atual.
     const p = msg.p;
     if (!Array.isArray(p) || p.length !== 3 || p.some((n) => !Number.isFinite(n))) return;
+    if (p.some((n) => Math.abs(n) > 200)) return;
     client.pos = { x: p[0], y: p[1], z: p[2] };
     if (Number.isFinite(msg.y)) client.yaw = msg.y;
     client.state = msg.s === 'latched' ? 'latched' : 'grounded';
@@ -424,6 +433,11 @@ export class Room {
 
     const origin = msg.origin, dirIn = msg.dir;
     if (!origin || !dirIn) return; // valida ANTES de gastar munição — pacote malformado não pode custar água
+    if (![origin.x, origin.y, origin.z, dirIn.x, dirIn.y, dirIn.z].every(Number.isFinite)) return;
+    const originDelta = Math.hypot(origin.x - client.pos.x, origin.y - client.pos.y, origin.z - client.pos.z);
+    // A câmera fica alguns centímetros acima/à frente do avatar. Uma origem a
+    // dezenas de metros é um tiro forjado e não deve consumir munição.
+    if (originDelta > 3) return;
     const dir = normalize(dirIn);
 
     // Munição: mesma ordem de Game.js:fireHunterShot — gasta em TODO tiro (acerto ou

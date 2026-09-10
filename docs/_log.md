@@ -375,3 +375,55 @@ arquivo (só a entrada de log da própria revisão completa, que fica —
 é histórico).
 
 Arquivos: `game-studio.md` (removido).
+
+---
+
+## 2026-09-09 — Plano de correções após análise do jogo
+
+Criado `PLANO_CORRECOES.md` com seis etapas, dependências, arquivos envolvidos e critérios de aceite; distingue problemas confirmados de hipóteses de playtest e funcionalidades novas. Prioriza a configuração impossível do Caçador solo, HUD por papel e consistência de mapa/tempo/regras online. Nenhuma alteração de gameplay ou implantação nesta entrega.
+
+Arquivos: `docs/PLANO_CORRECOES.md` (novo), `docs/_index.md`, `docs/_log.md`.
+
+---
+
+## 2026-09-09 — Marco 1 do plano de correções
+
+O modo Caçador passou a iniciar com 8 jatos para 6 alvos, permitindo dois erros na configuração padrão. O HUD agora muda o objetivo, dica, título do cronômetro e rótulo de tempo conforme o papel; o padrão foi atualizado no menu e no protocolo compartilhado.
+
+Arquivos: `src/Game.js`, `src/net/protocol.js`, `src/Net.js`, `src/Player.js`, `src/RemotePlayer.js`, `src/main.js`, `index.html`.
+
+O mesmo marco também passou a aplicar a duração enviada pelo servidor ao HUD online e bloqueou JOIN repetido (não recarrega munição) e REVIVE antes do fim da rodada. A documentação do Caçador e o README foram sincronizados com o padrão de 8 jatos.
+
+Arquivos adicionais: `server/room.js`, `README.md`, `docs/MECANICA_CACADOR.md`, `docs/MECANICA_CACADOR_VISAO.md`.
+
+### Continuação — endurecimento da sala online
+
+O servidor agora rejeita coordenadas não finitas/absurdas, origens de disparo distantes do avatar, JOIN repetido e REVIVE durante uma rodada ativa. A suíte da sala ganhou três regressões e passou de 16 para 19 testes.
+
+Arquivos: `server/room.js`, `server/test/room.test.mjs`.
+
+### Continuação — layout online confirmado pela sala
+
+O cliente online agora usa o layout salvo da sessão quando reconecta, compara o layout inicial com o `WELCOME` autoritativo do servidor e recria a cena automaticamente quando houver divergência. Isso fecha a janela de inconsistência na virada de hora sem alterar o boot dos modos solo.
+
+Arquivos: `src/Game.js`, `src/main.js`, `docs/PLANO_MULTIPLAYER.md`.
+
+### Continuação — feedback de camuflagem e tutorial inicial
+
+O jogador agora recebe o motivo do estado de camuflagem no HUD (`COR ERRADA`, `PAREDE` ou `CHÃO`) e uma dica contextual. Foi adicionado um tutorial curto de três passos para Camaleão e Caçador, exibido uma vez por papel e com opção de pular; o Online mantém seu fluxo de lobby próprio.
+
+Arquivos: `src/Player.js`, `src/Game.js`, `index.html`, `css/style.css`, `src/main.js`.
+
+### Continuação — leitura visual e qualidade adaptativa
+
+O HUD do Camaleão deixou de exibir munição irrelevante, ganhou estado visual vermelho para cor incompatível e mantém o indicador de cor apenas nos papéis que usam camuflagem. Em celulares que sustentarem menos de 24 FPS por dois segundos, a resolução de renderização cai uma vez para preservar fluidez; a qualidade não muda em desktop.
+
+Arquivos: `css/style.css`, `src/Game.js`, `src/main.js`, `index.html`.
+
+### Continuação — salas por código
+
+Documentação sincronizada com a implementação: o multiplayer agora descreve salas em memória por código, mantém `PUBLIC` como entrada rápida e remove salas vazias após a limpeza periódica. A validação final passou na checagem de sintaxe, no teste da sala autoritativa e no `git diff --check`.
+
+O servidor passou a manter salas isoladas por código (`room=ABC123`), com a sala pública como padrão. O menu Online ganhou um campo opcional de código; o cliente inclui esse código na conexão e na reconexão. Salas vazias são recolhidas periodicamente para liberar o tick e o estado em memória.
+
+Arquivos: `server/index.js`, `src/Net.js`, `src/Game.js`, `src/main.js`, `index.html`, `css/style.css`.

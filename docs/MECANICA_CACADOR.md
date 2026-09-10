@@ -36,7 +36,7 @@ Para evitar que o Caçador atire desordenadamente por todo o mapa, ele opera com
   * Aciona a função `player.washPaint(dt)`, desbotando progressivamente a cor do Camaleão de volta ao branco original (`0xeef0f2`) em ~1.5s.
   * Se a tinta for 100% lavada e o feixe continuar em contato, o Camaleão é eliminado (vira espectador).
 * **Parâmetros Configuráveis no Menu (`index.html` / `Game.js`):**
-  * `waterAmmo`: Quantidade inicial de disparos (min: 1, max: 30; **padrão: 5 jatos**).
+  * `waterAmmo`: Quantidade inicial de disparos (min: 1, max: 30; **padrão: 8 jatos**). A configuração padrão deixa dois erros possíveis para os 6 alvos do modo Caçador solo.
   * `infiniteAmmo`: Booleano (true/false) para liberar munição ilimitada em treinos.
 * **Modo Online:** as mesmas regras de munição valem para o Caçador Online, mas a
   contagem é **autoritativa no servidor** (`server/room.js:_handleFire`), não só no

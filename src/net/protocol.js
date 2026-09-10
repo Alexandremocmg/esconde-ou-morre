@@ -115,7 +115,9 @@ export const HUNTER_MISS_COOLDOWN_MS = 2600;  // penalidade de bomba de pressão
 // cooldown acima: "as duas abas nunca podem divergir sobre o resultado" (ver
 // room.js:1-10) — client-only deixaria o Caçador trapacear com munição infinita, e
 // pior, as duas pontas poderiam discordar sobre se a partida acabou por falta de água.
-export const HUNTER_AMMO_DEFAULT = 5;
+// O Caçador enfrenta 6 alvos no modo solo. Oito jatos deixam dois erros
+// possíveis sem transformar cada disparo em tentativa gratuita.
+export const HUNTER_AMMO_DEFAULT = 8;
 
 // Tolerância de validação do servidor. O cliente mira num alvo INTERPOLADO e atrasado
 // (INTERP_DELAY_MS), enquanto o servidor valida contra a posição mais recente que

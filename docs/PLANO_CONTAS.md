@@ -7,7 +7,7 @@ O menu principal tinha 8 itens ("Loja", "Continuar Partida", "Instalar Aplicativ
 modal genérico "Em breve" (`src/MenuUI.js`, `[data-soon]`). Fechar Ranking, Missões e
 Personalização de verdade precisa de uma identidade de jogador que sobreviva entre
 sessões — e isso **não existia em nenhum lugar do projeto**: o servidor Online
-(`server/room.js`) é uma sala única em memória, sem banco, sem login, que zera sozinha
+(`server/room.js`) mantém salas em memória identificadas por código, sem banco e sem login; a sala pública é a entrada rápida padrão e salas vazias são removidas
 quando esvazia (ver `docs/PLANO_MULTIPLAYER.md`). Perguntado, o usuário escolheu conta
 de verdade (backend + banco), não armazenamento só local no aparelho.
 

@@ -80,6 +80,75 @@ test('revive reabre a partida (zera eliminated/_over) sem precisar reconectar', 
   }
 });
 
+test('revive durante a rodada não ressuscita um Camaleão eliminado', async () => {
+  const server = await startTestServer();
+  try {
+    const hunter = await connectClient(server.url);
+    const chameleon = await connectClient(server.url);
+    const c = server.room.clients.get(chameleon.welcome.id);
+    c.eliminated = true;
+
+    send(chameleon.ws, { type: 'revive' });
+    await new Promise((r) => setTimeout(r, 50));
+    assert.equal(server.room._over, false);
+    assert.equal(c.eliminated, true);
+
+    await closeClient(hunter.ws);
+    await closeClient(chameleon.ws);
+  } finally {
+    await server.stop();
+  }
+});
+
+test('JOIN repetido não recarrega munição nem troca munição infinita', async () => {
+  const server = await startTestServer();
+  try {
+    const hunter = await connectClient(server.url);
+    const c = server.room.clients.get(hunter.welcome.id);
+
+    send(hunter.ws, { type: 'join', ammo: 12, infiniteAmmo: false });
+    await new Promise((r) => setTimeout(r, 50));
+    assert.equal(c.ammo, 12);
+    assert.equal(c.maxAmmo, 12);
+    assert.equal(c.infiniteAmmo, false);
+
+    send(hunter.ws, { type: 'join', ammo: 30, infiniteAmmo: true });
+    await new Promise((r) => setTimeout(r, 50));
+    assert.equal(c.ammo, 12);
+    assert.equal(c.maxAmmo, 12);
+    assert.equal(c.infiniteAmmo, false);
+
+    await closeClient(hunter.ws);
+  } finally {
+    await server.stop();
+  }
+});
+
+test('tiro com origem forjada ou vetor inválido não gasta munição', async () => {
+  const server = await startTestServer();
+  try {
+    const hunter = await connectClient(server.url);
+    const chameleon = await connectClient(server.url);
+    const h = server.room.clients.get(hunter.welcome.id);
+    h.joinConfigured = true;
+    h.ammo = 8;
+    server.room._matchStartAt = Date.now() - 1;
+
+    send(hunter.ws, { type: 'fire', origin: { x: 999, y: 999, z: 999 }, dir: { x: 0, y: 0, z: -1 } });
+    await new Promise((r) => setTimeout(r, 50));
+    assert.equal(h.ammo, 8);
+
+    send(hunter.ws, { type: 'fire', origin: { x: h.pos.x, y: h.pos.y, z: h.pos.z }, dir: { x: NaN, y: 0, z: -1 } });
+    await new Promise((r) => setTimeout(r, 50));
+    assert.equal(h.ammo, 8);
+
+    await closeClient(hunter.ws);
+    await closeClient(chameleon.ws);
+  } finally {
+    await server.stop();
+  }
+});
+
 test('PAINT: traços inválidos são descartados, válidos são retransmitidos', async () => {
   const server = await startTestServer();
   try {
