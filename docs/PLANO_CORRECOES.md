@@ -1,6 +1,8 @@
 # Plano de correções — Esconde ou Morre
 
-Data: 09/09/2026. Status: planejado; implementação não iniciada.
+Data original: 09/09/2026. Status em 10/09/2026: parcialmente implementado.
+
+Este documento preserva o diagnóstico e a proposta originais; os problemas abaixo não devem ser interpretados como uma lista atual de pendências. As próximas entregas e os critérios revisados estão no [Plano de melhorias do jogo](PLANO_MELHORIAS_JOGO.md); o histórico de implementação está em [_log.md](_log.md).
 
 ## Objetivo e evidências
 

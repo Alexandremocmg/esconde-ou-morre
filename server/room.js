@@ -27,7 +27,7 @@ import {
   GROUND_Y,
   HUNTER_AMMO_DEFAULT,
   MAX_CHAMELEONS,
-  LOBBY_COUNTDOWN_MS,
+  MATCHMAKING_WAIT_MS,
   MAX_PAINT_STROKES_PER_MSG,
 } from '../src/net/protocol.js';
 import { coneCandidates, normalize } from '../src/net/hittest.js';
@@ -70,6 +70,30 @@ const CHAMELEON_SPAWN_RADIUS_BY_LAYOUT = {
   5: 2.0, // clareia o pilar em anel mais próximo (~3.4m da origem) com folga
 };
 
+const BOT_AREA_BY_LAYOUT = {
+  1: { minX: -13, maxX: 13, minZ: -13, maxZ: 13 },
+  4: { minX: -18, maxX: 18, minZ: -18, maxZ: 18 },
+  5: { minX: -44, maxX: 44, minZ: -22, maxZ: 22 },
+};
+const BOT_COLOR_BY_LAYOUT = {
+  1: [0x7b6956, 0x889071, 0x6f8191],
+  4: [0x6e7478, 0x8a684e, 0x69705f],
+  5: [0x81715e, 0x756b82, 0x71806c],
+};
+
+function _nextBotRandom(bot) {
+  bot._rng = (Math.imul(bot._rng, 1664525) + 1013904223) >>> 0;
+  return bot._rng / 0x100000000;
+}
+
+function _pointBlocked(point, boxes, margin = 0.45) {
+  return boxes.some((box) =>
+    point.y >= box.minY - 0.1 && point.y <= box.maxY + 0.1 &&
+    point.x >= box.minX - margin && point.x <= box.maxX + margin &&
+    point.z >= box.minZ - margin && point.z <= box.maxZ + margin
+  );
+}
+
 // `index` é a ordem de entrada entre os Camaleões (0, 1, 2...), não um id — divide o
 // círculo em MAX_CHAMELEONS fatias iguais. Sem validação contra geometria (Débito 1 do
 // plano original): o controlador do jogador já resolve colisão a partir do 1º frame,
@@ -88,8 +112,13 @@ function _chameleonSpawn(layout, index) {
 export class Room {
   constructor() {
     this.clients = new Map(); // id -> ClientState
+    this.bots = new Map();    // id -> estado autoritativo de Camaleão IA
+    this._matchmakingDeadline = 0;
     this._matchStartAt = 0;
     this._over = false;
+    this._phase = 'matchmaking';
+    this._roundId = 1;
+    this._readyIds = new Set();
     this._interval = null;
     // Layout desta sala — decidido UMA VEZ quando o 1º cliente entra numa sala vazia
     // (ver _freshJoin, `holders.length === 0`) e mantido fixo pro resto da vida da
@@ -162,9 +191,13 @@ export class Room {
       type: S2C.WELCOME,
       id: client.id, role: client.role, spawn: client.spawn, layout: this._layout,
       matchDuration: MATCH_DURATION_S, token: client.token, eliminated: client.eliminated,
+      matchmakingDeadline: this._matchmakingDeadline,
       matchStartAt: this._matchStartAt,
-      players: [...this.clients.values()]
-        .filter((c) => c.id !== id && c.connected)
+      phase: this._phase, roundId: this._roundId,
+      readyCount: this._readyIds.size, readyRequired: this.clients.size,
+      self: this._publicStateFull(client),
+      players: this._participants()
+        .filter((c) => c.id !== id && (c.isBot || c.connected))
         .map((c) => this._publicStateFull(c)),
     });
     console.log(`[room] reconectou ${id} como ${client.role} (${this.clients.size} na sala)`);
@@ -185,11 +218,25 @@ export class Room {
       ws.close(4001, 'sala cheia');
       return;
     }
+    // Depois que a caçada começa, a composição fica congelada. Assim uma pessoa
+    // nova não substitui uma IA no meio da rodada nem surge dentro do mapa sem lobby.
+    if (this._matchStartAt) {
+      this._send(ws, { type: S2C.MATCH_OVER, winner: null, reason: 'partida em andamento' });
+      ws.close(4002, 'partida em andamento');
+      return;
+    }
 
     // Sala virou de vez (0 clientes, nem os em graça de reconexão): reabre a
     // escolha de mapa — mesma rotação determinística de Game.js, mas só CONSULTADA
     // aqui na formação (ver comentário no construtor sobre por que não a cada tick).
-    if (holders.length === 0) this._layout = onlineLayoutFor();
+    if (holders.length === 0) {
+      this._layout = onlineLayoutFor();
+      this.bots.clear();
+      this._matchStartAt = 0;
+      this._matchmakingDeadline = Date.now() + MATCHMAKING_WAIT_MS;
+      this._phase = 'matchmaking';
+      this._readyIds.clear();
+    }
 
     const id = randomUUID();
     const token = randomUUID();
@@ -236,39 +283,23 @@ export class Room {
     this.clients.set(id, client);
 
     const connectedBefore = holders.filter((c) => c.connected).length;
-    if (connectedBefore === 0) this._over = false; // sala virou de vez: destrava pra um novo ciclo
+    if (connectedBefore === 0) this._over = false;
 
-    const chameleonsConnectedBefore = holders.filter(
-      (c) => c.connected && c.role === ROLE.CHAMELEON,
-    ).length;
-    if (role === ROLE.CHAMELEON && chameleonsConnectedBefore === 0) {
-      // Só o 1º CAMALEÃO de verdade arma a contagem — não o Caçador sozinho
-      // (docs/PLANO_LOBBY_MULTIPLAYER.md §3.3). Antes disso o Caçador podia ficar
-      // esperando na sala vazia queimando os 180s da partida à toa; agora o hint
-      // "Sozinho na sala" (Game.js) cobre essa espera sem custar tempo de partida.
-      //
-      // Lobby/matchmaking (docs/PLANO_LOBBY_COUNTDOWN.md): `_matchStartAt` vira um
-      // timestamp FUTURO (`+ LOBBY_COUNTDOWN_MS`) em vez de instantâneo — dá uma
-      // janela pra mais gente entrar pelo link compartilhado antes do Caçador poder
-      // atirar. `_tick()` calcula `elapsed` contra este mesmo campo; enquanto ele
-      // está no futuro, `elapsed` é negativo e o fim-por-tempo nunca dispara sozinho
-      // — nenhuma mudança necessária lá. `_handleFire` ganha o gate correspondente.
-      this._matchStartAt = Date.now() + LOBBY_COUNTDOWN_MS;
-    }
-
-    // Sala cheia ANTES da contagem acabar: pula direto pro início — com todo mundo já
-    // presente não faz sentido esperar o resto dos 12s à toa (docs/PLANO_LOBBY_COUNTDOWN.md).
-    if (this._matchStartAt > Date.now() && this.clients.size === ROOM_CAPACITY) {
-      this._matchStartAt = Date.now();
-    }
+    // Cinco pessoas encontradas: inicia imediatamente e não cria nenhuma IA.
+    const connectedHumans = [...this.clients.values()].filter((c) => c.connected).length;
+    if (connectedHumans === ROOM_CAPACITY) this._startMatch(Date.now());
 
     this._send(ws, {
       type: S2C.WELCOME,
       id, role, spawn, layout: this._layout,
       matchDuration: MATCH_DURATION_S, token, eliminated: client.eliminated, // sempre false aqui (join novo), por simetria com _reattach
+      matchmakingDeadline: this._matchmakingDeadline,
       matchStartAt: this._matchStartAt,
-      players: [...this.clients.values()]
-        .filter((c) => c.id !== id && c.connected)
+      phase: this._phase, roundId: this._roundId,
+      readyCount: this._readyIds.size, readyRequired: this.clients.size,
+      self: this._publicStateFull(client),
+      players: this._participants()
+        .filter((c) => c.id !== id && (c.isBot || c.connected))
         .map((c) => this._publicStateFull(c)),
     });
 
@@ -277,6 +308,147 @@ export class Room {
 
     ws.on('message', (raw) => this._onMessage(client, raw));
     ws.on('close', () => this._onDisconnect(client));
+  }
+
+  canAcceptFreshClient() {
+    return this._phase === 'matchmaking' && this.clients.size < ROOM_CAPACITY;
+  }
+
+  hasClient(id) {
+    return this.clients.has(id);
+  }
+
+  canReattach(id, token) {
+    const client = this.clients.get(id);
+    return !!client && !client.connected && client.token === token;
+  }
+
+  _participants() {
+    return [...this.clients.values(), ...this.bots.values()];
+  }
+
+  _startMatch(now) {
+    if (this._phase !== 'matchmaking' || this._matchStartAt || this._over) return;
+    const connectedHunter = [...this.clients.values()]
+      .some((c) => c.connected && c.role === ROLE.HUNTER);
+    if (!connectedHunter) return;
+    this._fillBotSlots(now);
+    this._matchmakingDeadline = 0;
+    this._matchStartAt = now;
+    this._phase = 'playing';
+  }
+
+  _fillBotSlots(now, replacement = null) {
+    const humanChameleons = [...this.clients.values()]
+      .filter((c) => c.role === ROLE.CHAMELEON).length;
+    const missing = Math.max(0, MAX_CHAMELEONS - humanChameleons - this.bots.size);
+    const colors = [0x65c878, 0xd6a85f, 0x7199d4, 0xb87ac9];
+    for (let i = 0; i < missing; i++) {
+      const index = humanChameleons + this.bots.size;
+      const spawn = _chameleonSpawn(this._layout, index);
+      const bot = {
+        id: `bot-${randomUUID()}`,
+        role: ROLE.CHAMELEON,
+        isBot: true,
+        name: `IA ${this.bots.size + 1}`,
+        connected: true,
+        spawn,
+        pos: { ...spawn }, yaw: 0, state: 'grounded',
+        crouched: false, prone: false, statue: false, moving: true,
+        color: [colors[index % colors.length], colors[index % colors.length]],
+        _baseColor: colors[index % colors.length],
+        eliminated: false,
+        ammo: 0, maxAmmo: 0, infiniteAmmo: false,
+        paintStrokes: [],
+        _phase: (index * Math.PI * 2) / MAX_CHAMELEONS,
+        _radius: 0.9 + (index % 2) * 0.35,
+        _speed: 0.55 + index * 0.08,
+        _bornAt: now,
+        _rng: (index + 1) * 2654435761 >>> 0,
+        _aiState: 'seeking',
+        _target: null,
+        _hideUntil: 0,
+      };
+      if (replacement && i === 0) {
+        bot.eliminated = !!replacement.eliminated;
+        bot.color = [...replacement.color];
+        bot._baseColor = replacement.color[0];
+        bot.pos = { ...replacement.pos };
+      }
+      this.bots.set(bot.id, bot);
+      this._broadcast({ type: S2C.PLAYER_JOIN, player: this._publicState(bot) });
+    }
+  }
+
+  _chooseBotTarget(bot, hunter, now) {
+    const area = BOT_AREA_BY_LAYOUT[this._layout] || BOT_AREA_BY_LAYOUT[1];
+    const boxes = OCCLUDERS_BY_LAYOUT[this._layout] || OCCLUDERS_BY_LAYOUT[1];
+    let best = null;
+    let bestScore = -Infinity;
+    for (let i = 0; i < 28; i++) {
+      const candidate = {
+        x: area.minX + _nextBotRandom(bot) * (area.maxX - area.minX),
+        y: GROUND_Y,
+        z: area.minZ + _nextBotRandom(bot) * (area.maxZ - area.minZ),
+      };
+      if (_pointBlocked(candidate, boxes) || isOccluded(bot.pos, candidate, boxes)) continue;
+      const hunterDistance = hunter ? Math.hypot(candidate.x - hunter.pos.x, candidate.z - hunter.pos.z) : 0;
+      const hiddenFromHunter = hunter ? isOccluded(hunter.pos, candidate, boxes) : false;
+      const travel = Math.hypot(candidate.x - bot.pos.x, candidate.z - bot.pos.z);
+      const score = (hiddenFromHunter ? 30 : 0) + hunterDistance - travel * 0.15;
+      if (score > bestScore) { best = candidate; bestScore = score; }
+    }
+    bot._target = best || { ...bot.spawn };
+    bot._aiState = hunter ? 'fleeing' : 'seeking';
+    bot._hideUntil = now + 3500 + _nextBotRandom(bot) * 3500;
+  }
+
+  // IA autoritativa: escolhe pontos alcançáveis por um segmento sem obstáculos,
+  // privilegia locais fora da visão do Caçador, para ao chegar e foge quando vista.
+  _updateBots(now) {
+    if (!this._matchStartAt || now < this._matchStartAt || this._over) return;
+    const hunter = [...this.clients.values()].find((c) => c.connected && c.role === ROLE.HUNTER);
+    const boxes = OCCLUDERS_BY_LAYOUT[this._layout] || OCCLUDERS_BY_LAYOUT[1];
+    const colors = BOT_COLOR_BY_LAYOUT[this._layout] || BOT_COLOR_BY_LAYOUT[1];
+    for (const bot of this.bots.values()) {
+      if (bot.eliminated) { bot.moving = false; continue; }
+      const hunterDistance = hunter ? Math.hypot(bot.pos.x - hunter.pos.x, bot.pos.z - hunter.pos.z) : Infinity;
+      const hunterCanSee = hunter && hunterDistance < 10 && !isOccluded(hunter.pos, bot.pos, boxes);
+      if (!bot._target || (hunterCanSee && bot._aiState !== 'fleeing') ||
+          (bot._aiState === 'hidden' && now >= bot._hideUntil)) {
+        this._chooseBotTarget(bot, hunter, now);
+      }
+      const dx = bot._target.x - bot.pos.x;
+      const dz = bot._target.z - bot.pos.z;
+      const distance = Math.hypot(dx, dz);
+      if (distance <= 0.18) {
+        bot.pos = { ...bot._target };
+        bot.moving = false;
+        bot.prone = true;
+        bot.statue = true;
+        bot._aiState = 'hidden';
+        const color = colors[Math.floor(_nextBotRandom(bot) * colors.length)];
+        bot.color = [color, color];
+        continue;
+      }
+      const dt = Math.min(0.1, Math.max(0, (now - (bot._lastAiAt || now)) / 1000));
+      const speed = hunterCanSee ? 3.2 : 2.1;
+      const step = Math.min(distance, speed * dt);
+      const next = { x: bot.pos.x + dx / distance * step, y: GROUND_Y, z: bot.pos.z + dz / distance * step };
+      // O segmento foi validado ao escolher o alvo; esta segunda checagem protege
+      // contra tabelas de obstáculos alteradas durante desenvolvimento.
+      if (isOccluded(bot.pos, next, boxes) || _pointBlocked(next, boxes)) {
+        bot._target = null;
+        bot.moving = false;
+      } else {
+        bot.yaw = Math.atan2(dx, dz);
+        bot.pos = next;
+        bot.moving = true;
+        bot.prone = false;
+        bot.statue = false;
+      }
+      bot._lastAiAt = now;
+    }
   }
 
   // NÃO remove o cliente nem avisa o outro lado ainda — só marca a queda. A
@@ -300,8 +472,33 @@ export class Room {
       this.clients.delete(id);
       this._broadcast({ type: S2C.PLAYER_LEAVE, id });
       console.log(`[room] ${id} não reconectou a tempo, saiu de vez (${this.clients.size} na sala)`);
-      if (this.clients.size === 0) this._over = false; // sala esvaziou: próxima entrada reinicia
+      if (this._matchStartAt && !this._over && c.role === ROLE.CHAMELEON) {
+        this._fillBotSlots(now, c);
+      } else if (this._matchStartAt && !this._over && c.role === ROLE.HUNTER) {
+        this._endMatch(ROLE.CHAMELEON, 'Caçador desconectou');
+      } else if ((this._phase === 'matchmaking' || this._phase === 'results') && c.role === ROLE.HUNTER) {
+        const promoted = [...this.clients.values()].find((p) => p.connected && p.role === ROLE.CHAMELEON);
+        if (promoted) {
+          promoted.role = ROLE.HUNTER;
+          promoted.spawn = HUNTER_SPAWN_BY_LAYOUT[this._layout] || HUNTER_SPAWN_BY_LAYOUT[1];
+          promoted.pos = { ...promoted.spawn };
+          promoted.ammo = HUNTER_AMMO_DEFAULT;
+          promoted.maxAmmo = HUNTER_AMMO_DEFAULT;
+          promoted.infiniteAmmo = false;
+          promoted.joinConfigured = true;
+          this._broadcast({ type: S2C.ROLE_CHANGED, player: this._publicState(promoted), spawn: promoted.spawn });
+        }
+      }
+      if (this.clients.size === 0) {
+        this.bots.clear();
+        this._over = false;
+        this._matchStartAt = 0;
+        this._matchmakingDeadline = 0;
+        this._phase = 'matchmaking';
+        this._readyIds.clear();
+      }
     }
+    if (this._phase === 'results') this._tryBeginRematch(now);
   }
 
   _onMessage(client, raw) {
@@ -342,9 +539,10 @@ export class Room {
     // JOIN só configura a munição na entrada. Repeti-lo durante uma partida
     // não pode recarregar a reserva nem alternar munição infinita.
     if (client.joinConfigured) return;
-    client.infiniteAmmo = !!msg.infiniteAmmo;
-    const ammo = Number(msg.ammo);
-    client.maxAmmo = Number.isFinite(ammo) && ammo > 0 ? Math.floor(ammo) : HUNTER_AMMO_DEFAULT;
+    // Partida pública usa a regra competitiva da sala. Opções locais não podem
+    // conceder munição infinita ou alterar o total autoritativo.
+    client.infiniteAmmo = false;
+    client.maxAmmo = HUNTER_AMMO_DEFAULT;
     client.ammo = client.maxAmmo;
     client.joinConfigured = true;
   }
@@ -359,19 +557,41 @@ export class Room {
     // Só existe revanche depois que a sala encerrou a rodada. Um Camaleão
     // eliminado não pode se ressuscitar no meio da partida.
     if (!this._over) return;
-    client.eliminated = false;
-    if (this._over) {
-      this._over = false;
-      // Proposital: revanche instantânea, SEM a contagem de lobby
-      // (docs/PLANO_LOBBY_COUNTDOWN.md) — quem já estava jogando junto não precisa
-      // esperar de novo, a contagem só faz sentido pra uma sala se formando do zero.
-      // Não "consertar" isto pra `Date.now() + LOBBY_COUNTDOWN_MS` sem querer.
-      this._matchStartAt = Date.now();
-      for (const c of this.clients.values()) {
-        c.eliminated = false;
-        c.ammo = c.maxAmmo; // só tem efeito real pra quem é HUNTER — o resto nunca lê o próprio
-      }
+    if (!client.connected) return;
+    this._readyIds.add(client.id);
+    this._tryBeginRematch(Date.now());
+  }
+
+  _tryBeginRematch(now) {
+    if (this._phase !== 'results') return;
+    const humans = [...this.clients.values()];
+    if (!humans.length || !humans.every((c) => c.connected && this._readyIds.has(c.id))) return;
+
+    for (const bot of this.bots.values()) {
+      this._broadcast({ type: S2C.PLAYER_LEAVE, id: bot.id });
     }
+    this.bots.clear();
+    this._over = false;
+    this._phase = 'matchmaking';
+    this._roundId++;
+    this._matchStartAt = 0;
+    this._matchmakingDeadline = now + MATCHMAKING_WAIT_MS;
+    this._readyIds.clear();
+    for (const c of humans) {
+      c.eliminated = false;
+      c.ammo = c.maxAmmo;
+      c.nextFireAt = 0;
+      c.pos = { ...c.spawn };
+      c.state = 'grounded';
+      c.crouched = c.prone = c.statue = c.moving = false;
+    }
+    this._broadcast({
+      type: S2C.ROUND_RESET,
+      t: now, phase: this._phase, roundId: this._roundId,
+      matchmakingDeadline: this._matchmakingDeadline, matchStartAt: 0,
+      players: humans.filter((c) => c.connected).map((c) => this._publicStateFull(c)),
+    });
+    if (humans.length === ROOM_CAPACITY) this._startMatch(now);
   }
 
   _applyInput(client, msg) {
@@ -423,9 +643,8 @@ export class Room {
   // --------------------------------------------------------------- disparo
   _handleFire(client, msg) {
     const now = Date.now();
-    // `!this._matchStartAt`: sala não formada ainda (Caçador sozinho). `now <
-    // this._matchStartAt`: contagem de lobby ainda rolando (docs/PLANO_LOBBY_COUNTDOWN.md)
-    // — mesmo campo, os dois estados possíveis antes da partida ficar ativa de verdade.
+    // A busca ainda não terminou enquanto `_matchStartAt` é zero. O servidor só
+    // libera tiros depois de completar as vagas humanas restantes com IA.
     if (this._over || client.role !== ROLE.HUNTER || client.eliminated) return;
     if (!this._matchStartAt || now < this._matchStartAt) return;
 
@@ -449,8 +668,8 @@ export class Room {
       client.ammo--;
     }
 
-    const candidates = [...this.clients.values()]
-      .filter((c) => c.role === ROLE.CHAMELEON && c.connected && !c.eliminated)
+    const candidates = this._participants()
+      .filter((c) => c.role === ROLE.CHAMELEON && (c.isBot || c.connected) && !c.eliminated)
       .map((c) => ({ id: c.id, pos: c.pos }));
 
     // Tolerância extra (AIM_TOLERANCE_DEG): o cliente mira num alvo que já está
@@ -484,12 +703,12 @@ export class Room {
 
     if (best) {
       client.nextFireAt = now + HUNTER_FIRE_COOLDOWN_MS;
-      const target = this.clients.get(best.id);
+      const target = this.clients.get(best.id) || this.bots.get(best.id);
       if (target) target.eliminated = true;
       this._broadcast({ type: S2C.PLAYER_HIT, targetId: best.id, hunterId: client.id });
 
-      const remaining = [...this.clients.values()]
-        .filter((c) => c.role === ROLE.CHAMELEON && c.connected && !c.eliminated);
+      const remaining = this._participants()
+        .filter((c) => c.role === ROLE.CHAMELEON && !c.eliminated);
       if (remaining.length === 0) this._endMatch(ROLE.HUNTER, 'todos os Camaleões eliminados');
     } else {
       client.nextFireAt = now + HUNTER_MISS_COOLDOWN_MS;
@@ -500,8 +719,8 @@ export class Room {
     // último Camaleão, _endMatch(HUNTER,...) já rodou e este _endMatch(CHAMELEON,...)
     // vira um no-op (idempotente por this._over).
     if (!client.infiniteAmmo && client.ammo <= 0) {
-      const stillHunting = [...this.clients.values()]
-        .some((c) => c.role === ROLE.CHAMELEON && c.connected && !c.eliminated);
+      const stillHunting = this._participants()
+        .some((c) => c.role === ROLE.CHAMELEON && !c.eliminated);
       if (stillHunting) this._endMatch(ROLE.CHAMELEON, 'Caçador sem munição');
     }
   }
@@ -509,7 +728,9 @@ export class Room {
   _endMatch(winner, reason) {
     if (this._over) return;
     this._over = true;
-    this._broadcast({ type: S2C.MATCH_OVER, winner, reason });
+    this._phase = 'results';
+    this._readyIds.clear();
+    this._broadcast({ type: S2C.MATCH_OVER, winner, reason, roundId: this._roundId });
     console.log(`[room] partida encerrada: ${winner} (${reason})`);
   }
 
@@ -528,23 +749,41 @@ export class Room {
     }
     this._purgeStale(now);
 
+    // A primeira pessoa abre a busca. Durante 30s, as vagas ficam reservadas para
+    // humanos; ao vencer o prazo, apenas o que faltar vira IA.
+    const hasConnectedHuman = [...this.clients.values()].some((c) => c.connected);
+    if (!this._matchStartAt && !this._over && this._matchmakingDeadline &&
+        now >= this._matchmakingDeadline && hasConnectedHuman) {
+      this._startMatch(now);
+    }
+    this._updateBots(now);
+
     if (!this._over && this._matchStartAt && this.clients.size > 0) {
       const elapsed = (now - this._matchStartAt) / 1000;
       if (elapsed >= MATCH_DURATION_S) {
-        const chameleonsAlive = [...this.clients.values()]
-          .some((c) => c.role === ROLE.CHAMELEON && c.connected && !c.eliminated);
+        const chameleonsAlive = this._participants()
+          .some((c) => c.role === ROLE.CHAMELEON && !c.eliminated);
         this._endMatch(chameleonsAlive ? ROLE.CHAMELEON : ROLE.HUNTER, 'tempo esgotado');
       }
     }
 
     if (this.clients.size === 0) return;
-    const players = [...this.clients.values()]
-      .filter((c) => c.connected)
+    const players = this._participants()
+      .filter((c) => c.isBot || c.connected)
       .map((c) => this._publicState(c));
-    // matchStartAt junto de `t` (hora do servidor) deixa o cliente calcular "quantos
-    // segundos faltam" contra o RELÓGIO DO SERVIDOR, sem depender do Date.now() local
-    // (que pode estar dessincronizado) — docs/PLANO_LOBBY_COUNTDOWN.md.
-    this._broadcast({ type: S2C.SNAPSHOT, t: now, matchStartAt: this._matchStartAt, players });
+    // Os dois timestamps junto de `t` deixam o cliente calcular a busca e o tempo
+    // da caçada contra o relógio do servidor.
+    this._broadcast({
+      type: S2C.SNAPSHOT,
+      t: now,
+      matchmakingDeadline: this._matchmakingDeadline,
+      matchStartAt: this._matchStartAt,
+      phase: this._phase,
+      roundId: this._roundId,
+      readyCount: this._readyIds.size,
+      readyRequired: this.clients.size,
+      players,
+    });
   }
 
   _publicState(c) {
@@ -552,6 +791,7 @@ export class Room {
       id: c.id, role: c.role, pos: c.pos, yaw: c.yaw, state: c.state,
       crouched: c.crouched, prone: c.prone, statue: c.statue, moving: c.moving,
       color: c.color, eliminated: c.eliminated,
+      isBot: !!c.isBot, name: c.name || null,
       // Munição vai pra TODO mundo (mesmo payload de sempre, sem mensagem nova) —
       // só o próprio Caçador lê os próprios campos em Game.js:_onSnapshot, mas nada
       // impede o Camaleão de um dia mostrar "Caçador tem N tiros restantes" com isto.

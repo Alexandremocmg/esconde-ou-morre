@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { animationManager } from './AnimationManager.js?v=4';
 import { GUN_OFFSET, GUN_ROT } from './Seeker.js?v=6';
-import { INTERP_DELAY_MS, GROUND_Y } from './net/protocol.js?v=6';
+import { INTERP_DELAY_MS, GROUND_Y } from './net/protocol.js?v=8';
 import { createPaintTexture, stampCircle, strokeBetween } from './UVPaint.js?v=1';
 
 // Altura total do avatar (Player.js: HALF_EXTENT*2, SCALE=0.8). Ficou presa em 0.9
@@ -15,9 +15,11 @@ const HEIGHT = 1.44;
 // INTERP_DELAY_MS, spec §1) e escolhe a animação a partir do estado recebido — nunca
 // sincroniza o NOME do clipe pela rede, ele já é derivado do estado em Player.js.
 export class RemotePlayer {
-  constructor(scene, id, role, spawn) {
+  constructor(scene, id, role, spawn, opts = {}) {
     this.id = id;
     this.role = role;
+    this.isBot = !!opts.isBot;
+    this.name = opts.name || (this.isBot ? 'IA' : null);
     this.eliminated = false;
     this._fade = 0;
 
@@ -28,6 +30,9 @@ export class RemotePlayer {
     this.group = new THREE.Group();
     this.group.position.set(spawn.x, spawn.y, spawn.z);
     scene.add(this.group);
+
+    // A IA continua identificada nos dados da partida, mas não recebe uma placa
+    // flutuante no mundo: a etiqueta revelava seu esconderijo ao Caçador.
 
     this.bodyMat = new THREE.MeshToonMaterial({ color: 0xeef0f2 });
     this.animInstance = null;
@@ -43,6 +48,35 @@ export class RemotePlayer {
   // Mesma interface pública de Player.js/ChameleonTarget.js — deixa o Scanner
   // (Game.js:_updateScanner) tratar alvo local e remoto sem `if` espalhado.
   get position() { return this.group.position; }
+
+  _addBotLabel() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 96;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = 'rgba(7, 12, 18, 0.82)';
+    ctx.beginPath();
+    ctx.roundRect(18, 14, 220, 68, 28);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(114, 221, 255, 0.9)';
+    ctx.lineWidth = 4;
+    ctx.stroke();
+    ctx.fillStyle = '#dff8ff';
+    ctx.font = '700 36px system-ui';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(`🤖 ${this.name}`, 128, 49);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    const material = new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: true, depthWrite: false });
+    const label = new THREE.Sprite(material);
+    label.position.set(0, 1.15, 0);
+    label.scale.set(1.45, 0.54, 1);
+    label.renderOrder = 20;
+    this.group.add(label);
+    this._botLabel = label;
+  }
 
   _checkAnimInstance() {
     if (this.animInstance || !animationManager.isLoaded) return;
@@ -194,6 +228,10 @@ export class RemotePlayer {
   }
 
   destroy() {
+    if (this._botLabel) {
+      this._botLabel.material.map.dispose();
+      this._botLabel.material.dispose();
+    }
     if (this.group.parent) this.group.parent.remove(this.group);
     if (this.animInstance) this.animInstance.destroy();
   }

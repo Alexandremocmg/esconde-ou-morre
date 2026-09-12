@@ -4,7 +4,7 @@ import { toonGradient, toonGradientGloss } from './textures.js?v=4';
 import { animationManager } from './AnimationManager.js?v=4';
 import { TUNE } from './Tuning.js?v=1';
 import { createPaintTexture, strokeBetween, clearTexture, raycastAnimatedSkinnedMesh } from './UVPaint.js?v=1';
-import { makePaintStroke, MAX_PAINT_STROKES_PER_MSG } from './net/protocol.js?v=6';
+import { makePaintStroke, MAX_PAINT_STROKES_PER_MSG } from './net/protocol.js?v=8';
 
 const PAINT_THROTTLE_MS = 1000 / 45; // ~45 atualizações de textura por segundo (dentro dos 30-60 alvo)
 

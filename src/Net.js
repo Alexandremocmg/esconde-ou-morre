@@ -1,4 +1,4 @@
-import { C2S, S2C, TICK_MS, RECONNECT_GRACE_MS, PROD_WS_URL, HOST_LOCAL_OU_LAN } from './net/protocol.js?v=6';
+import { C2S, S2C, TICK_MS, RECONNECT_GRACE_MS, PROD_WS_URL, HOST_LOCAL_OU_LAN } from './net/protocol.js?v=8';
 
 // Mesma lógica de escolha de servidor que só existia dentro de Game.js
 // (_wsUrl) — movida pra cá (Fase B, Plano 2) porque "Continuar Partida" no
@@ -151,6 +151,9 @@ export class Net {
             // Reconexão (automática ou via sessionStorage após reload) bem-sucedida.
             this._reconnecting = false;
             this._reconnectAttempt = 0;
+            this._disconnectedAt = 0;
+            clearTimeout(this._reconnectTimer);
+            this._reconnectTimer = null;
             this._emit('_reconnected', msg);
           }
         }
@@ -158,6 +161,9 @@ export class Net {
       });
 
       ws.addEventListener('close', () => {
+        // Um socket antigo pode terminar depois que uma tentativa mais nova já
+        // virou `this.ws`. A queda antiga não pode derrubar a sessão recuperada.
+        if (this.ws !== ws) return;
         if (this._explicitClose) {
           clearInterval(this._keepAlive);
           clearTimeout(this._reconnectTimer);
@@ -188,7 +194,7 @@ export class Net {
   // juntos em vez de o cliente insistir numa vaga que o servidor já deu por
   // perdida (ou desistir cedo demais enquanto o servidor ainda seguraria).
   _scheduleReconnect() {
-    if (this._reconnecting) return; // 'close' duplicado (ver nota histórica em Net antigo)
+    if (this._reconnectTimer) return;
     this._reconnecting = true;
     if (!this._disconnectedAt) this._disconnectedAt = Date.now();
     this._emit('_reconnecting', { attempt: this._reconnectAttempt + 1 });
@@ -202,10 +208,15 @@ export class Net {
     this._reconnectAttempt++;
     const delay = Math.min(1000 * this._reconnectAttempt, 5000);
     this._reconnectTimer = setTimeout(() => {
+      this._reconnectTimer = null;
+      if (Date.now() - this._disconnectedAt >= RECONNECT_GRACE_MS) {
+        this._giveUp();
+        return;
+      }
       const saved = loadSession(this.url);
       if (!saved) { this._giveUp(); return; } // não deveria acontecer, mas não trava tentando pra sempre
       this._open(this._withRejoin(this.url, saved.id, saved.token), null, false)
-        .catch(() => {}); // erro já tratado via 'close'/'error' acima (recursivo em _scheduleReconnect)
+        .catch(() => {}); // o evento close agenda a próxima tentativa
     }, delay);
   }
 
@@ -213,6 +224,8 @@ export class Net {
     clearInterval(this._keepAlive);
     clearTimeout(this._reconnectTimer);
     this._reconnecting = false;
+    this._disconnectedAt = 0;
+    this._reconnectTimer = null;
     clearSession();
     this._emit('_close', {});
   }

@@ -1,6 +1,6 @@
 # Índice da documentação (`docs/`)
 
-Ponto de partida pra não precisar ler os 19 arquivos de `docs/` um por um.
+Ponto de partida pra não precisar ler todos os arquivos de `docs/` um por um.
 Instruções de uso deste índice: [`../CLAUDE.md`](../CLAUDE.md).
 
 - 🟢 **vivo** — descreve comportamento atual do jogo, mantido em sync ativo
@@ -16,7 +16,8 @@ se um doc mudou de categoria, atualize aqui (ver `CLAUDE.md` § Ingest).
 
 | Doc | Status | Resumo |
 | --- | --- | --- |
-| [`PLANO_CORRECOES.md`](PLANO_CORRECOES.md) | 📝 | Plano priorizado de correções e melhorias: regras, online, camuflagem, tutorial, apresentação e critérios de aceite. |
+| [`PLANO_MELHORIAS_JOGO.md`](PLANO_MELHORIAS_JOGO.md) | 📝 | Plano vigente de 10/09/2026: confiabilidade online, IA que se esconde, aprendizado, celular, equilíbrio e progressão; inclui critérios de aceite. |
+| [`PLANO_CORRECOES.md`](PLANO_CORRECOES.md) | 📝 | Diagnóstico original de 09/09/2026, parcialmente implementado; próximas entregas consolidadas no plano de melhorias. |
 | [`MECANICA_CACADOR.md`](MECANICA_CACADOR.md) | 🟢 | Especificação técnica do modo Caçador: munição, condições de vitória/derrota, HUD, sorteio de papel no lobby. |
 | [`MECANICA_CACADOR_VISAO.md`](MECANICA_CACADOR_VISAO.md) | 🟢 | Design de câmera/FOV, arma de água e Scanner do Caçador (status ✅/🔲 por item); §3 cobre a IA dos alvos-camaleão. |
 | [`PLANO_MANSAO.md`](PLANO_MANSAO.md) | 🟢 | Arquitetura dos mapas (mansão de 3 alas + Fábrica Abandonada): andares, escadas, colisão, mezanino/passarela. |
@@ -25,7 +26,7 @@ se um doc mudou de categoria, atualize aqui (ver `CLAUDE.md` § Ingest).
 | [`PLANO_CONTAS.md`](PLANO_CONTAS.md) | 🟢 | Contas de jogador via Supabase (Ranking, Missões, Personalização): schema e limitações. |
 | [`PAINEL_AJUSTE.md`](PAINEL_AJUSTE.md) | 🟢 | Painel de dev (`?tune=1`) pra calibrar parâmetros de movimento ao vivo. |
 | [`PLANO_LOBBY_MULTIPLAYER.md`](PLANO_LOBBY_MULTIPLAYER.md) | 🟢 | Evolução da sala fixa de 2 pra 1 Caçador + até 4 Camaleões. |
-| [`PLANO_LOBBY_COUNTDOWN.md`](PLANO_LOBBY_COUNTDOWN.md) | 🟢 | Contagem regressiva de lobby antes da partida ativar (segue o doc acima). |
+| [`PLANO_LOBBY_COUNTDOWN.md`](PLANO_LOBBY_COUNTDOWN.md) | 🟢 | Matchmaking de 30s que prioriza pessoas e completa vagas restantes com Camaleões de IA. |
 | [`PIPELINE_PERSONAGEM.md`](PIPELINE_PERSONAGEM.md) | 🟢 | Pipeline Mixamo → Blender → GLB único do personagem; UV por região; armadilhas de constantes duplicadas. |
 | [`TRIPO_3D.md`](TRIPO_3D.md) | 🟢 | Acesso configurado ao Tripo3D pra gerar assets 3D por IA sob demanda (não usado no personagem principal). |
 | [`PLANO_TOON.md`](PLANO_TOON.md) | 🟢 | Direção de arte toon/cel-shaded; histórico de fases com status de implementação por item. |

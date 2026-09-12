@@ -9,8 +9,8 @@ import { Joystick } from './Joystick.js?v=3';
 import { Effects } from './Effects.js?v=3';
 import { Audio } from './Audio.js?v=3';
 import { animationManager } from './AnimationManager.js?v=4';
-import { Net, resolveWsUrl } from './Net.js?v=6';
-import { RemotePlayer } from './RemotePlayer.js?v=4';
+import { Net, resolveWsUrl } from './Net.js?v=8';
+import { RemotePlayer } from './RemotePlayer.js?v=6';
 // Fase E do Plano 2 (docs/PLANO_CONTAS.md): primeiro (e único) ponto onde
 // Game.js sabe algo sobre conta de jogador — só pra reportar resultado de
 // partida pro Ranking. `reportMatchResult` já no-opa sozinho sem sessão
@@ -25,7 +25,7 @@ import {
   makeInputPayload,
   S2C,
   ROLE,
-} from './net/protocol.js?v=6';
+} from './net/protocol.js?v=8';
 
 // Mira do Caçador jogável (Game.fireHunterShot): cone de mira a partir do
 // centro da câmera, não pixel-perfect — evita o problema de raycast contra o
@@ -196,9 +196,8 @@ export class Game {
       this._spawnHunterTargets();
       this._addHunterFlashlight();
     } else if (this.mode === 'online') {
-      // Nem IA nem alvos-boneco: o outro jogador é um RemotePlayer de verdade (ver
-      // _connectOnline). seekers/targets ficam vazios pelo mesmo motivo do modo
-      // Caçador acima — os laços que os percorrem já não fazem nada sozinhos.
+      // Humanos remotos e IAs autoritativas usam RemotePlayer; seekers/targets
+      // continuam exclusivos dos modos solo.
       this.seekers = [];
       this.targets = [];
       this.remotePlayers = new Map(); // id → RemotePlayer
@@ -211,9 +210,9 @@ export class Game {
       // a escala 0) na tela de todo mundo. `true` congela o loop de update deste
       // cliente (ver _tick) até o MATCH_OVER de verdade chegar.
       this._eliminatedSpectating = false;
-      // Lobby/matchmaking (docs/PLANO_LOBBY_COUNTDOWN.md): espelha a semântica do
-      // `_matchStartAt` do servidor — 0 = sala ainda não formada, timestamp futuro =
-      // contando regressivamente, timestamp passado = partida ativa de verdade.
+      // Matchmaking híbrido: deadline é o prazo reservado para pessoas; o início
+      // fica em 0 até a sala lotar ou o servidor completar as vagas com IA.
+      this._onlineMatchmakingDeadline = 0;
       this._onlineMatchStartAt = 0;
       this._lastLobbyCountdownShown = null; // dedupe: não reescrever o #hint a 20Hz
       this._hunterViewAttached = false; // reaproveitado por _updateHunterFPSRig() se o papel for Caçador
@@ -467,14 +466,16 @@ export class Game {
         this.surviveTime = welcome.matchDuration;
         if (this._elGoal) this._elGoal.textContent = fmtTime(this.surviveTime);
       }
-      this._onlineMatchStartAt = welcome.matchStartAt || 0; // docs/PLANO_LOBBY_COUNTDOWN.md
+      this._onlineMatchmakingDeadline = welcome.matchmakingDeadline || 0;
+      this._onlineMatchStartAt = welcome.matchStartAt || 0;
+      this._onlinePhase = welcome.phase || (welcome.matchStartAt ? 'playing' : 'matchmaking');
+      this._onlineRoundId = welcome.roundId || 1;
       this.player.isHunter = welcome.role === ROLE.HUNTER;
       this._updateRoleHudText();
       this.player.position.set(welcome.spawn.x, this.player.position.y, welcome.spawn.z);
 
       // Chrome de UI específico do papel Caçador (botão de tiro, munição, Scanner) —
-      // mesmas classes CSS que o modo Caçador single-player usa, sem alvos-boneco (o
-      // Camaleão é um jogador de verdade — ver css/style.css).
+      // mesmas classes CSS que o modo Caçador single-player usa.
       document.body.classList.toggle('online-hunter', this.onlineRole === ROLE.HUNTER);
 
       // Caçador no online usa a MESMA câmera 1ª pessoa do single-player — troca só
@@ -505,6 +506,8 @@ export class Game {
       this.net.on(S2C.SHOT, (msg) => this._onShot(msg));
       this.net.on(S2C.FIRE_DENIED, (msg) => this._onFireDenied(msg));
       this.net.on(S2C.MATCH_OVER, (msg) => this._onMatchOver(msg));
+      this.net.on(S2C.ROUND_RESET, (msg) => this._onRoundReset(msg));
+      this.net.on(S2C.ROLE_CHANGED, (msg) => this._onRoleChanged(msg));
       // Fase 4 do pincel 3D — repasse de outro jogador (ver
       // server/room.js:_handlePaint). Só o RemotePlayer correspondente lê;
       // se ele ainda não existir por algum motivo (mensagem chegou antes do
@@ -526,7 +529,7 @@ export class Game {
       this.net.on('_reconnecting', () => {
         if (this._hintEl) this._hintEl.textContent = '🔄 Conexão perdida — reconectando...';
       });
-      this.net.on('_reconnected', () => this._updateOnlineHint());
+      this.net.on('_reconnected', (msg) => this._onReconnected(msg));
 
       // Só chega aqui depois que Net.js DESISTIU de vez (grace period esgotado ou
       // fechamento explícito) — não mais na primeira queda, então isto agora
@@ -544,43 +547,122 @@ export class Game {
   // sem ninguém pra ver" e "conectado e pareado" pareciam a mesma coisa na tela (era
   // exatamente o que causava a confusão de "entrei e não vi o outro jogador": as duas
   // pontas às vezes nunca chegaram a estar na sala AO MESMO TEMPO, e nada na UI avisava).
+  _onReconnected(msg) {
+    if (Number.isFinite(msg.layout) && msg.layout !== this._onlineLayout) {
+      sessionStorage.setItem('eom-online-layout', String(msg.layout));
+      location.reload();
+      return;
+    }
+    const self = msg.self || msg;
+    if (self.role && self.role !== this.onlineRole) {
+      this._onRoleChanged({ player: self, spawn: self.pos || msg.spawn });
+    }
+    this._onlineMatchmakingDeadline = msg.matchmakingDeadline || 0;
+    this._onlineMatchStartAt = msg.matchStartAt || 0;
+    this._onlinePhase = msg.phase || this._onlinePhase;
+    const changedRound = Number.isFinite(msg.roundId) && msg.roundId !== this._onlineRoundId;
+    if (Number.isFinite(msg.roundId)) this._onlineRoundId = msg.roundId;
+
+    const present = new Set((msg.players || []).map((p) => p.id));
+    for (const [id] of this.remotePlayers) {
+      if (!present.has(id)) this._removeRemotePlayer(id);
+    }
+    for (const p of msg.players || []) {
+      let rp = this.remotePlayers.get(p.id);
+      if (!rp) { this._spawnRemotePlayer(p); rp = this.remotePlayers.get(p.id); }
+      if (rp) rp.pushSnapshot(p, Date.now());
+    }
+    if (changedRound && this._onlinePhase !== 'results') this.restartInPlace(false, false, true);
+    const restoredPos = self.pos || msg.spawn;
+    if (restoredPos && this.player) this.player.position.set(restoredPos.x, restoredPos.y, restoredPos.z);
+    if (this.onlineRole === ROLE.CHAMELEON && self.eliminated) this._enterEliminatedSpectating();
+    else this._updateOnlineHint();
+  }
+
+  _onRoundReset(msg) {
+    this._onlinePhase = 'matchmaking';
+    this._onlineRoundId = msg.roundId;
+    this._onlineMatchmakingDeadline = msg.matchmakingDeadline || 0;
+    this._onlineMatchStartAt = 0;
+    for (const [id] of this.remotePlayers) this._removeRemotePlayer(id);
+    this.restartInPlace(false, false, true);
+    for (const p of msg.players || []) {
+      if (p.id === this.net.id) this.player.position.set(p.pos.x, p.pos.y, p.pos.z);
+      else this._spawnRemotePlayer(p);
+    }
+    this._waitingRematch = false;
+    this._setRematchButtons(false);
+    this._updateOnlineHint();
+  }
+
+  _onRoleChanged(msg) {
+    const p = msg.player;
+    if (!p) return;
+    if (p.id !== this.net.id) {
+      this._removeRemotePlayer(p.id);
+      this._spawnRemotePlayer(p);
+      return;
+    }
+    this.onlineRole = p.role;
+    this.net.role = p.role;
+    this.player.isHunter = p.role === ROLE.HUNTER;
+    document.body.classList.toggle('online-hunter', this.player.isHunter);
+    this._updateRoleHudText();
+    if (this.player.isHunter) {
+      this.follow = new HunterCamera(this.camera);
+      this._addHunterFlashlight();
+    }
+    if (msg.spawn) this.player.position.set(msg.spawn.x, msg.spawn.y, msg.spawn.z);
+    this._updateOnlineHint();
+  }
+
+  _setRematchButtons(waiting) {
+    for (const id of ['go-restart', 'win-next']) {
+      const button = document.getElementById(id);
+      if (!button) continue;
+      button.disabled = waiting;
+      if (!button.dataset.defaultText) button.dataset.defaultText = button.textContent;
+      button.textContent = waiting ? 'Aguardando jogadores…' : button.dataset.defaultText;
+    }
+  }
+
   _updateOnlineHint() {
     if (!this._hintEl) return;
     // Uma entrada/saída de outro Camaleão (PLAYER_JOIN/LEAVE) não pode apagar o aviso
     // de "você foi flagrado" — só o fim de partida de verdade (_win/_gameOver) muda o
     // que está na tela depois disso.
     if (this._eliminatedSpectating) return;
-    // Mesma prioridade: um PLAYER_JOIN/LEAVE no meio da contagem de lobby não pode
-    // apagar o texto da contagem — quem atualiza isto é só _onSnapshot, quando o
-    // countdown realmente muda ou termina (docs/PLANO_LOBBY_COUNTDOWN.md).
-    if (this._onlineMatchStartAt && Date.now() < this._onlineMatchStartAt) return;
+    if (this._onlineMatchmakingDeadline && !this._onlineMatchStartAt) return;
     if (this.remotePlayers.size === 0) {
-      this._hintEl.textContent = '⏳ Sozinho na sala — aguardando outro jogador entrar (mesmo link, outra aba/aparelho).';
+      this._hintEl.textContent = '🔎 Procurando jogadores online...';
       return;
     }
+    const bots = [...this.remotePlayers.values()].filter((p) => p.isBot).length;
+    const team = bots ? ` · ${bots} IA${bots > 1 ? 's' : ''} na partida` : '';
     this._hintEl.textContent = this.onlineRole === ROLE.HUNTER
-      ? 'Modo Online — Caçador: mire e toque em 💦 para atirar no outro jogador.'
-      : 'Modo Online — Camaleão: pinte-se e se esconda do outro jogador.';
+      ? `Modo Online — Caçador: encontre todos os Camaleões${team}.`
+      : `Modo Online — Camaleão: pinte-se e se esconda${team}.`;
   }
 
-  // Lobby/matchmaking (docs/PLANO_LOBBY_COUNTDOWN.md): mostra "Partida começa em Ns..."
-  // enquanto `_onlineMatchStartAt` está no futuro, usando `msg.t` (hora do SERVIDOR, já
-  // vem em todo SNAPSHOT) em vez de `Date.now()` local — evita que um relógio de
-  // aparelho dessincronizado mostre um número errado. `_lastLobbyCountdownShown` evita
-  // reescrever o mesmo texto no DOM a 20Hz; só troca quando o segundo inteiro muda.
+  // Busca primeiro pessoas. O relógio exibido usa a hora do servidor; ao terminar,
+  // o servidor cria apenas as IAs necessárias e envia a composição por snapshot.
   _updateLobbyCountdown(msg) {
+    if (Number.isFinite(msg.matchmakingDeadline)) {
+      this._onlineMatchmakingDeadline = msg.matchmakingDeadline;
+    }
     if (Number.isFinite(msg.matchStartAt)) this._onlineMatchStartAt = msg.matchStartAt;
     if (!this._hintEl || this._eliminatedSpectating) return;
 
-    const remainingMs = this._onlineMatchStartAt - msg.t;
-    if (this._onlineMatchStartAt && remainingMs > 0) {
+    const remainingMs = this._onlineMatchmakingDeadline - msg.t;
+    if (!this._onlineMatchStartAt && this._onlineMatchmakingDeadline && remainingMs > 0) {
       const s = Math.ceil(remainingMs / 1000);
-      if (s !== this._lastLobbyCountdownShown) {
-        this._lastLobbyCountdownShown = s;
-        this._hintEl.textContent = `⏳ Partida começa em ${s}s...`;
+      const humans = 1 + msg.players.filter((p) => p.id !== this.net.id && !p.isBot).length;
+      const key = `${s}:${humans}`;
+      if (key !== this._lastLobbyCountdownShown) {
+        this._lastLobbyCountdownShown = key;
+        this._hintEl.textContent = `🔎 Procurando jogadores — ${s}s · ${humans}/5 online. As vagas restantes receberão IA.`;
       }
     } else if (this._lastLobbyCountdownShown !== null) {
-      // Acabou de virar: devolve o #hint pro texto normal de papel/instrução.
       this._lastLobbyCountdownShown = null;
       this._updateOnlineHint();
     }
@@ -588,7 +670,10 @@ export class Game {
 
   _spawnRemotePlayer(p) {
     if (this.remotePlayers.has(p.id)) return;
-    const rp = new RemotePlayer(this.scene, p.id, p.role, p.pos);
+    const rp = new RemotePlayer(this.scene, p.id, p.role, p.pos, {
+      isBot: !!p.isBot,
+      name: p.name,
+    });
     this.remotePlayers.set(p.id, rp);
     // Fase 4 do pincel 3D: só existe em welcome.players (ver
     // server/room.js, _publicStateFull) — quem já estava pintado antes deste
@@ -605,7 +690,12 @@ export class Game {
   }
 
   _onSnapshot(msg) {
+    this._onlinePhase = msg.phase || this._onlinePhase;
+    if (Number.isFinite(msg.roundId)) this._onlineRoundId = msg.roundId;
     this._updateLobbyCountdown(msg);
+    if (this._onlineMatchStartAt && Number.isFinite(msg.t)) {
+      this.elapsed = Math.max(0, (msg.t - this._onlineMatchStartAt) / 1000);
+    }
     for (const p of msg.players) {
       if (p.id === this.net.id) {
         // Munição AUTORITATIVA: o servidor é quem decide de verdade (room.js:
@@ -704,6 +794,9 @@ export class Game {
   }
 
   _onMatchOver(msg) {
+    this._onlinePhase = 'results';
+    this._waitingRematch = false;
+    this._setRematchButtons(false);
     const iAmHunter = this.onlineRole === ROLE.HUNTER;
     const iWon = (msg.winner === ROLE.HUNTER) === iAmHunter;
     if (iWon) this._win(msg.reason);
@@ -716,10 +809,9 @@ export class Game {
   // otimista de UI; quem manda de verdade é o servidor (room.js).
   _fireOnline() {
     if (this.over || this.won || this.onlineRole !== ROLE.HUNTER) return;
-    // Contagem de lobby ainda rolando (docs/PLANO_LOBBY_COUNTDOWN.md) — o servidor já
-    // recusa o FIRE de qualquer forma (room.js:_handleFire), isto é só pra não gastar
-    // uma viagem de rede à toa nem tocar som de tiro antes da partida ficar ativa.
-    if (this._onlineMatchStartAt && Date.now() < this._onlineMatchStartAt) return;
+    // Durante a busca, o servidor já recusa FIRE; este gate também evita feedback
+    // otimista e gasto visual de munição antes da partida ficar ativa.
+    if (!this._onlineMatchStartAt || Date.now() < this._onlineMatchStartAt) return;
     if (!this.net || !this.net.connected) return;
     const now = performance.now();
     if (now < this._nextFireAt) return;
@@ -800,9 +892,14 @@ export class Game {
   }
 
   _tick = () => {
-    const dt = Math.min(this._clock.getDelta(), 0.05); // clamp anti-tab-switch
-    this._updateAdaptiveQuality(dt);
-    if (!this.over && !this.won && !this._eliminatedSpectating) {
+    const rawDt = this._clock.getDelta();
+    // Movimento recebe um intervalo limitado para não atravessar paredes num
+    // engasgo. Relógio e medição usam o tempo real; um retorno longo de aba
+    // oculta é tratado como pausa no solo.
+    const dt = Math.min(rawDt, 0.05);
+    const clockDt = rawDt > 0.5 ? 0 : rawDt;
+    this._updateAdaptiveQuality(clockDt);
+    if (!this.over && !this.won && !this._eliminatedSpectating && !this._tutorialActive) {
       this.player.update(dt, this.joystick.value, this.camera);
       for (const s of this.seekers) {
         s.update(dt);
@@ -852,13 +949,14 @@ export class Game {
       }
       this._prevState = this.player.state;
 
-      // Cronômetro da partida
-      this.elapsed += dt;
+      // No Online, o snapshot fixa o tempo pela hora autoritativa do servidor.
+      // A busca por jogadores não consome os 180s da caçada.
+      if (this.mode !== 'online') this.elapsed += clockDt;
       // Fase E (Ranking): faltava acumular pro Camaleão ONLINE — o badge
       // 🫥 e o Ranking de sobrevivência ficavam travados em 0:00 pra esse
       // papel (bug real, não decisão de escopo; só o solo já acumulava).
       if (this.mode === 'chameleon' || (this.mode === 'online' && this.onlineRole === ROLE.CHAMELEON)) {
-        if (this.player.isCamouflaged()) this.camoTime += dt;
+        if (this.player.isCamouflaged()) this.camoTime += clockDt;
 
         // Atraso de 30s no Placar de Tempo Camuflado (Anti-Cheat Spec)
         this.scoreHistory.push({ t: this.elapsed, camoTime: this.camoTime });
@@ -1352,10 +1450,10 @@ export class Game {
   }
 
   _updateCamouflageHint(camo, reason, latched) {
-    if (!this._hintEl || this.mode === 'hunter') return;
-    if (this.mode === 'online' && (!this.onlineRole || this._eliminatedSpectating || this._onlineMatchStartAt > Date.now())) return;
+    if (!this._hintEl || this.mode === 'hunter' || (this.mode === 'online' && this.onlineRole === ROLE.HUNTER)) return;
+    if (this.mode === 'online' && (!this.onlineRole || this._eliminatedSpectating || !this._onlineMatchStartAt || this._onlineMatchStartAt > Date.now())) return;
     if (camo) this._hintEl.textContent = '🫥 CAMUFLADO — fique imóvel ou mude de esconderijo quando o Caçador se aproximar.';
-    else if (reason === 'color' && latched) this._hintEl.textContent = '🎨 COR INCOMPATÍVEL — copie a superfície atrás de cada parte do corpo.';
+    else if (reason === 'color') this._hintEl.textContent = '🎨 COR INCOMPATÍVEL — copie a superfície atrás de cada parte do corpo.';
     else if (reason === 'surface') this._hintEl.textContent = '🧱 SUPERFÍCIE INVÁLIDA — encoste numa parede colorida ou deite sobre um tapete.';
     else this._hintEl.textContent = '🧱 GRUDE NUMA SUPERFÍCIE — só apoiado você pode ficar camuflado.';
   }
@@ -1377,10 +1475,17 @@ export class Game {
       text.textContent = steps[index];
       next.textContent = index === steps.length - 1 ? 'Começar' : 'Próximo';
     };
-    const finish = () => { sessionStorage.setItem(key, '1'); el.classList.add('hidden'); };
+    const finish = () => {
+      sessionStorage.setItem(key, '1');
+      el.classList.add('hidden');
+      this._tutorialActive = false;
+      // Descarta o tempo que o relógio acumulou enquanto a instrução estava aberta.
+      this._clock.getDelta();
+    };
     next.addEventListener('click', () => { if (index === steps.length - 1) finish(); else { index++; render(); } });
     skip.addEventListener('click', finish);
     render();
+    this._tutorialActive = true;
     el.classList.remove('hidden');
   }
 
@@ -1392,7 +1497,7 @@ export class Game {
       this._elCamo.title = hunter ? 'Tempo restante da partida' : 'Tempo total camuflado (Atualizado a cada 30s)';
       if (hunter) this._elCamo.textContent = `⏱ ${fmtTime(Math.max(0, this.surviveTime - this.elapsed))}`;
     }
-    const hint = document.getElementById('hint');
+    const hint = this.mode === 'online' ? null : document.getElementById('hint');
     if (hint) hint.textContent = hunter
       ? 'Mire com a retícula e toque em 💦 para atirar. Encontre e acerte todos os Camaleões antes que a água acabe.'
       : 'Mire numa superfície e toque em 🎨 para sugar a cor. Grude numa superfície da mesma cor para se camuflar. Sobreviva ao Caçador vermelho.';
@@ -1872,7 +1977,22 @@ export class Game {
     if (this._victoryEl) this._victoryEl.classList.add('show');
   }
 
-  restartInPlace(nextStage = false, backToMenu = false) {
+  restartInPlace(nextStage = false, backToMenu = false, serverConfirmed = false) {
+    if (this.mode === 'online' && backToMenu) {
+      if (this.net) this.net.close();
+      const url = new URL(location.href);
+      url.searchParams.delete('continue');
+      location.href = url.toString();
+      return;
+    }
+    if (this.mode === 'online' && !backToMenu && !serverConfirmed) {
+      if (!this._waitingRematch && this.net) {
+        this._waitingRematch = true;
+        this.net.sendRevive();
+        this._setRematchButtons(true);
+      }
+      return;
+    }
     if (nextStage) {
       this.stage++;
     } else if (backToMenu) {
@@ -1960,7 +2080,6 @@ export class Game {
     // sumido na tela do Caçador na rodada seguinte (RemotePlayer.js funde a escala a
     // zero e sem este aviso nunca soube que devia voltar).
     if (this.mode === 'online' && this.net) {
-      this.net.sendRevive();
       for (const rp of this.remotePlayers.values()) {
         rp.eliminated = false;
         rp._fade = 0;

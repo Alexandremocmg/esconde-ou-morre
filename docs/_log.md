@@ -427,3 +427,47 @@ Documentação sincronizada com a implementação: o multiplayer agora descreve 
 O servidor passou a manter salas isoladas por código (`room=ABC123`), com a sala pública como padrão. O menu Online ganhou um campo opcional de código; o cliente inclui esse código na conexão e na reconexão. Salas vazias são recolhidas periodicamente para liberar o tick e o estado em memória.
 
 Arquivos: `server/index.js`, `src/Net.js`, `src/Game.js`, `src/main.js`, `index.html`, `css/style.css`.
+
+---
+
+## 2026-09-10 — Matchmaking prioriza pessoas e completa com IA
+
+O modo Online passou a reservar 30 segundos para jogadores reais. Ao fim da busca, o servidor completa somente as vagas restantes com Camaleões de IA; uma sala 5/5 começa imediatamente sem bots. Busca e caçada usam relógios separados, então os 180 segundos só começam após a formação. IAs são simuladas pelo servidor, identificadas no avatar e assumem a vaga de um Camaleão que não reconectar dentro do prazo. A entrada pública abre uma nova fila quando as anteriores já começaram, mantendo novos jogadores no matchmaking.
+
+A suíte do servidor passou de 19 para 22 testes. O fluxo também foi validado no navegador: busca mostrou `1/5 online`, quatro IAs entraram após o prazo, o HUD contou `4/4`, o tempo começou em `3:00` e a reconexão preservou a partida. Em uma verificação adicional com seis conexões públicas, as cinco primeiras formaram uma sala e a sexta abriu outra como Caçador.
+
+Arquivos: `src/net/protocol.js`, `server/index.js`, `server/room.js`, `server/test/room.test.mjs`, `src/Game.js`, `src/RemotePlayer.js`, `src/Net.js`, `src/Player.js`, `src/main.js`, `index.html`, `README.md`, `docs/PLANO_LOBBY_COUNTDOWN.md`, `docs/PLANO_LOBBY_MULTIPLAYER.md`, `docs/PLANO_MULTIPLAYER.md`, `docs/_index.md`, `docs/_log.md`.
+
+---
+
+## 2026-09-10 — Plano de melhorias revisado pelo estado atual
+
+Criado `PLANO_MELHORIAS_JOGO.md` com seis entregas priorizadas: confiabilidade online, IA com esconderijos, aprendizado/camuflagem, tempo/desempenho/celular, equilíbrio por playtest e resultados/progressão. A revisão identificou lacunas na repetição de reconexão, saída do Caçador na espera, preservação das eliminações ao substituir jogadores e coordenação da revanche. Também registrou limitações da IA, tutorial durante rodada ativa, dicas móveis e relógio baseado em intervalo limitado.
+
+Os 22 testes existentes do servidor passaram novamente. As novas lacunas foram identificadas por leitura do código; desempenho real e equilíbrio ainda exigem medição e playtest. Atualizado o status do plano anterior para parcialmente implementado e indicado o novo plano como referência das próximas entregas. Nenhuma mudança no código do jogo ou publicação nesta revisão; as alterações locais anteriores foram preservadas.
+
+Arquivos: `docs/PLANO_MELHORIAS_JOGO.md` (novo), `docs/PLANO_CORRECOES.md`, `docs/_index.md`, `docs/_log.md`.
+
+---
+
+## 2026-09-11 — Primeira execução do plano de melhorias
+
+O Online ganhou fases e número de rodada, revanche por confirmação coletiva seguida de
+nova busca por humanos, reconexão repetida com restauração do estado, promoção de um
+novo Caçador na fila e preservação de capturas quando uma vaga passa à IA. Regras de
+munição online foram fixadas no servidor e a reconexão passou a validar id e token na
+sala correta.
+
+A IA do servidor deixou as órbitas: escolhe trajetos diretos livres de obstáculos,
+privilegia pontos fora da visão do Caçador, para para se esconder e foge quando vista.
+A etiqueta flutuante foi retirada. O tutorial agora pausa o gameplay, a dica de cor
+também cobre o apoio no chão, o texto de camuflagem aparece em telas pequenas e relógio
+e FPS usam tempo real separado do intervalo limitado da física.
+
+A suíte passou para 25 testes, todos aprovados, e as checagens de sintaxe passaram. No
+navegador, a fila exibiu `1/5`, recebeu quatro IAs após 30s, iniciou em `3:00`, mostrou
+`4/4` alvos e não registrou erros no console.
+
+Arquivos principais: `server/index.js`, `server/room.js`, `server/test/room.test.mjs`,
+`src/Net.js`, `src/Game.js`, `src/RemotePlayer.js`, `src/net/protocol.js`, `src/main.js`,
+`css/style.css`, `index.html`, `sw.js`, `README.md` e documentação do Online.

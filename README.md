@@ -7,8 +7,9 @@ camuflar** e precisa **sobreviver ao(s) Caçador(es)** até o tempo acabar. No *
 Caçador** (jogável) você vira o caçador: câmera em **1ª pessoa** com FOV estreito e
 lanterna, arma de água com penalidade de tiro errado, e uma habilidade de **Scanner**
 para revelar Camaleões próximos — ver `docs/MECANICA_CACADOR_VISAO.md` abaixo. Um 3º
-modo, **Online**, coloca jogadores de verdade na mesma sala (1 Caçador + até 4
-Camaleões) via um servidor autoritativo, com munição/Scanner e reconexão automática
+modo, **Online**, busca jogadores reais por 30 segundos e completa as vagas restantes
+com Camaleões de IA (1 Caçador + até 4 Camaleões) via um servidor autoritativo, com
+munição/Scanner e reconexão automática
 (troca de app, queda de rede ou reload da página) — ver `docs/PLANO_MULTIPLAYER.md` e
 `docs/PLANO_LOBBY_MULTIPLAYER.md`.
 
@@ -113,10 +114,11 @@ Fora do modo Online, qualquer host de arquivos estáticos serve a pasta como est
   - **Pular (🟢):** Salto físico responsivo com animação `Jump.fbx`.
 - **Mecânica do Caçador (Estilo Meccha Chameleon):**
   - **Arma de Água 3D:** modelo `water_gun.glb` preso ao osso da mão direita do Caçador (não é mais um cilindro procedural), disparando jatos de água com feixe de partículas e som de pressão.
-  - **Munição Contada (`💧 8/8` Padrão):** O Caçador inicia com 8 jatos de água (configurável de 1 a 30 no menu, com toggle de munição infinita). Cada disparo, acertando ou não, perde 1 jato. A configuração padrão enfrenta 6 alvos com dois erros permitidos; se os jatos chegarem a 0 e restarem Camaleões vivos, dispara **Vitória dos Camaleões**! Vale para o Caçador solo **e** para o modo Online (autoritativo no servidor, ver `docs/PLANO_MULTIPLAYER.md`).
+  - **Munição Contada (`💧 8/8` Padrão):** O Caçador inicia com 8 jatos de água. No solo, o menu permite configurar de 1 a 30 e ativar munição infinita; no Online, o servidor fixa 8 para todos. Cada disparo, acertando ou não, perde 1 jato. A configuração padrão enfrenta 6 alvos no solo com dois erros permitidos; se os jatos chegarem a 0 e restarem Camaleões vivos, dispara **Vitória dos Camaleões**.
   - **Remoção de Tinta (`washPaint`):** O jato de água desbota a tinta do jogador de volta ao branco original em ~1.5s de contato, forçando o movimento e dando uma janela de fuga/esquiva.
   - **Placar com Atraso de 30s (Anti-Cheat):** O tempo camuflado exibido no HUD do Caçador possui um atraso intencional de 30 segundos, impedindo a localização de esconderijos por leitura de pontos em tempo real.
   - **Escolha do Caçador:** sem sorteio nem zona no mapa — no modo Online é simplesmente o primeiro a entrar na sala; os próximos, até 4, viram Camaleão (ver `docs/MECANICA_CACADOR.md` e `docs/PLANO_LOBBY_MULTIPLAYER.md`).
+  - **Busca Online com IA:** a sala espera jogadores reais por 30 segundos. Se chegar a 5/5, começa imediatamente; caso contrário, o servidor preenche apenas as vagas restantes com Camaleões de IA, sem descontar esse tempo da caçada. Nas revanches, todos confirmam antes de uma nova busca, permitindo trocar IAs por pessoas entre rodadas.
   - **Camaleões-alvo com IA própria (`ChameleonTarget.js`):** deixaram de ser bonecos parados — vagueiam pela própria rota de patrulha (reaproveitando a rede de waypoints do `Seeker`), fogem ativamente ao entrar no cone da lanterna do Caçador (com histerese, sem flicker de estado) e recolorem periodicamente sampleando a cor real de superfícies próximas (`level.colorables`), tudo escalando com o estágio no mesmo padrão numérico do `Seeker`. Locomoção (bigodes de desvio + colisão-deslizante + anti-trava) é adaptada do `Seeker.js` já validado em produção.
 - **Modo Caçador Jogável — Visão/Câmera, Arma e Scanner** (`docs/MECANICA_CACADOR_VISAO.md`):
   - **Câmera 1ª Pessoa (`HunterCamera.js`):** FOV 80° (pontos cegos laterais de propósito), arma-viewmodel + antebraço/mão presos à câmera (cor acompanha a camuflagem do jogador), corpo do Caçador invisível na própria visão.

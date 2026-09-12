@@ -8,7 +8,7 @@
 // Ver docs/PLANO_MULTIPLAYER.md (fatia vertical v1).
 
 // ---------------------------------------------------------------- transporte
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;
 
 export const TICK_HZ = 20;              // taxa de snapshot do servidor (spec: 20-30 Hz)
 export const TICK_MS = 1000 / TICK_HZ;
@@ -35,7 +35,7 @@ export const INTERP_DELAY_MS = 100;
 // Se o servidor não vê input de um cliente por este tempo, considera-o desconectado.
 // 20s dá folga pro keepalive de 3s do Net.js (ver Net.js) sobreviver a uma aba em
 // segundo plano sendo throttlada pelo navegador, sem deixar uma sessão morta ocupando
-// a sala (MAX_PLAYERS=2, server/room.js) por tempo demais.
+// a sala por tempo demais.
 export const CLIENT_TIMEOUT_MS = 20000;
 
 // Quanto tempo a sala segura a VAGA (papel, munição, estado eliminado) de um
@@ -48,13 +48,10 @@ export const CLIENT_TIMEOUT_MS = 20000;
 // janela em algo que o cliente já não está fazendo há tempo.
 export const RECONNECT_GRACE_MS = 30000;
 
-// Lobby/matchmaking (docs/PLANO_LOBBY_COUNTDOWN.md): janela de espera ADICIONAL entre
-// "sala formada" (1 Caçador + o 1º Camaleão) e a partida ficar realmente ativa (Caçador
-// pode atirar, o relógio de MATCH_DURATION_S começa a valer). Não desconta dos 180s de
-// caçada — `room.js` arma `_matchStartAt` no FUTURO (`Date.now() + LOBBY_COUNTDOWN_MS`)
-// em vez de instantâneo; enquanto esse timestamp não chega, o tempo decorrido da
-// partida (calculado contra ele) é negativo, então o fim-por-tempo nunca dispara sozinho.
-export const LOBBY_COUNTDOWN_MS = 12000;
+// Matchmaking híbrido: a sala prioriza pessoas durante esta janela. Se não lotar,
+// o servidor completa apenas as vagas restantes com Camaleões controlados por IA.
+// A caçada só começa depois do prazo ou imediatamente quando 5 humanos entram.
+export const MATCHMAKING_WAIT_MS = 30000;
 
 // Servidor autoritativo em produção (Render.com — docs/PLANO_MULTIPLAYER.md, seção
 // "Hospedagem"). Usado por Game.js._wsUrl() como fallback quando a página não está
@@ -74,7 +71,7 @@ export const C2S = {
   INPUT: 'input',     // ver makeInputPayload
   FIRE: 'fire',       // { origin:{x,y,z}, dir:{x,y,z}, t }
   LEAVE: 'leave',
-  REVIVE: 'revive',   // "jogar novamente" sem reconectar — ver room.js:_onRevive
+  REVIVE: 'revive',   // confirma prontidão para a próxima rodada — ver room.js:_onRevive
   // Fase 4 do pincel 3D (ver src/UVPaint.js): lote de comandos de traço
   // acumulados localmente e mandados automaticamente (fim de cada traço +
   // throttle de ~250ms durante um traço longo, ver Game.js:_flushAndSendPaint
@@ -86,8 +83,10 @@ export const C2S = {
 
 // Servidor → cliente
 export const S2C = {
-  WELCOME: 'welcome',     // { id, role, spawn, layout, matchDuration, players[], token, eliminated, matchStartAt }
-  SNAPSHOT: 'snapshot',   // { t, players[], matchStartAt }
+  WELCOME: 'welcome',     // estado autoritativo completo ao entrar/reconectar
+  SNAPSHOT: 'snapshot',   // estado contínuo, incluindo fase/rodada/prontidão
+  ROUND_RESET: 'roundReset', // todos confirmaram revanche; volta à busca por humanos
+  ROLE_CHANGED: 'roleChanged', // promoção de papel no lobby após saída definitiva
   PLAYER_JOIN: 'playerJoin',
   PLAYER_LEAVE: 'playerLeave',
   SHOT: 'shot',           // resultado do disparo (broadcast): { hunterId, hit, targetId, from, to }
@@ -166,8 +165,8 @@ export const ONLINE_LAYOUTS = [1, 4, 5]; // 1 = mansão (salão), 4 = fábrica a
 // Risco aceito (mesmo espírito do "Débito 1" já documentado pro movimento forjável):
 // se dois jogadores da MESMA sala conectarem bem na virada da hora (janela de
 // milissegundos), podem calcular valores diferentes e desincronizar a geometria —
-// extremamente raro (a janela de formação de sala inteira, LOBBY_COUNTDOWN_MS, é
-// 12s; a virada de hora é 1 instante em 3600s) e sem impacto de segurança/dados, só
+// extremamente raro (a janela de formação da sala é curta; a virada de hora é um
+// instante em 3600s) e sem impacto de segurança/dados, só
 // visual, autocorrige na sessão seguinte.
 export function onlineLayoutFor(now = Date.now()) {
   const hourBucket = Math.floor(now / 3600000);

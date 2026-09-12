@@ -81,25 +81,20 @@ Camaleões via Scanner/posição, sem estar mais "em jogo").
 Isso é o item de maior risco de esquecimento do plano — sem ele, N>1 Camaleões "funciona"
 tecnicamente mas a experiência de quem morre primeiro fica quebrada.
 
-### 3.3. Início de partida vs. sala vazia de Camaleões
+### 3.3. Formação híbrida da partida
 
-Hoje o timer da partida (`_matchStartAt`) começa assim que o **1º jogador** entra
-(`room.js:151`), que sempre é o Caçador. Em v1 (sala de 2) isso não incomodava muito — o
-2º jogador chegava rápido. Com uma sala maior, o Caçador pode ficar sozinho queimando os
-180s do timer enquanto espera Camaleões aparecerem.
-
-**Proposta mínima (sem lobby de verdade, que continua fora de escopo):** só iniciar/reiniciar
-`_matchStartAt` quando o primeiro **Camaleão** entrar, não no primeiro jogador. O hint
-"Sozinho na sala — aguardando outro jogador" (`Game.js:428-434`) já existe e já cobre a
-espera visualmente — só precisa continuar valendo enquanto `remotePlayers.size === 0`, o
-que já é o caso.
+A primeira pessoa abre uma busca de 30 segundos. Até o prazo terminar, vagas são
+ocupadas somente por jogadores reais e `_matchStartAt` permanece zero. Se a sala chegar
+a 5/5, começa imediatamente. Caso contrário, o servidor completa os lugares restantes
+com Camaleões de IA e inicia os 180 segundos sem descontar o tempo de busca. Detalhes em
+[`PLANO_LOBBY_COUNTDOWN.md`](PLANO_LOBBY_COUNTDOWN.md).
 
 ### 3.4. Ajustes pequenos de HUD (opcional, mas barato)
 
 - Caçador: mostrar contagem "N Camaleões restantes" (dado já existe no `SNAPSHOT`, é só
   contar `!eliminated` do lado do cliente) — hoje o Caçador não tem nenhum sinal de quantos
   faltam além de "acabou ou não acabou".
-- Sem mudança nenhuma necessária no Scanner nem no `RemotePlayer.js` — já generalizam.
+- Scanner e contador tratam humanos e IAs pelo mesmo estado de `RemotePlayer`.
 
 ## 4. Decisões de design (não só código)
 
@@ -107,9 +102,9 @@ que já é o caso.
   primeiro corte. Suficiente para mudar a dinâmica (o Caçador não pode mais assumir "o
   próximo vulto camuflado é o alvo certo") sem exigir redesenho de munição/tempo de
   partida ainda. Pode subir depois que houver teste real.
-- **Munição por padrão continua manual (1-30 no menu).** Não precisa virar "munição
-  escala com N Camaleões" automaticamente — quem cria a sala já escolhe hoje, e o texto
-  do `<select>` pode ganhar uma dica ("Online com mais Camaleões? considere 10+").
+- **Munição online é fixa em 8 jatos.** O servidor ignora opções locais de munição na
+  entrada da sala, evitando regras diferentes entre participantes. A escolha manual
+  de 1–30 e munição infinita continua disponível somente no treino solo.
 - **Duração da partida (`MATCH_DURATION_S = 180`) fica igual** nesta fase — mexer nisso é
   balanceamento de jogo, melhor avaliar depois de um teste real com 3-4 Camaleões.
 
@@ -129,14 +124,9 @@ que já é o caso.
   1ª pessoa pensada pra um Caçador só), munição/scanner por Caçador, HUD, e a própria
   atribuição de papel (`takenRoles.has(HUNTER)`) precisariam de redesenho. Fica como
   possível próxima fase, não parte desta.
-- ~~Lobby com fases / "pronto?" antes de começar (spec original §4) — a mitigação do
-  §3.3 (só começar o timer quando o 1º Camaleão entrar) resolve o caso prático sem
-  precisar disso.~~ **Parcialmente endereçado depois** — ver
-  [`docs/PLANO_LOBBY_COUNTDOWN.md`](PLANO_LOBBY_COUNTDOWN.md): a contagem regressiva de
-  12s antes da partida ficar ativa é justamente uma "fase de espera" leve, sem ir até o
-  lobby completo com "pronto?" por jogador que a spec original pedia.
-- Várias salas simultâneas (pares independentes jogando ao mesmo tempo) — descartado
-  explicitamente nesta rodada; a pergunta que abriu esta sessão já filtrou por isso.
+- O matchmaking híbrido foi implementado com uma busca de 30s e preenchimento por IA;
+  confirmação manual de "pronto" continua fora do escopo.
+- Salas simultâneas por código e entrada pública já são administradas pelo servidor.
 - Validação server-side de amostragem de cor, lag compensation/rewind — mesma posição do
   plano original, não afetados por N Camaleões.
 
@@ -144,8 +134,8 @@ que já é o caso.
 
 1. `protocol.js`: adicionar `MAX_CHAMELEONS` (constante compartilhada, hoje só existe
    `MAX_PLAYERS` local a `room.js`).
-2. `room.js`: trocar `MAX_PLAYERS` por `1 + MAX_CHAMELEONS`; implementar `chameleonSpawn(index)`
-   no lugar do ponto único; `_matchStartAt` só arma no 1º Camaleão (§3.3).
+2. `room.js`: trocar `MAX_PLAYERS` por `1 + MAX_CHAMELEONS`; implementar
+   `chameleonSpawn(index)` e formar a partida pelo prazo híbrido (§3.3).
 3. `Game.js`: estado de espectador local pro Camaleão eliminado (§3.2) — o item que mais
    importa pra experiência.
 4. `Game.js`/HUD: contador "N Camaleões restantes" pro Caçador (§3.4, opcional).
@@ -163,9 +153,9 @@ que já é o caso.
 
 - `MAX_CHAMELEONS = 4` (`protocol.js`) — sala vira `1 + MAX_CHAMELEONS` (5 no total).
 - `room.js`: `ROOM_CAPACITY`, `_chameleonSpawn(index)` em anel (raio 2.2m) ao redor do
-  ponto-base antigo, `client.spawn` guardado por cliente (reconexão reusa o mesmo ponto,
-  não recalcula por índice), timer só arma no 1º Camaleão de verdade (não no Caçador
-  sozinho).
+  ponto-base antigo e `client.spawn` guardado por cliente (reconexão reusa o mesmo
+  ponto). A evolução posterior acrescentou a busca de 30s e Camaleões de IA para as
+  vagas restantes.
 - `Game.js`: `_eliminatedSpectating` — Camaleão flagrado congela (mesmo gate de
   `over`/`won` no loop principal), vê "🫥 Você foi flagrado — aguardando o fim da
   partida...", e some da lógica sem antecipar a tela final (`_win`/`_gameOver` real só
@@ -179,7 +169,7 @@ que já é o caso.
 **Verificado (passo 5, headless, protocolo `ws` cru sem navegador — script novo,
 não commitado, reflexo do padrão já usado na v1):** contra o `Room` real —
 1 Caçador + 4 Camaleões, papéis corretos, spawns todos distintos, 6º cliente recusado
-por sala cheia, timer não arma com o Caçador sozinho e arma no 1º Camaleão, eliminar os
+por sala cheia, formação da partida e eliminação dos
 3 primeiros Camaleões NÃO encerra a partida, eliminar o último encerra com
 `winner=hunter` e o motivo certo, e todo mundo (incluindo os já eliminados) recebe o
 `MATCH_OVER`. 25/25 checagens passaram.

@@ -19,18 +19,54 @@ const PORT = parseInt(process.argv[2] || process.env.PORT || '8787', 10);
 const MAX_WS_PAYLOAD_BYTES = 64 * 1024;
 
 const rooms = new Map();
+let publicRoomSequence = 0;
 function roomCode(req) {
   try {
     const value = new URL(req.url || '/', 'ws://localhost').searchParams.get('room');
     return /^[A-Z0-9]{4,8}$/.test(value || '') ? value : 'PUBLIC';
   } catch (_) { return 'PUBLIC'; }
 }
-function getRoom(code) {
-  let room = rooms.get(code);
+function rejoinCredentials(req) {
+  try {
+    const raw = new URL(req.url || '/', 'ws://localhost').searchParams.get('rejoin');
+    if (!raw) return null;
+    const separator = raw.indexOf(':');
+    if (separator < 1) return null;
+    return { id: raw.slice(0, separator), token: raw.slice(separator + 1) };
+  } catch (_) { return null; }
+}
+function createRoom(key) {
+  const room = new Room();
+  room.start();
+  rooms.set(key, room);
+  return room;
+}
+function getRoom(code, req) {
+  // Uma reconexão precisa voltar à instância exata, inclusive quando várias salas
+  // públicas estão ativas ao mesmo tempo.
+  const rejoin = rejoinCredentials(req);
+  if (rejoin) {
+    if (code !== 'PUBLIC') {
+      const codedRoom = rooms.get(`CODE:${code}`);
+      if (codedRoom?.canReattach(rejoin.id, rejoin.token)) return codedRoom;
+    } else {
+      for (const [key, room] of rooms) {
+        if (key.startsWith('PUBLIC:') && room.canReattach(rejoin.id, rejoin.token)) return room;
+      }
+    }
+  }
+
+  if (code === 'PUBLIC') {
+    for (const [key, room] of rooms) {
+      if (key.startsWith('PUBLIC:') && room.canAcceptFreshClient()) return room;
+    }
+    return createRoom(`PUBLIC:${++publicRoomSequence}`);
+  }
+
+  const key = `CODE:${code}`;
+  let room = rooms.get(key);
   if (!room) {
-    room = new Room();
-    room.start();
-    rooms.set(code, room);
+    room = createRoom(key);
   }
   return room;
 }
@@ -60,7 +96,7 @@ wss.on('connection', (ws, req) => {
   });
   // `req` (o upgrade HTTP original) carrega a query string — é onde uma tentativa
   // de reconexão manda `?rejoin=<id>:<token>` (ver room.js:_parseRejoin/Net.js).
-  getRoom(roomCode(req)).addClient(ws, req);
+  getRoom(roomCode(req), req).addClient(ws, req);
 });
 
 // Mesmo motivo do handler acima, mas pro servidor como um todo (erro de bind

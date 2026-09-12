@@ -9,9 +9,8 @@
 > 1 Caçador + até 4 Camaleões na MESMA partida — ver
 > [`docs/PLANO_LOBBY_MULTIPLAYER.md`](PLANO_LOBBY_MULTIPLAYER.md). Arquitetura, protocolo
 > e hospedagem abaixo continuam valendo; só a capacidade da sala (§3.1 "O que existe
-> hoje" e a tabela de avaliação §1) mudou. Depois disso, a partida ganhou uma contagem
-> regressiva de 12s antes de ficar ativa (endereça parte do item "Lobby 4-10 jogadores,
-> 4 fases de partida" da tabela §1) — ver
+> hoje" e a tabela de avaliação §1) mudou. A formação agora reserva 30 segundos para
+> jogadores reais e completa as vagas restantes com Camaleões de IA — ver
 > [`docs/PLANO_LOBBY_COUNTDOWN.md`](PLANO_LOBBY_COUNTDOWN.md).
 
 ---
@@ -66,7 +65,7 @@ navegador (WebSocket nativo)                    Node + ws (server/)
 | Cliente de rede | `src/Net.js` | Conecta, envia input/tiro, expõe eventos |
 | Avatar remoto | `src/RemotePlayer.js` | Interpola snapshots (buffer 100ms), escolhe animação pelo estado recebido |
 | Pincel Livre (rede) | `protocol.js` (`C2S.PAINT`/`S2C.PLAYER_PAINT`), `server/room.js` (`_handlePaint`), `RemotePlayer.js` (`applyPaintStrokes`) | Lista compacta de traços (não pixels — mesma regra do §4.4), evento por-ação em vez de por-tick; servidor guarda o acumulado de cada jogador só pra repassar a quem entra depois (WELCOME) |
-| Servidor | `server/index.js` + `server/room.js` | Salas em memória por código (com entrada pública padrão), papel por ordem de entrada, tick 20Hz, valida tiro, decide fim de partida, segura vaga de quem reconecta |
+| Servidor | `server/index.js` + `server/room.js` | Salas em memória por código e múltiplas filas públicas, papel por ordem de entrada, tick 20Hz, valida tiro, decide fim de partida, segura vaga de quem reconecta |
 | Integração no jogo | `src/Game.js` (`this.mode === 'online'`) | 3º modo ao lado de `chameleon`/`hunter`; reaproveita `HunterCamera` p/ o papel Caçador |
 | Reconexão | `src/Net.js` + `server/room.js` (`_reattach`/`_purgeStale`) | Backoff automático + retomada via `sessionStorage` — ver §3.2 |
 
@@ -111,9 +110,8 @@ só apareceram testando em dois aparelhos de verdade pela rede/túnel:
      conhecido independente do loop de render — `setInterval` sobrevive em segundo plano
      (só fica mais lento), diferente de `requestAnimationFrame`.
   2. `CLIENT_TIMEOUT_MS` subiu de 10s pra 20s (`protocol.js`) — folga extra pro keepalive.
-  3. Novo `Game._updateOnlineHint()`: quando `remotePlayers.size === 0`, o `#hint` mostra
-     "Sozinho na sala — aguardando outro jogador" em vez de deixar o jogador sem
-     nenhum sinal de que está esperando. `#hint` some em telas estreitas por padrão
+  3. `Game._updateLobbyCountdown()` mostra o prazo e quantas pessoas foram encontradas,
+     deixando claro que as vagas restantes serão preenchidas com IA. `#hint` some em telas estreitas por padrão
      (`@media max-width:720px`) — exatamente a tela de um celular — então
      `body.mode-online #hint { display: block; }` (`css/style.css`) sobrepõe isso.
 
@@ -156,13 +154,11 @@ vaga. Verificado com um script que conecta como Caçador, mata a conexão, tenta
 entrar fresco enquanto a janela ainda está aberta (recebe Camaleão, não rouba o
 papel) e confirma que uma 4ª tentativa é recusada por sala cheia.
 
-**O que NÃO é preservado num reload completo:** posição/pose/cor exatas — o
-`Player` local também reseta pro spawn (não é só a rede que perde estado, é o
-processo JS inteiro que recomeça). Papel, munição e status de eliminado
-continuam corretos; só a posição "esquece" o último instante antes da queda —
-o jogador reaparece no spawn do seu papel, visualmente como se tivesse acabado
-de entrar, mas DENTRO da mesma partida/sessão (sem trocar de papel, sem
-resetar munição, sem reviver se já estava eliminado).
+**Estado recuperado:** o `welcome` de reconexão inclui o estado público do próprio
+jogador. O cliente reaplica posição, papel, munição, eliminação, fase, rodada, mapa e
+participantes. Pose e pintura continuam representadas pelos mesmos dados guardados no
+servidor. Assim, uma nova queda começa uma janela nova e um reload não devolve o
+jogador ao início nem ressuscita um Camaleão capturado.
 
 ## 4. Pontos de atenção (decisões, não descuidos)
 
@@ -222,8 +218,8 @@ cliente relata, em vez de confiar cegamente.
 
 ## Fora de escopo (registrado para não perder contexto)
 
-Lag compensation/rewind, lobby e matchmaking 4-10 jogadores, as 4 fases de partida da
-spec original (hoje a partida começa assim que o 1º jogador entra), Interest Management,
+Lag compensation/rewind, matchmaking acima de 5 participantes, as 4 fases completas
+da spec original, Interest Management,
 validação server-side de amostragem de cor.
 
 ## Hospedagem (produção)

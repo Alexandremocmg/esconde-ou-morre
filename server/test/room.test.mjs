@@ -11,7 +11,7 @@
 // mensagem depois de abrir a conexão".
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { MAX_CHAMELEONS } from '../../src/net/protocol.js';
+import { MAX_CHAMELEONS, RECONNECT_GRACE_MS } from '../../src/net/protocol.js';
 import { startTestServer, connectClient, rawConnect, waitForMessage, send, closeClient } from '../testHelpers.mjs';
 
 const ROOM_CAPACITY = 1 + MAX_CHAMELEONS;
@@ -54,7 +54,102 @@ test('sala cheia recusa com MATCH_OVER e fecha com código 4001', async () => {
   }
 });
 
-test('revive reabre a partida (zera eliminated/_over) sem precisar reconectar', async () => {
+test('prazo de busca preserva vagas para pessoas e depois completa com IA', async () => {
+  const server = await startTestServer();
+  try {
+    const hunter = await connectClient(server.url);
+    assert.equal(server.room.bots.size, 0, 'não deve criar IA antes do prazo');
+    assert.equal(server.room._matchStartAt, 0, 'a caçada não começa durante a busca');
+
+    server.room._matchmakingDeadline = Date.now() - 1;
+    server.room._tick();
+
+    assert.equal(server.room.bots.size, MAX_CHAMELEONS);
+    assert.ok(server.room._matchStartAt > 0);
+    for (const bot of server.room.bots.values()) {
+      assert.equal(bot.role, 'chameleon');
+      assert.equal(bot.isBot, true);
+    }
+
+    await closeClient(hunter.ws);
+  } finally {
+    await server.stop();
+  }
+});
+
+test('cada jogador real ocupa uma vaga antes de o servidor adicionar IA', async () => {
+  const server = await startTestServer();
+  try {
+    const hunter = await connectClient(server.url);
+    const humanChameleon = await connectClient(server.url);
+
+    server.room._matchmakingDeadline = Date.now() - 1;
+    server.room._tick();
+
+    assert.equal(server.room.bots.size, MAX_CHAMELEONS - 1);
+    const participants = server.room._participants();
+    assert.equal(participants.length, ROOM_CAPACITY);
+    assert.equal(participants.filter((p) => !p.isBot).length, 2);
+
+    await closeClient(hunter.ws);
+    await closeClient(humanChameleon.ws);
+  } finally {
+    await server.stop();
+  }
+});
+
+test('IA escolhe rota livre, se move e para ao alcançar esconderijo', async () => {
+  const server = await startTestServer();
+  try {
+    const hunter = await connectClient(server.url);
+    server.room._matchmakingDeadline = Date.now() - 1;
+    server.room._tick();
+    const bot = [...server.room.bots.values()][0];
+    const now = Date.now();
+
+    server.room._updateBots(now);
+    assert.ok(bot._target, 'a IA deve escolher um destino alcançável');
+    server.room._updateBots(now + 100);
+    assert.equal(bot.moving, true);
+    assert.ok(['seeking', 'fleeing'].includes(bot._aiState));
+
+    bot.pos = { ...bot._target };
+    server.room._updateBots(now + 200);
+    assert.equal(bot._aiState, 'hidden');
+    assert.equal(bot.moving, false);
+    assert.equal(bot.prone, true);
+
+    await closeClient(hunter.ws);
+  } finally {
+    await server.stop();
+  }
+});
+
+test('IA assume a vaga de Camaleão que não volta após a janela de reconexão', async () => {
+  const server = await startTestServer();
+  try {
+    const hunter = await connectClient(server.url);
+    const humanChameleon = await connectClient(server.url);
+    server.room._matchmakingDeadline = Date.now() - 1;
+    server.room._tick();
+    assert.equal(server.room.bots.size, MAX_CHAMELEONS - 1);
+
+    await closeClient(humanChameleon.ws);
+    await new Promise((r) => setTimeout(r, 25));
+    const state = server.room.clients.get(humanChameleon.welcome.id);
+    state.disconnectedAt = Date.now() - RECONNECT_GRACE_MS - 1;
+    server.room._purgeStale(Date.now());
+
+    assert.equal(server.room.clients.has(humanChameleon.welcome.id), false);
+    assert.equal(server.room.bots.size, MAX_CHAMELEONS);
+
+    await closeClient(hunter.ws);
+  } finally {
+    await server.stop();
+  }
+});
+
+test('revanche só volta à busca quando todos os humanos confirmam', async () => {
   const server = await startTestServer();
   try {
     const hunter = await connectClient(server.url);
@@ -70,7 +165,16 @@ test('revive reabre a partida (zera eliminated/_over) sem precisar reconectar', 
     send(chameleon.ws, { type: 'revive' });
     await new Promise((r) => setTimeout(r, 50));
 
+    assert.equal(server.room._over, true, 'um único jogador não reinicia a sala inteira');
+    assert.equal(c.eliminated, true);
+
+    send(hunter.ws, { type: 'revive' });
+    await new Promise((r) => setTimeout(r, 50));
+
     assert.equal(server.room._over, false);
+    assert.equal(server.room._phase, 'matchmaking');
+    assert.equal(server.room._matchStartAt, 0);
+    assert.ok(server.room._matchmakingDeadline > Date.now());
     assert.equal(c.eliminated, false);
 
     await closeClient(hunter.ws);
@@ -100,7 +204,7 @@ test('revive durante a rodada não ressuscita um Camaleão eliminado', async () 
   }
 });
 
-test('JOIN repetido não recarrega munição nem troca munição infinita', async () => {
+test('JOIN usa regra pública fixa e repetição não recarrega munição', async () => {
   const server = await startTestServer();
   try {
     const hunter = await connectClient(server.url);
@@ -108,15 +212,66 @@ test('JOIN repetido não recarrega munição nem troca munição infinita', asyn
 
     send(hunter.ws, { type: 'join', ammo: 12, infiniteAmmo: false });
     await new Promise((r) => setTimeout(r, 50));
-    assert.equal(c.ammo, 12);
-    assert.equal(c.maxAmmo, 12);
+    assert.equal(c.ammo, 8);
+    assert.equal(c.maxAmmo, 8);
     assert.equal(c.infiniteAmmo, false);
 
     send(hunter.ws, { type: 'join', ammo: 30, infiniteAmmo: true });
     await new Promise((r) => setTimeout(r, 50));
-    assert.equal(c.ammo, 12);
-    assert.equal(c.maxAmmo, 12);
+    assert.equal(c.ammo, 8);
+    assert.equal(c.maxAmmo, 8);
     assert.equal(c.infiniteAmmo, false);
+
+    await closeClient(hunter.ws);
+  } finally {
+    await server.stop();
+  }
+});
+
+test('Caçador que expira durante a busca promove um Camaleão conectado', async () => {
+  const server = await startTestServer();
+  try {
+    const hunter = await connectClient(server.url);
+    const chameleon = await connectClient(server.url);
+    await closeClient(hunter.ws);
+    await new Promise((r) => setTimeout(r, 25));
+
+    const oldHunter = server.room.clients.get(hunter.welcome.id);
+    oldHunter.disconnectedAt = Date.now() - RECONNECT_GRACE_MS - 1;
+    server.room._purgeStale(Date.now());
+
+    const promoted = server.room.clients.get(chameleon.welcome.id);
+    assert.equal(promoted.role, 'hunter');
+    assert.equal(server.room._phase, 'matchmaking');
+    server.room._matchmakingDeadline = Date.now() - 1;
+    server.room._tick();
+    assert.equal(server.room._phase, 'playing');
+
+    await closeClient(chameleon.ws);
+  } finally {
+    await server.stop();
+  }
+});
+
+test('Camaleão eliminado continua eliminado quando a vaga vira IA', async () => {
+  const server = await startTestServer();
+  try {
+    const hunter = await connectClient(server.url);
+    const chameleon = await connectClient(server.url);
+    server.room._matchmakingDeadline = Date.now() - 1;
+    server.room._tick();
+    const originalBots = server.room.bots.size;
+    const state = server.room.clients.get(chameleon.welcome.id);
+    state.eliminated = true;
+
+    await closeClient(chameleon.ws);
+    await new Promise((r) => setTimeout(r, 25));
+    state.disconnectedAt = Date.now() - RECONNECT_GRACE_MS - 1;
+    server.room._purgeStale(Date.now());
+
+    assert.equal(server.room.bots.size, originalBots + 1);
+    const replacement = [...server.room.bots.values()].find((bot) => bot.eliminated);
+    assert.ok(replacement, 'a substituição deve preservar a captura já realizada');
 
     await closeClient(hunter.ws);
   } finally {

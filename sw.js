@@ -14,7 +14,7 @@
 // - Todo o resto (src/*?v=N, assets/, public/models/*.glb, CDN externo):
 //   CACHE-FIRST com atualização em segundo plano — seguro porque a URL muda
 //   quando o conteúdo muda, e cobre o "jogue mais rápido e offline" do menu.
-const CACHE_NAME = 'eom-v1';
+const CACHE_NAME = 'eom-v2';
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();
