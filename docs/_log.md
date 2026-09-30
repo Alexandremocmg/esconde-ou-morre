@@ -471,3 +471,68 @@ navegador, a fila exibiu `1/5`, recebeu quatro IAs após 30s, iniciou em `3:00`,
 Arquivos principais: `server/index.js`, `server/room.js`, `server/test/room.test.mjs`,
 `src/Net.js`, `src/Game.js`, `src/RemotePlayer.js`, `src/net/protocol.js`, `src/main.js`,
 `css/style.css`, `index.html`, `sw.js`, `README.md` e documentação do Online.
+
+---
+
+## 2026-09-30 — Fecha a etapa 1 do Online: rotação do Caçador e validação de velocidade
+
+Contexto: playtest rápido com 5 pessoas já tinha sido feito e funcionou bem; os dois itens que
+o `PLANO_MELHORIAS_JOGO.md` ainda listava como pendentes na etapa 1 foram implementados.
+
+**Rotação do Caçador** (`server/room.js`). Até aqui o papel era fixo pela vida da sala — quem
+entrava primeiro caçava para sempre. Agora cada revanche (`_tryBeginRematch`) chama
+`_rotateHunter`: escolhe o próximo Caçador por justiça (`_pickNextHunter` — menos rodadas como
+Caçador; empate → quem caçou há mais tempo; empate → quem entrou antes), troca papéis, recalcula
+spawns (Caçador no ponto dele, Camaleões no anel sem empilhar), zera munição e reposiciona todo
+mundo, tudo ANTES do `ROUND_RESET` — o cliente lê o próprio papel desse mesmo pacote, então não há
+janela com papéis velhos. Com N humanos, todos caçam antes de alguém repetir; com 1 humano (o
+resto é IA) ele continua Caçador. A promoção por saída do Caçador na busca passou a usar o mesmo
+critério (`_makeHunter`), para não dar a vez a quem já caçou.
+Cliente (`src/Game.js`): `_onRoundReset` aplica o papel novo via `_applyOwnOnlineRole`, que agora
+cobre os dois sentidos. O caminho antigo só sabia PROMOVER; rebaixar deixaria o jogador com câmera
+em 1ª pessoa, lanterna e arma na tela. `_teardownHunterRig` remove lanterna (com `dispose`), arma e
+braço da câmera, reexibe o corpo, volta a `FollowCamera` e repõe o FOV (a `HunterCamera` muda o FOV
+da MESMA câmera pra 80° e a `FollowCamera` não restaura — `DEFAULT_CAMERA_FOV=60`).
+
+**Validação de velocidade** (`room.js:_validateMove`). O servidor só retransmitia a posição. Agora
+limita a TAXA com que ela avança, com limites derivados do `Player.js` real: horizontal 10,5 m/s
+(`TUNE.moveSpeed` = 8,25; o painel de dev vai a 10), subida 8 m/s (pulo 6,2), queda 26 m/s
+(`GRAVITY=22` sem velocidade terminal; a maior queda do mapa chega a ~22). É um crédito em metros
+que recarrega em tempo real, com teto de 0,75 s: tolera pacotes agrupados pela rede, picos de
+latência e os saltos legítimos de ~1 m do encaixe na parede, mas a taxa SUSTENTADA de quem
+trapaceia fica travada no limite — "distância máxima por pacote" deixaria passar ~2× a velocidade
+só pelo tamanho da folga. Acima do limite a posição é ENCURTADA na direção pedida, não recusada:
+nunca congela um jogador honesto (se congelasse, um respawn ou reconexão longa travaria ele pra
+sempre) e a posição que vale para tiro e para os outros jogadores é a encurtada. Teleportes do
+próprio servidor (`_teleport`: revanche, promoção) abrem 1 s de graça que descarta, em silêncio e
+sem punir, as entradas em trânsito com a posição antiga; a reconexão (`_resync`) ressincroniza uma
+vez com crédito proporcional ao tempo real fora (derrubar a conexão de propósito não rende mais
+que correr esse tempo todo). Violações ficam em `speedViolations` e no log.
+Não entrou: aviso de correção ao cliente (ele segue se movendo localmente; só os outros o veem
+"atrasado"), nem re-simulação de colisão/gravidade — atravessar parede na velocidade normal e subir
+devagar (voar) continuam passando. Débito 1 do multiplayer reescrito em `PLANO_MULTIPLAYER.md` §5.
+
+**Verificação.** Suíte do servidor 25 → 38 testes (`test/rotation.test.mjs`, 5; `test/movement.test.mjs`,
+8), todos passando, e sem flakiness. Testes checados por MUTAÇÃO: com a rotação desligada 4 dos 5
+de rotação quebram (o que passa é o de "um humano só", que deve passar sempre); com a validação
+desligada 6 dos 8 de movimento quebram (os 2 que passam são os de movimento LEGÍTIMO — corrida
+máxima e pacotes agrupados — que existem pra provar que ela não gera falso positivo). No navegador,
+2 abas contra o servidor real (com um gancho de teste só no scratchpad, não versionado, para
+encerrar a rodada sem esperar 3 min): 3 rodadas seguidas com papéis trocando certo nas duas pontas
+(servidor e cliente), rig do Caçador montado com exatamente 4 objetos na câmera ao voltar a caçar
+(sem duplicar), aba rebaixada limpa (`FollowCamera`, FOV 60, 0 objetos na câmera, corpo visível),
+0 violações de velocidade em jogo normal (incluindo os dois teleportes do servidor), e um
+"trapaceiro" simulado pelo console (+40 m no cliente) limitado pelo servidor a ~9,8 m em 250 ms
+com 4 violações contadas. Sem erros de console. Limitação da verificação: o harness roda o
+navegador com FPS baixo (e `dt` do jogo limitado a 0,05 s), então a corrida a 8,25 m/s sustentada
+NÃO foi exercitada com o cliente real — isso ficou a cargo dos testes unitários com relógio
+controlado; vale um playtest em rede real.
+Observado e NÃO corrigido (já existia): o spawn do Camaleão no mapa 1 (`room.js`, base (-3, 8) +
+raio 2,2) cai na base da escadaria; a física do cliente empurra o jogador de z=8 para z=10,9
+logo no início e a câmera encurta ali. Cabe nos 0,75 s de crédito (2,9 m), então a validação não
+reage, mas o ponto de spawn merece ser revisto.
+
+Arquivos: `server/room.js`, `server/test/rotation.test.mjs` (novo), `server/test/movement.test.mjs`
+(novo), `src/Game.js`, `src/main.js` (`Game.js?v=27`), `index.html` (`main.js?v=16`, texto do lobby),
+`README.md`, `docs/PLANO_MELHORIAS_JOGO.md`, `docs/PLANO_MULTIPLAYER.md`, `docs/PLANO_LOBBY_MULTIPLAYER.md`,
+`docs/PLANO_LOBBY_COUNTDOWN.md`, `docs/PLANO_CONTAS.md`.

@@ -41,6 +41,10 @@ const HUNTER_TARGET_COUNT = 6;
 // Mesmos números do SpotLight de _addHunterFlashlight() — o cone de "avistamento"
 // que a IA dos alvos usa pra saber se o Caçador está olhando pra eles (Plano 3,
 // docs/MECANICA_CACADOR_VISAO.md §3) é o mesmo cone da lanterna, não o de mira.
+// FOV da câmera de 3ª pessoa. HunterCamera troca o FOV da MESMA câmera pra 80° e
+// FollowCamera não o restaura — então quem volta de Caçador pra Camaleão na
+// rotação do Online (_teardownHunterRig) precisa repor este valor na mão.
+const DEFAULT_CAMERA_FOV = 60;
 const HUNTER_FLASHLIGHT_RANGE = 14;
 const HUNTER_FLASHLIGHT_ANGLE_DEG = 28;
 
@@ -109,7 +113,7 @@ export class Game {
     this.scene.fog = new THREE.Fog(0xe3e9ee, 40, 120);
 
     // Câmera (proporção landscape de celular; ajustada no resize)
-    this.camera = new THREE.PerspectiveCamera(60, 16 / 9, 0.1, 200);
+    this.camera = new THREE.PerspectiveCamera(DEFAULT_CAMERA_FOV, 16 / 9, 0.1, 200);
     // Filha da cena: inofensivo (câmera não renderiza como objeto) e habilita pendurar
     // lanterna/arma-viewmodel do Caçador como filhos dela (ver HunterCamera/_addHunterFlashlight).
     this.scene.add(this.camera);
@@ -585,6 +589,11 @@ export class Game {
     this._onlineMatchmakingDeadline = msg.matchmakingDeadline || 0;
     this._onlineMatchStartAt = 0;
     for (const [id] of this.remotePlayers) this._removeRemotePlayer(id);
+    // O Caçador rotaciona a cada revanche (server/room.js:_rotateHunter): o papel
+    // novo vem neste mesmo pacote. Aplica ANTES de restartInPlace, que reseta a
+    // câmera — senão ele resetaria a câmera do papel velho.
+    const self = (msg.players || []).find((p) => p.id === this.net.id);
+    if (self && self.role) this._applyOwnOnlineRole(self.role);
     this.restartInPlace(false, false, true);
     for (const p of msg.players || []) {
       if (p.id === this.net.id) this.player.position.set(p.pos.x, p.pos.y, p.pos.z);
@@ -603,17 +612,58 @@ export class Game {
       this._spawnRemotePlayer(p);
       return;
     }
-    this.onlineRole = p.role;
-    this.net.role = p.role;
-    this.player.isHunter = p.role === ROLE.HUNTER;
+    this._applyOwnOnlineRole(p.role);
+    if (msg.spawn) this.player.position.set(msg.spawn.x, msg.spawn.y, msg.spawn.z);
+    this._updateOnlineHint();
+  }
+
+  // Troca o PRÓPRIO papel no Online (promoção na busca, rotação entre rodadas,
+  // correção depois de reconectar). Nos dois sentidos: a rotação é a primeira coisa
+  // que rebaixa um Caçador — antes só existia promoção, então quem voltava a
+  // Camaleão ficaria com a câmera em 1ª pessoa, a lanterna e a arma na tela.
+  _applyOwnOnlineRole(role) {
+    if (role === this.onlineRole) return;
+    this.onlineRole = role;
+    if (this.net) this.net.role = role;
+    this.player.isHunter = role === ROLE.HUNTER;
     document.body.classList.toggle('online-hunter', this.player.isHunter);
     this._updateRoleHudText();
     if (this.player.isHunter) {
       this.follow = new HunterCamera(this.camera);
       this._addHunterFlashlight();
+    } else {
+      this._teardownHunterRig();
     }
-    if (msg.spawn) this.player.position.set(msg.spawn.x, msg.spawn.y, msg.spawn.z);
-    this._updateOnlineHint();
+  }
+
+  // Desfaz tudo que o papel Caçador pendurou na câmera/cena: lanterna, arma e braço
+  // em 1ª pessoa, corpo escondido, câmera e FOV. `_hunterViewAttached` volta a false
+  // pra que uma nova promoção remonte o rig (_updateHunterFPSRig é lazy).
+  _teardownHunterRig() {
+    const light = this._hunterFlashlight;
+    if (light) {
+      this.camera.remove(light.target);
+      this.camera.remove(light);
+      light.dispose();
+      this._hunterFlashlight = null;
+    }
+    if (this._hunterViewWeapon) {
+      this.camera.remove(this._hunterViewWeapon); // geometria vem do protótipo compartilhado — não dá dispose
+      this._hunterViewWeapon = null;
+    }
+    if (this._hunterViewArm) {
+      this.camera.remove(this._hunterViewArm);
+      // Geometrias do braço são nossas (capsuleBetween); o material é o do jogador — fica.
+      this._hunterViewArm.traverse((o) => { if (o.geometry) o.geometry.dispose(); });
+      this._hunterViewArm = null;
+    }
+    this._hunterMuzzle = null;
+    this._hunterViewAttached = false;
+    if (this.player.animInstance) this.player.animInstance.group.visible = true;
+
+    this.follow = new FollowCamera(this.camera);
+    this.camera.fov = DEFAULT_CAMERA_FOV;
+    this.camera.updateProjectionMatrix();
   }
 
   _setRematchButtons(waiting) {
@@ -1208,6 +1258,7 @@ export class Game {
     vm.group.position.set(0.30, -0.28, -0.62);
     vm.group.rotation.set(0, Math.PI, 0); // cano apontando pra frente da câmera (-Z)
     this.camera.add(vm.group);
+    this._hunterViewWeapon = vm.group; // guardado pra _teardownHunterRig poder tirar da câmera
     this._hunterMuzzle = vm.muzzle;
 
     this._buildHunterViewArm();

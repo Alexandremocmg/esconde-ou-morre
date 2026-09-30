@@ -53,8 +53,8 @@ navegador (WebSocket nativo)                    Node + ws (server/)
   operando sobre `{x,y,z}` simples. `server/room.js` e `Game.js` importam o mesmo
   arquivo. `src/net/protocol.js` guarda as constantes de gameplay compartilhadas
   (`JET_RANGE`, ângulo do cone, cooldowns) pelo mesmo motivo.
-- **Autoridade do servidor nesta v1:** sala, papel, spawn, tiro e fim de partida. **Não**
-  movimento — ver Débito 1.
+- **Autoridade do servidor nesta v1:** sala, papel, spawn, tiro e fim de partida. Movimento
+  só com teto de velocidade, sem re-simulação — ver Débito 1.
 
 ## 3. O que existe hoje
 
@@ -209,8 +209,17 @@ jogador ao início nem ressuscita um Camaleão capturado.
 
 ## 5. Débito registrado
 
-**Movimento é forjável na v1** — o cliente simula a si mesmo e o servidor só retransmite
-a posição recebida. Caminho para fechar isso: extrair de `Player.js` um núcleo de
+**Movimento: só tem teto de velocidade** — o cliente simula a si mesmo e o servidor não
+re-simula nada. Desde 2026-09 `room.js:_validateMove` limita a *taxa* com que a posição
+reportada pode avançar (horizontal 10,5 m/s, subida 8 m/s, queda 26 m/s, sobre um crédito
+que recarrega em tempo real e acumula no máximo 0,75 s): trapacear deixa de render
+velocidade ou teleporte, porque a posição que vale pra tiro e pros outros jogadores é a
+encurtada, e o excesso é contado em `speedViolations` (log). O que continua forjável:
+atravessar parede/chão na velocidade normal, subir devagar (voar), e a rede não avisa o
+cliente da correção — ele segue se movendo localmente e só os outros o veem "atrasado".
+Teleportes legítimos do próprio servidor (revanche, promoção) abrem 1 s de graça que
+descarta entradas em trânsito, e a reconexão ressincroniza uma vez, proporcional ao tempo
+fora (sem teleporte grátis). Caminho para fechar o resto: extrair de `Player.js` um núcleo de
 simulação (posição, colisão AABB, gravidade, latch) sem `three`/DOM — hoje o construtor
 cria `canvas` (`Player.js:90`), lê `sessionStorage` e escreve no DOM
 (`_saveColorHistory`) — para o servidor poder re-simular e comparar contra o que o
@@ -257,7 +266,8 @@ python3 dev_server.py                   # cliente, porta 8000 (noutro terminal)
 ```
 
 Abra `http://localhost:8000` em até 5 abas, escolha o modo **Online** em todas, clique
-**JOGAR**. O servidor atribui Caçador ao 1º que entrar, Camaleão aos próximos (até 4) —
+**JOGAR**. O servidor atribui Caçador ao 1º que entrar, Camaleão aos próximos (até 4; a
+cada revanche o papel de Caçador passa adiante, ver etapa 1 do PLANO_MELHORIAS_JOGO) —
 sala de 1 Caçador + N Camaleões desde `docs/PLANO_LOBBY_MULTIPLAYER.md`, que evoluiu a
 sala fixa de 2 desta v1 original (tabela §1 abaixo reflete a avaliação da ÉPOCA, antes
 dessa evolução).

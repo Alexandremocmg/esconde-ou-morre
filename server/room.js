@@ -1,9 +1,11 @@
 // Sala autoritativa — fatia vertical v1 (docs/PLANO_MULTIPLAYER.md).
 //
-// Autoridade do servidor nesta fase: PAPEL, FASE/TIMER, TIRO e ELIMINAÇÃO. Posição é
-// enviada pelo cliente e apenas retransmitida (Débito 1 do plano: movimento é
-// forjável até Player.js ganhar um núcleo de simulação sem apresentação/DOM que o
-// servidor também possa rodar). Isso é uma escolha registrada, não um descuido.
+// Autoridade do servidor nesta fase: PAPEL (inclusive a rotação do Caçador a cada
+// revanche), FASE/TIMER, TIRO e ELIMINAÇÃO. Posição é enviada pelo cliente: o servidor
+// limita VELOCIDADE e TELEPORTE (_validateMove), mas não simula colisão nem gravidade —
+// atravessar parede na velocidade normal ainda passa (Débito 1 do plano: fecha de vez
+// quando Player.js ganhar um núcleo de simulação sem apresentação/DOM que o servidor
+// também possa rodar). Isso é uma escolha registrada, não um descuido.
 //
 // Importa src/net/protocol.js e src/net/hittest.js *verbatim* — os mesmos arquivos
 // que o cliente usa. É o que garante que "o servidor decide o acerto" e "o cliente
@@ -44,6 +46,30 @@ const ROOM_CAPACITY = 1 + MAX_CHAMELEONS;
 // JSON.parse + trabalho de jogo em cada mensagem (o `maxPayload` do WebSocketServer
 // em index.js limita o TAMANHO de cada mensagem, não a FREQUÊNCIA).
 const MAX_MSGS_PER_SEC = 40;
+
+// Validação de movimento (_validateMove). O servidor ainda não simula colisão, mas
+// precisa impedir que um cliente adulterado ande mais rápido que o jogo permite ou
+// "teletransporte" (chegar ao Camaleão, ou sair de um tiro). Limites derivados do
+// Player.js real, com folga — um falso positivo aqui é PIOR que um trapaceiro
+// raro, porque corrige a posição de alguém honesto:
+//  • horizontal: TUNE.moveSpeed (Tuning.js) vale 8.25 por padrão e o painel de dev
+//    (?tune=1) vai até 10; 10.5 cobre isso com 5% de sobra. Agachar só reduz.
+//  • subida: pulo 6.2 m/s, pulo da parede 5.5, escalada 5.5 (Player.js) → 8.
+//  • queda: GRAVITY=22 sem velocidade terminal; a maior queda do mapa (ático→térreo
+//    do Chameleon Manor, ~11m) chega a ~22 m/s → 26.
+// O limite é um "crédito" em metros que recarrega com o TEMPO REAL e tem teto de
+// MOVE_BURST_S: tolera pacotes agrupados pela rede, picos de latência e os saltos
+// legítimos de 1m do encaixe na parede (toggleLatch), mas a taxa SUSTENTADA de quem
+// trapaceia fica travada no limite — ao contrário de "distância máxima por pacote",
+// que deixaria passar ~2x a velocidade só pelo tamanho da folga.
+const MAX_MOVE_SPEED_XZ = 10.5;
+const MAX_RISE_SPEED = 8;
+const MAX_FALL_SPEED = 26;
+const MOVE_BURST_S = 0.75;
+// Depois que o SERVIDOR move alguém (revanche, promoção), entradas que já estavam
+// em trânsito com a posição antiga chegam "longe demais". Nessa janela elas são
+// descartadas em silêncio, sem corrigir nem contar como violação.
+const TELEPORT_GRACE_MS = 1000;
 
 // Pontos de spawn do Caçador copiados de Level.js (this.spawn.set(...) de cada
 // layout elegível pro Online — protocol.js:ONLINE_LAYOUTS). `y: GROUND_Y`, não 0 —
@@ -178,7 +204,7 @@ export class Room {
   // um que veja o id (broadcast em todo SNAPSHOT) sequestre a sessão de outro
   // jogador — não é segurança de verdade (sem TLS mútuo/assinatura), só o
   // suficiente pra não ser trivial; mesmo nível de confiança que o resto da v1
-  // (Débito 1: movimento também é só confiado, não validado).
+  // (Débito 1: movimento só tem teto de velocidade, não é re-simulado).
   _reattach(ws, { id, token }) {
     const client = this.clients.get(id);
     if (!client || client.connected || client.token !== token) return false;
@@ -186,6 +212,12 @@ export class Room {
     client.ws = ws;
     client.connected = true;
     client.lastInputAt = Date.now();
+    // O cliente continua se auto-simulando durante a queda (Game.js:_connectOnline),
+    // então o 1º input depois de reconectar pode vir de longe. O crédito de
+    // movimento dessa 1ª entrada vale o tempo REAL da queda (sem o teto de rajada,
+    // que só volta depois dela): dá pra ressincronizar sem teletransporte grátis —
+    // derrubar a conexão de propósito não rende mais que correr esse tempo todo.
+    client._resync = true;
 
     this._send(ws, {
       type: S2C.WELCOME,
@@ -260,6 +292,18 @@ export class Room {
       nextFireAt: 0,
       lastInputAt: Date.now(),
       disconnectedAt: 0,
+      // Rotação do Caçador (_pickNextHunter): quantas rodadas já caçou e em qual foi a
+      // última — quem entra como Caçador já conta a rodada atual.
+      hunterRounds: role === ROLE.HUNTER ? 1 : 0,
+      lastHunterRound: role === ROLE.HUNTER ? this._roundId : 0,
+      // Validação de movimento (_validateMove) — créditos começam cheios.
+      _moveAt: Date.now(),
+      _creditXZ: MAX_MOVE_SPEED_XZ * MOVE_BURST_S,
+      _creditUp: MAX_RISE_SPEED * MOVE_BURST_S,
+      _creditDown: MAX_FALL_SPEED * MOVE_BURST_S,
+      _teleportGraceUntil: 0,
+      _resync: false,
+      speedViolations: 0,
       // Rate limit (_onMessage) — janela deslizante de 1s, reiniciada sozinha na
       // primeira mensagem de cada janela nova (ver _onMessage). Sobrevive a
       // _reattach de propósito (o client object é reaproveitado, não recriado).
@@ -477,15 +521,11 @@ export class Room {
       } else if (this._matchStartAt && !this._over && c.role === ROLE.HUNTER) {
         this._endMatch(ROLE.CHAMELEON, 'Caçador desconectou');
       } else if ((this._phase === 'matchmaking' || this._phase === 'results') && c.role === ROLE.HUNTER) {
-        const promoted = [...this.clients.values()].find((p) => p.connected && p.role === ROLE.CHAMELEON);
+        const promoted = this._pickNextHunter(
+          [...this.clients.values()].filter((p) => p.connected && p.role === ROLE.CHAMELEON)
+        );
         if (promoted) {
-          promoted.role = ROLE.HUNTER;
-          promoted.spawn = HUNTER_SPAWN_BY_LAYOUT[this._layout] || HUNTER_SPAWN_BY_LAYOUT[1];
-          promoted.pos = { ...promoted.spawn };
-          promoted.ammo = HUNTER_AMMO_DEFAULT;
-          promoted.maxAmmo = HUNTER_AMMO_DEFAULT;
-          promoted.infiniteAmmo = false;
-          promoted.joinConfigured = true;
+          this._makeHunter(promoted, now);
           this._broadcast({ type: S2C.ROLE_CHANGED, player: this._publicState(promoted), spawn: promoted.spawn });
         }
       }
@@ -577,11 +617,13 @@ export class Room {
     this._matchStartAt = 0;
     this._matchmakingDeadline = now + MATCHMAKING_WAIT_MS;
     this._readyIds.clear();
+    // Papéis, spawns, munição e posição de TODOS mudam aqui, de uma vez, antes do
+    // ROUND_RESET — o cliente lê o próprio papel desse mesmo pacote (Game.js:
+    // _onRoundReset), então não existe janela em que alguém veja papéis velhos.
+    this._rotateHunter(humans, now);
     for (const c of humans) {
       c.eliminated = false;
-      c.ammo = c.maxAmmo;
       c.nextFireAt = 0;
-      c.pos = { ...c.spawn };
       c.state = 'grounded';
       c.crouched = c.prone = c.statue = c.moving = false;
     }
@@ -594,14 +636,124 @@ export class Room {
     if (humans.length === ROOM_CAPACITY) this._startMatch(now);
   }
 
+  // Quem caça a PRÓXIMA rodada: justiça antes de ordem de chegada — menos rodadas
+  // como Caçador primeiro; empate → quem caçou há mais tempo; empate → quem entrou
+  // antes na sala. Assim com N pessoas todo mundo caça uma vez antes de alguém
+  // repetir, e uma promoção por saída do Caçador não dá a vez a quem já caçou.
+  _pickNextHunter(candidates) {
+    const order = new Map([...this.clients.keys()].map((id, i) => [id, i]));
+    return [...candidates].sort((a, b) =>
+      a.hunterRounds - b.hunterRounds ||
+      a.lastHunterRound - b.lastHunterRound ||
+      order.get(a.id) - order.get(b.id)
+    )[0] || null;
+  }
+
+  // Move alguém por decisão do SERVIDOR (spawn de revanche, promoção). Zera o
+  // crédito de movimento e abre a janela de graça contra entradas em trânsito com
+  // a posição antiga (ver TELEPORT_GRACE_MS).
+  _teleport(client, pos, now) {
+    client.pos = { ...pos };
+    client._moveAt = now;
+    client._creditXZ = MAX_MOVE_SPEED_XZ * MOVE_BURST_S;
+    client._creditUp = MAX_RISE_SPEED * MOVE_BURST_S;
+    client._creditDown = MAX_FALL_SPEED * MOVE_BURST_S;
+    client._teleportGraceUntil = now + TELEPORT_GRACE_MS;
+    client._resync = false;
+  }
+
+  // Dá o papel de Caçador: spawn do layout, regra pública de munição (a mesma de
+  // _handleJoin — quem vira Caçador depois de entrar nunca mandou um JOIN válido).
+  _makeHunter(client, now) {
+    client.role = ROLE.HUNTER;
+    client.spawn = HUNTER_SPAWN_BY_LAYOUT[this._layout] || HUNTER_SPAWN_BY_LAYOUT[1];
+    client.maxAmmo = HUNTER_AMMO_DEFAULT;
+    client.ammo = client.maxAmmo;
+    client.infiniteAmmo = false;
+    client.joinConfigured = true;
+    client.hunterRounds++;
+    client.lastHunterRound = this._roundId;
+    this._teleport(client, client.spawn, now);
+  }
+
+  // Rotação entre rodadas: um humano caça, os outros viram Camaleões. Com um só
+  // humano (o resto é IA) ele continua Caçador. Chamado DEPOIS de incrementar
+  // `_roundId`, pra `lastHunterRound` registrar a rodada que vai começar.
+  _rotateHunter(humans, now) {
+    const next = this._pickNextHunter(humans.filter((c) => c.connected));
+    let chameleonIndex = 0;
+    for (const c of humans) {
+      if (c === next) {
+        this._makeHunter(c, now);
+        continue;
+      }
+      c.role = ROLE.CHAMELEON;
+      c.spawn = _chameleonSpawn(this._layout, chameleonIndex++);
+      c.maxAmmo = HUNTER_AMMO_DEFAULT;
+      c.ammo = c.maxAmmo;
+      c.infiniteAmmo = false;
+      c.joinConfigured = true;
+      this._teleport(c, c.spawn, now);
+    }
+  }
+
+  // Aceita a posição pedida pelo cliente só até onde o tempo real permite andar.
+  // Devolve a posição a guardar, ou null pra descartar a entrada (graça pós-teleporte).
+  // Acima do limite a posição é ENCURTADA na direção pedida, não recusada: o servidor
+  // nunca congela um jogador honesto (um respawn ou uma reconexão longa se
+  // ressincroniza andando na velocidade máxima), mas a taxa sustentada de quem
+  // trapaceia fica travada no limite — e é essa posição que vale pra tiro e para
+  // os outros jogadores verem.
+  _validateMove(client, target, now) {
+    const prev = client.pos;
+    const dt = Math.max(0, (now - client._moveAt) / 1000);
+    client._moveAt = now;
+    const resync = client._resync;
+    client._resync = false;
+    const refill = (credit, speed) => {
+      const total = credit + speed * dt;
+      return resync ? total : Math.min(total, speed * MOVE_BURST_S);
+    };
+    client._creditXZ = refill(client._creditXZ, MAX_MOVE_SPEED_XZ);
+    client._creditUp = refill(client._creditUp, MAX_RISE_SPEED);
+    client._creditDown = refill(client._creditDown, MAX_FALL_SPEED);
+
+    const dx = target.x - prev.x;
+    const dz = target.z - prev.z;
+    const dy = target.y - prev.y;
+    const distXZ = Math.hypot(dx, dz);
+    const yCredit = dy >= 0 ? client._creditUp : client._creditDown;
+    const overXZ = distXZ > client._creditXZ;
+    const overY = Math.abs(dy) > yCredit;
+
+    if ((overXZ || overY) && now < client._teleportGraceUntil) return null;
+
+    const fx = overXZ ? client._creditXZ / distXZ : 1;
+    const stepY = overY ? Math.sign(dy) * yCredit : dy;
+    client._creditXZ -= distXZ * fx;
+    if (dy >= 0) client._creditUp -= Math.abs(stepY);
+    else client._creditDown -= Math.abs(stepY);
+
+    if (overXZ || overY) {
+      client.speedViolations++;
+      if (client.speedViolations === 1 || client.speedViolations % 100 === 0) {
+        console.log(`[room] ${client.id} acima do limite de movimento (${client.speedViolations}x) — posição corrigida`);
+      }
+    }
+    return { x: prev.x + dx * fx, y: prev.y + stepY, z: prev.z + dz * fx };
+  }
+
   _applyInput(client, msg) {
-    // O servidor ainda não simula a colisão completa, mas rejeita valores que não
-    // podem representar um jogador no mapa. Isso impede teleporte para coordenadas
-    // absurdas e mantém a autoridade futura compatível com o formato atual.
+    // Valores que não podem representar um jogador no mapa (não finitos, ou
+    // absurdamente longe) são descartados antes de qualquer outra coisa.
     const p = msg.p;
     if (!Array.isArray(p) || p.length !== 3 || p.some((n) => !Number.isFinite(n))) return;
     if (p.some((n) => Math.abs(n) > 200)) return;
-    client.pos = { x: p[0], y: p[1], z: p[2] };
+    // Velocidade/teleporte: ver _validateMove. `null` = entrada obsoleta pós-teleporte
+    // do servidor, descartada por inteiro (inclusive yaw/estado — é de antes do reset).
+    const accepted = this._validateMove(client, { x: p[0], y: p[1], z: p[2] }, Date.now());
+    if (!accepted) return;
+    client.pos = accepted;
     if (Number.isFinite(msg.y)) client.yaw = msg.y;
     client.state = msg.s === 'latched' ? 'latched' : 'grounded';
     client.crouched = !!msg.c;

@@ -12,8 +12,9 @@ começou e o relógio de 180 segundos permanece parado.
 - Com 5 jogadores reais, a partida começa imediatamente e nenhuma IA é criada.
 - Ao fim dos 30 segundos, o servidor completa somente as vagas restantes com
   Camaleões de IA.
-- O primeiro jogador real continua sendo o Caçador; humanos seguintes e IAs são
-  Camaleões.
+- O primeiro jogador real começa como Caçador; humanos seguintes e IAs são
+  Camaleões. A partir da revanche o papel rotaciona entre os humanos
+  (`server/room.js:_rotateHunter`).
 - Depois do início, a composição fica fechada. Reconexões retomam a mesma vaga, mas
   novas entradas não substituem uma IA durante a rodada.
 - Se um Camaleão humano não voltar dentro da janela de reconexão, uma IA assume sua

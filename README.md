@@ -73,7 +73,8 @@ Abra `http://localhost:8000` e clique em **JOGAR**.
 
 > 🌐 **Modo Online**: além do `dev_server.py`, precisa do servidor autoritativo rodando
 > (`cd server && npm install && npm start`, porta 8787). Até 5 abas escolhendo "Online"
-> entram na mesma sala (1º = Caçador, os próximos até 4 = Camaleão) — detalhes em
+> entram na mesma sala (1º = Caçador, os próximos até 4 = Camaleão; o papel de Caçador
+> passa adiante a cada revanche) — detalhes em
 > `docs/PLANO_MULTIPLAYER.md` e `docs/PLANO_LOBBY_MULTIPLAYER.md`.
 
 > ⚠️ Evite `python -m http.server`: sem os headers no-store, o navegador (e um eventual
@@ -117,7 +118,7 @@ Fora do modo Online, qualquer host de arquivos estáticos serve a pasta como est
   - **Munição Contada (`💧 8/8` Padrão):** O Caçador inicia com 8 jatos de água. No solo, o menu permite configurar de 1 a 30 e ativar munição infinita; no Online, o servidor fixa 8 para todos. Cada disparo, acertando ou não, perde 1 jato. A configuração padrão enfrenta 6 alvos no solo com dois erros permitidos; se os jatos chegarem a 0 e restarem Camaleões vivos, dispara **Vitória dos Camaleões**.
   - **Remoção de Tinta (`washPaint`):** O jato de água desbota a tinta do jogador de volta ao branco original em ~1.5s de contato, forçando o movimento e dando uma janela de fuga/esquiva.
   - **Placar com Atraso de 30s (Anti-Cheat):** O tempo camuflado exibido no HUD do Caçador possui um atraso intencional de 30 segundos, impedindo a localização de esconderijos por leitura de pontos em tempo real.
-  - **Escolha do Caçador:** sem sorteio nem zona no mapa — no modo Online é simplesmente o primeiro a entrar na sala; os próximos, até 4, viram Camaleão (ver `docs/MECANICA_CACADOR.md` e `docs/PLANO_LOBBY_MULTIPLAYER.md`).
+  - **Escolha do Caçador:** sem sorteio nem zona no mapa — no modo Online o primeiro a entrar na sala começa como Caçador e os próximos, até 4, viram Camaleão; a cada revanche o papel passa ao humano que caçou há menos vezes, então todos caçam antes de alguém repetir (ver `docs/MECANICA_CACADOR.md` e `docs/PLANO_LOBBY_MULTIPLAYER.md`).
   - **Busca Online com IA:** a sala espera jogadores reais por 30 segundos. Se chegar a 5/5, começa imediatamente; caso contrário, o servidor preenche apenas as vagas restantes com Camaleões de IA, sem descontar esse tempo da caçada. Nas revanches, todos confirmam antes de uma nova busca, permitindo trocar IAs por pessoas entre rodadas.
   - **Camaleões-alvo com IA própria (`ChameleonTarget.js`):** deixaram de ser bonecos parados — vagueiam pela própria rota de patrulha (reaproveitando a rede de waypoints do `Seeker`), fogem ativamente ao entrar no cone da lanterna do Caçador (com histerese, sem flicker de estado) e recolorem periodicamente sampleando a cor real de superfícies próximas (`level.colorables`), tudo escalando com o estágio no mesmo padrão numérico do `Seeker`. Locomoção (bigodes de desvio + colisão-deslizante + anti-trava) é adaptada do `Seeker.js` já validado em produção.
 - **Modo Caçador Jogável — Visão/Câmera, Arma e Scanner** (`docs/MECANICA_CACADOR_VISAO.md`):

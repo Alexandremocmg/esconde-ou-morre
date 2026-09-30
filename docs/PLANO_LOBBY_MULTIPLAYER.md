@@ -113,6 +113,8 @@ com Camaleões de IA e inicia os 180 segundos sem descontar o tempo de busca. De
 - Débito 1 (`PLANO_MULTIPLAYER.md` §5) continua igual: movimento não é validado no
   servidor. Com mais jogadores na sala, a superfície pra um cliente desonesto forjar
   posição cresce proporcionalmente, mas a mitigação (ou falta dela) não muda nesta fase.
+  *(Atualização 2026-09: o servidor passou a limitar velocidade e teleporte —
+  `_validateMove`; colisão continua sem validação. Detalhes no §5 do PLANO_MULTIPLAYER.)*
 - Interest Management continua fora de escopo: todo mundo recebe a posição de todo mundo
   a cada tick, camuflado ou não — com N Camaleões isso vira um Scanner "de graça" via
   DevTools pra quem quiser trapacear. Registrado, não resolvido aqui (mesma posição do

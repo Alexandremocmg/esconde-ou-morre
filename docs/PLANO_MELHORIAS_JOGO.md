@@ -4,10 +4,14 @@ Data: 10/09/2026. Execução iniciada em 11/09/2026.
 
 ## Estado da execução
 
-- **Etapa 1 — em grande parte concluída:** repetição de reconexão, restauração do
-  estado, promoção de Caçador na busca, preservação de captura, regras públicas,
-  fases/rodadas e revanche por prontidão foram implementadas. Rotação do papel entre
-  rodadas e validação mais rígida de velocidade continuam pendentes.
+- **Etapa 1 — concluída no que o código pode entregar:** repetição de reconexão,
+  restauração do estado, promoção de Caçador na busca, preservação de captura, regras
+  públicas, fases/rodadas e revanche por prontidão foram implementadas, e em 2026-09-30
+  entraram a **rotação do Caçador entre rodadas** (`room.js:_rotateHunter`, critério de
+  justiça, cliente trata promoção *e* rebaixamento) e o **limite de velocidade/teleporte**
+  no servidor (`room.js:_validateMove`). Seguem em aberto, por dependerem de medição:
+  ensaio de carga, instalação com cache anterior e playtest com sessões simultâneas
+  maiores; e, fora desta etapa, a re-simulação de colisão (Débito 1 do multiplayer).
 - **Etapa 2 — primeira versão concluída no Online:** IAs escolhem rotas diretas sem
   obstáculos, buscam pontos fora da visão, se escondem e fogem. A expansão para
   navegação vertical e paridade completa com superfícies reais continua pendente.

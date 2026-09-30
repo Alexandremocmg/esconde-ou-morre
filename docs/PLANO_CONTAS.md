@@ -66,8 +66,8 @@ se algum dia valer a pena o escopo acima). Um jogador só pode mentir sobre o
 **PRÓPRIO** resultado — não dá pra creditar/incriminar a conta de outra pessoa sem
 roubar a sessão dela, então o risco novo introduzido é zero além do que qualquer
 stat client-reported já teria. Mesmo espírito honesto do "Débito registrado" que
-`docs/PLANO_MULTIPLAYER.md` já documenta pra outras lacunas (ex.: "Movimento é
-forjável na v1").
+`docs/PLANO_MULTIPLAYER.md` já documenta pra outras lacunas (ex.: "Movimento: só tem
+teto de velocidade").
 
 `Game.js._reportMatchResult(won)` é o único ponto que chama `reportMatchResult()` —
 roda dentro de `_gameOver()`/`_win()` (os dois únicos chokepoints de fim de partida,
