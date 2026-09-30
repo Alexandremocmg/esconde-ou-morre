@@ -453,11 +453,14 @@ export class Game {
       // socket (room.js:_handleJoin ignora pra quem vira CHAMELEON) — mesma config
       // que o menu já lê pro Caçador solo, agora também autoritativa no online.
       const welcome = await this.net.connect({ ammo: this.maxWaterAmmo, infiniteAmmo: this.infiniteAmmo });
-      this._onlineConnected = true;
       this.onlineRole = welcome.role;
       if (Number.isFinite(welcome.layout) && welcome.layout !== this._onlineLayout) {
         // A sala é autoritativa. Guardamos o layout e recriamos o cliente para
         // que Level, colisão, spawns e oclusores nasçam todos no mapa correto.
+        // `_onlineConnected` fica FALSE até aqui de propósito: location.reload() só
+        // descarrega a página de forma assíncrona, e nesses frames o _tick mandaria
+        // INPUT com a posição do mapa ERRADO (server/room.js:_validateMove contava
+        // isso como violação de velocidade de um jogador honesto).
         sessionStorage.setItem('eom-online-layout', String(welcome.layout));
         location.reload();
         return;
@@ -477,6 +480,8 @@ export class Game {
       this.player.isHunter = welcome.role === ROLE.HUNTER;
       this._updateRoleHudText();
       this.player.position.set(welcome.spawn.x, this.player.position.y, welcome.spawn.z);
+      // Só agora o INPUT pode começar: mapa confirmado e jogador já no spawn da sala.
+      this._onlineConnected = true;
 
       // Chrome de UI específico do papel Caçador (botão de tiro, munição, Scanner) —
       // mesmas classes CSS que o modo Caçador single-player usa.

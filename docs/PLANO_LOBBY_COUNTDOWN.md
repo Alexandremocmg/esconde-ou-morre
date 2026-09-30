@@ -47,12 +47,16 @@ número da rodada para recuperar corretamente uma reconexão ou revanche.
 
 ## Comportamento da IA
 
-Os Camaleões artificiais escolhem destinos que podem alcançar sem cruzar os obstáculos
-conhecidos pelo servidor. Eles procuram pontos fora da visão do Caçador, param e copiam
-uma cor compatível ao se esconder e escolhem outra rota quando são vistos. A etiqueta
-flutuante foi retirada porque revelava o esconderijo; `isBot` continua disponível para
-listas e resultados. O servidor inclui as IAs na validação de tiro, portanto todos os
-clientes observam o mesmo resultado.
+Os Camaleões artificiais escolhem um esconderijo **real** do mapa (lugar onde o jogo
+deixa grudar, com a cor que o jogo mede ali), caminham até ele contornando paredes,
+móveis e escadas, grudam e copiam a cor da superfície. Só enxergam o Caçador dentro do
+alcance, do campo de visão e sem parede no meio (ou o ouvem bem de perto), lembram onde
+o viram por alguns segundos, reagem com atraso e fogem para outro abrigo longe e, se
+possível, fora da vista dele. Detalhes, limites e como os dados são gerados em
+[`PLANO_IA_ESCONDERIJOS.md`](PLANO_IA_ESCONDERIJOS.md). A etiqueta flutuante foi
+retirada porque revelava o esconderijo; `isBot` continua disponível para listas e
+resultados. O servidor inclui as IAs na validação de tiro, portanto todos os clientes
+observam o mesmo resultado.
 
 ## Verificação
 

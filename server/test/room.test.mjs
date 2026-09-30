@@ -98,26 +98,36 @@ test('cada jogador real ocupa uma vaga antes de o servidor adicionar IA', async 
   }
 });
 
-test('IA escolhe rota livre, se move e para ao alcançar esconderijo', async () => {
+test('IA escolhe um esconderijo real, anda até ele e se camufla com a cor da superfície', async () => {
+  // O comportamento em si (percepção, fuga, travamento, os 3 mapas) é coberto em
+  // botai.test.mjs, sem rede. Este é o teste de INTEGRAÇÃO: a IA criada pela sala de
+  // verdade, dirigida por _updateBots, e o que ela publica no fio (_publicState).
   const server = await startTestServer();
   try {
     const hunter = await connectClient(server.url);
+    server.room.stop(); // relógio sintético abaixo — sem o tick real competindo
     server.room._matchmakingDeadline = Date.now() - 1;
     server.room._tick();
     const bot = [...server.room.bots.values()][0];
-    const now = Date.now();
+    let now = server.room._matchStartAt;
 
+    now += 50;
     server.room._updateBots(now);
-    assert.ok(bot._target, 'a IA deve escolher um destino alcançável');
-    server.room._updateBots(now + 100);
+    assert.ok(bot._ai.spot, 'a IA deve escolher um esconderijo alcançável');
+    assert.ok(bot._ai.path.length >= 2, 'com um caminho até ele');
     assert.equal(bot.moving, true);
-    assert.ok(['seeking', 'fleeing'].includes(bot._aiState));
+    assert.ok(['moving', 'fleeing'].includes(bot._ai.state));
 
-    bot.pos = { ...bot._target };
-    server.room._updateBots(now + 200);
-    assert.equal(bot._aiState, 'hidden');
-    assert.equal(bot.moving, false);
-    assert.equal(bot.prone, true);
+    for (let i = 0; i < 4000 && bot._ai.state !== 'hiding'; i++) { now += 50; server.room._updateBots(now); }
+    assert.equal(bot._ai.state, 'hiding', 'a IA devia chegar ao esconderijo');
+
+    const spot = bot._ai.spot;
+    const wire = server.room._publicState(bot);
+    assert.equal(wire.moving, false);
+    assert.equal(wire.statue, true);
+    assert.deepEqual(wire.color, [spot.upper, spot.lower], 'o que o Caçador humano vê é a cor real da superfície');
+    if (spot.kind === 'w') assert.equal(wire.state, 'latched');
+    else assert.equal(wire.prone, true);
 
     await closeClient(hunter.ws);
   } finally {

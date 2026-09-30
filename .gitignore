@@ -12,3 +12,7 @@ dist/
 
 # Área de trabalho de testes/diagnóstico (screenshots, harnesses, backups GLB)
 scratchpad/
+
+# Saída bruta da extração de navegação da IA (scripts/navdata) — grande e regenerável;
+# o que vale é o server/navdata.js gerado a partir dela.
+scripts/navdata/out/

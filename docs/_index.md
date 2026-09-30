@@ -27,6 +27,7 @@ se um doc mudou de categoria, atualize aqui (ver `CLAUDE.md` § Ingest).
 | [`PAINEL_AJUSTE.md`](PAINEL_AJUSTE.md) | 🟢 | Painel de dev (`?tune=1`) pra calibrar parâmetros de movimento ao vivo. |
 | [`PLANO_LOBBY_MULTIPLAYER.md`](PLANO_LOBBY_MULTIPLAYER.md) | 🟢 | Evolução da sala fixa de 2 pra 1 Caçador + até 4 Camaleões. |
 | [`PLANO_LOBBY_COUNTDOWN.md`](PLANO_LOBBY_COUNTDOWN.md) | 🟢 | Matchmaking de 30s que prioriza pessoas e completa vagas restantes com Camaleões de IA. |
+| [`PLANO_IA_ESCONDERIJOS.md`](PLANO_IA_ESCONDERIJOS.md) | 🟢 | IA dos Camaleões do Online: esconderijos reais, navegação em grade, percepção limitada, como os dados (`server/navdata.js`) são gerados e limitações. |
 | [`PIPELINE_PERSONAGEM.md`](PIPELINE_PERSONAGEM.md) | 🟢 | Pipeline Mixamo → Blender → GLB único do personagem; UV por região; armadilhas de constantes duplicadas. |
 | [`TRIPO_3D.md`](TRIPO_3D.md) | 🟢 | Acesso configurado ao Tripo3D pra gerar assets 3D por IA sob demanda (não usado no personagem principal). |
 | [`PLANO_TOON.md`](PLANO_TOON.md) | 🟢 | Direção de arte toon/cel-shaded; histórico de fases com status de implementação por item. |

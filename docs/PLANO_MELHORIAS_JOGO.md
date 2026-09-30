@@ -12,9 +12,15 @@ Data: 10/09/2026. Execução iniciada em 11/09/2026.
   no servidor (`room.js:_validateMove`). Seguem em aberto, por dependerem de medição:
   ensaio de carga, instalação com cache anterior e playtest com sessões simultâneas
   maiores; e, fora desta etapa, a re-simulação de colisão (Débito 1 do multiplayer).
-- **Etapa 2 — primeira versão concluída no Online:** IAs escolhem rotas diretas sem
-  obstáculos, buscam pontos fora da visão, se escondem e fogem. A expansão para
-  navegação vertical e paridade completa com superfícies reais continua pendente.
+- **Etapa 2 — concluída no térreo dos três mapas do Online (2026-09-30):** as IAs
+  escolhem esconderijos reais (extraídos do jogo com o próprio `Player`), caminham
+  contornando paredes e móveis numa grade de navegação, copiam a cor medida na
+  superfície, têm percepção limitada (alcance, campo de visão, parede, audição,
+  memória) e fogem para abrigos longe da última posição vista. Detalhes e limites em
+  [`PLANO_IA_ESCONDERIJOS.md`](PLANO_IA_ESCONDERIJOS.md). Seguem pendentes: navegação
+  vertical (porão, andares e ático do Chameleon Manor), a IA solo (`ChameleonTarget`),
+  calibrar a dificuldade com playtest e um aviso quando `navdata.js` ficar velho em
+  relação ao `Level.js`.
 - **Etapas 3 e 4 — correções essenciais concluídas:** tutorial não consome a rodada,
   dica de cor funciona no chão, dicas aparecem no celular e relógio/medição não usam
   mais o intervalo limitado da física. Tutorial dirigido por ações, preferências de

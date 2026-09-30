@@ -536,3 +536,39 @@ Arquivos: `server/room.js`, `server/test/rotation.test.mjs` (novo), `server/test
 (novo), `src/Game.js`, `src/main.js` (`Game.js?v=27`), `index.html` (`main.js?v=16`, texto do lobby),
 `README.md`, `docs/PLANO_MELHORIAS_JOGO.md`, `docs/PLANO_MULTIPLAYER.md`, `docs/PLANO_LOBBY_MULTIPLAYER.md`,
 `docs/PLANO_LOBBY_COUNTDOWN.md`, `docs/PLANO_CONTAS.md`.
+
+## 2026-09-30 — Etapa 2: IA dos Camaleões do Online com esconderijos reais
+
+As IAs do Online deixaram de sortear pontos livres e ir em linha reta: agora escolhem um esconderijo real
+do mapa, caminham contornando parede/móvel/escada, grudam e copiam a cor que o jogo mede na superfície,
+enxergam o Caçador só com alcance/campo de visão/parede (ouvem de perto), reagem com atraso e fogem pra
+um abrigo longe da última posição vista. Só no térreo dos layouts 1, 4 e 5.
+
+**Como.** `server/navdata.js` (GERADO) guarda, por layout, uma grade de 0,5 m e os esconderijos
+(tipo, x, z, yaw, cores). Sai do jogo real no navegador (`scripts/navdata/extract.browser.mjs` usa o próprio
+`Player.toggleLatch`/`_surfaceBehindZone`), é coletado por `collect.mjs` e montado por `build.mjs`
+(fluxo em `scripts/navdata/README.md`). `server/nav.js` faz Dijkstra + string pulling; `server/botAI.js` tem a
+máquina de estados e a percepção; `room.js` só monta o "mundo" e delega. Orçamento de 1 decisão cara por
+tick: sem ele, 4 IAs decidindo juntas estouravam o tick de 50 ms (115 ms medidos).
+
+**Verificação.** Suíte do servidor 38 → 76 testes (`test/botai.test.mjs`, 38, nos três mapas; mais o teste de
+integração da sala), estável em execuções repetidas. Checada por MUTAÇÃO: 14 defeitos deliberados, os 14
+detectados — 2 sobreviveram na primeira versão (audição e "foge pra perto") e revelaram testes fracos,
+reescritos. Custo por tick: média 0,05 ms, pior 8 ms. No navegador, Caçador humano contra o servidor real
+nos mapas 1 e 5: IAs grudadas na cor exata da parede, visíveis rente ao rodapé, abatidas com um tiro.
+Layout 4 verificado só por testes e pelos dados, não visualmente.
+
+**Bug real achado no cliente:** `Game.js:_connectOnline` marcava `_onlineConnected = true` antes do reload por
+layout divergente, então o teleporte pro spawn do WELCOME contava como violação de velocidade. Agora só marca
+depois de posicionar o jogador (`Game.js?v=28`, `main.js?v=17`).
+
+**Observado e NÃO corrigido:** a 1ª conexão "fantasma" (que recarrega por layout diferente) segura o papel de
+Caçador por 30 s até expirar; o spawn de Camaleão no layout 1 cai na base da escadaria; `navdata.js` envelhece
+em silêncio se um mapa mudar (nada o compara com `Level.js`); constantes da IA (`AI` em `botAI.js`) não foram
+calibradas com gente jogando. Fora de escopo: navegação vertical e a IA solo (`ChameleonTarget`).
+
+Arquivos: `server/botAI.js`, `server/nav.js`, `server/navdata.js` (novos), `server/room.js`,
+`server/test/botai.test.mjs` (novo), `server/test/room.test.mjs`, `scripts/navdata/*` (novos), `src/Game.js`,
+`src/main.js`, `index.html`, `.gitignore`, `docs/PLANO_IA_ESCONDERIJOS.md` (novo),
+`docs/PLANO_LOBBY_COUNTDOWN.md`, `docs/PLANO_MELHORIAS_JOGO.md`, `docs/_index.md`,
+`.claude/skills/level-design/SKILL.md`.

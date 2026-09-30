@@ -34,6 +34,8 @@ import {
 } from '../src/net/protocol.js';
 import { coneCandidates, normalize } from '../src/net/hittest.js';
 import { OCCLUDERS_BY_LAYOUT, isOccluded } from '../src/net/occluders.js';
+import { navFor } from './nav.js';
+import { initBotAI, updateBotAI } from './botAI.js';
 
 // Lobby maior (docs/PLANO_LOBBY_MULTIPLAYER.md): a sala inteira é 1 Caçador +
 // MAX_CHAMELEONS Camaleões — a atribuição de papel (mais abaixo) já dava HUNTER só pro
@@ -96,30 +98,6 @@ const CHAMELEON_SPAWN_RADIUS_BY_LAYOUT = {
   5: 2.0, // clareia o pilar em anel mais próximo (~3.4m da origem) com folga
 };
 
-const BOT_AREA_BY_LAYOUT = {
-  1: { minX: -13, maxX: 13, minZ: -13, maxZ: 13 },
-  4: { minX: -18, maxX: 18, minZ: -18, maxZ: 18 },
-  5: { minX: -44, maxX: 44, minZ: -22, maxZ: 22 },
-};
-const BOT_COLOR_BY_LAYOUT = {
-  1: [0x7b6956, 0x889071, 0x6f8191],
-  4: [0x6e7478, 0x8a684e, 0x69705f],
-  5: [0x81715e, 0x756b82, 0x71806c],
-};
-
-function _nextBotRandom(bot) {
-  bot._rng = (Math.imul(bot._rng, 1664525) + 1013904223) >>> 0;
-  return bot._rng / 0x100000000;
-}
-
-function _pointBlocked(point, boxes, margin = 0.45) {
-  return boxes.some((box) =>
-    point.y >= box.minY - 0.1 && point.y <= box.maxY + 0.1 &&
-    point.x >= box.minX - margin && point.x <= box.maxX + margin &&
-    point.z >= box.minZ - margin && point.z <= box.maxZ + margin
-  );
-}
-
 // `index` é a ordem de entrada entre os Camaleões (0, 1, 2...), não um id — divide o
 // círculo em MAX_CHAMELEONS fatias iguais. Sem validação contra geometria (Débito 1 do
 // plano original): o controlador do jogador já resolve colisão a partir do 1º frame,
@@ -139,6 +117,7 @@ export class Room {
   constructor() {
     this.clients = new Map(); // id -> ClientState
     this.bots = new Map();    // id -> estado autoritativo de Camaleão IA
+    this._botSpots = new Map(); // índice de esconderijo -> id da IA que o reservou (botAI.js)
     this._matchmakingDeadline = 0;
     this._matchStartAt = 0;
     this._over = false;
@@ -264,6 +243,7 @@ export class Room {
     if (holders.length === 0) {
       this._layout = onlineLayoutFor();
       this.bots.clear();
+      this._botSpots.clear();
       this._matchStartAt = 0;
       this._matchmakingDeadline = Date.now() + MATCHMAKING_WAIT_MS;
       this._phase = 'matchmaking';
@@ -386,10 +366,31 @@ export class Room {
     const humanChameleons = [...this.clients.values()]
       .filter((c) => c.role === ROLE.CHAMELEON).length;
     const missing = Math.max(0, MAX_CHAMELEONS - humanChameleons - this.bots.size);
+    // Cor de quem ainda não copiou nenhuma superfície: a IA só muda de cor ao chegar num
+    // esconderijo (botAI.js:settle), como o humano que pinta depois de escolher o lugar.
     const colors = [0x65c878, 0xd6a85f, 0x7199d4, 0xb87ac9];
+    const nav = navFor(this._layout);
+    // Células de spawn já usadas, pra duas IAs não nascerem na mesma célula quando o
+    // anel de spawn (pensado pro jogador humano) cai sobre móvel/escada e é empurrado.
+    const usedCells = new Set(
+      [...this.bots.values()].map((b) => {
+        const cell = nav && nav.cellOf(b.pos.x, b.pos.z);
+        return cell ? nav.idx(cell.c, cell.r) : -1;
+      })
+    );
     for (let i = 0; i < missing; i++) {
       const index = humanChameleons + this.bots.size;
-      const spawn = _chameleonSpawn(this._layout, index);
+      let spawn = _chameleonSpawn(this._layout, index);
+      if (nav) {
+        // O spawn do humano pode cair em cima de móvel/escada (o controlador dele
+        // resolve a colisão no 1º frame). A IA não: nasce na célula livre mais próxima.
+        const cell = nav.nearestFree(spawn.x, spawn.z, 10, usedCells);
+        if (cell) {
+          const p = nav.center(cell.c, cell.r);
+          spawn = { x: p.x, y: GROUND_Y, z: p.z };
+          usedCells.add(nav.idx(cell.c, cell.r));
+        }
+      }
       const bot = {
         id: `bot-${randomUUID()}`,
         role: ROLE.CHAMELEON,
@@ -398,101 +399,39 @@ export class Room {
         connected: true,
         spawn,
         pos: { ...spawn }, yaw: 0, state: 'grounded',
-        crouched: false, prone: false, statue: false, moving: true,
+        crouched: false, prone: false, statue: false, moving: false,
         color: [colors[index % colors.length], colors[index % colors.length]],
-        _baseColor: colors[index % colors.length],
         eliminated: false,
         ammo: 0, maxAmmo: 0, infiniteAmmo: false,
         paintStrokes: [],
-        _phase: (index * Math.PI * 2) / MAX_CHAMELEONS,
-        _radius: 0.9 + (index % 2) * 0.35,
-        _speed: 0.55 + index * 0.08,
-        _bornAt: now,
         _rng: (index + 1) * 2654435761 >>> 0,
-        _aiState: 'seeking',
-        _target: null,
-        _hideUntil: 0,
       };
       if (replacement && i === 0) {
         bot.eliminated = !!replacement.eliminated;
         bot.color = [...replacement.color];
-        bot._baseColor = replacement.color[0];
         bot.pos = { ...replacement.pos };
       }
+      initBotAI(bot, now);
       this.bots.set(bot.id, bot);
       this._broadcast({ type: S2C.PLAYER_JOIN, player: this._publicState(bot) });
     }
   }
 
-  _chooseBotTarget(bot, hunter, now) {
-    const area = BOT_AREA_BY_LAYOUT[this._layout] || BOT_AREA_BY_LAYOUT[1];
-    const boxes = OCCLUDERS_BY_LAYOUT[this._layout] || OCCLUDERS_BY_LAYOUT[1];
-    let best = null;
-    let bestScore = -Infinity;
-    for (let i = 0; i < 28; i++) {
-      const candidate = {
-        x: area.minX + _nextBotRandom(bot) * (area.maxX - area.minX),
-        y: GROUND_Y,
-        z: area.minZ + _nextBotRandom(bot) * (area.maxZ - area.minZ),
-      };
-      if (_pointBlocked(candidate, boxes) || isOccluded(bot.pos, candidate, boxes)) continue;
-      const hunterDistance = hunter ? Math.hypot(candidate.x - hunter.pos.x, candidate.z - hunter.pos.z) : 0;
-      const hiddenFromHunter = hunter ? isOccluded(hunter.pos, candidate, boxes) : false;
-      const travel = Math.hypot(candidate.x - bot.pos.x, candidate.z - bot.pos.z);
-      const score = (hiddenFromHunter ? 30 : 0) + hunterDistance - travel * 0.15;
-      if (score > bestScore) { best = candidate; bestScore = score; }
-    }
-    bot._target = best || { ...bot.spawn };
-    bot._aiState = hunter ? 'fleeing' : 'seeking';
-    bot._hideUntil = now + 3500 + _nextBotRandom(bot) * 3500;
-  }
-
-  // IA autoritativa: escolhe pontos alcançáveis por um segmento sem obstáculos,
-  // privilegia locais fora da visão do Caçador, para ao chegar e foge quando vista.
+  // IA autoritativa (server/botAI.js): esconderijos reais, caminhos pela grade de
+  // navegação, percepção limitada do Caçador. Aqui só se monta o "mundo" que ela lê.
   _updateBots(now) {
     if (!this._matchStartAt || now < this._matchStartAt || this._over) return;
-    const hunter = [...this.clients.values()].find((c) => c.connected && c.role === ROLE.HUNTER);
-    const boxes = OCCLUDERS_BY_LAYOUT[this._layout] || OCCLUDERS_BY_LAYOUT[1];
-    const colors = BOT_COLOR_BY_LAYOUT[this._layout] || BOT_COLOR_BY_LAYOUT[1];
-    for (const bot of this.bots.values()) {
-      if (bot.eliminated) { bot.moving = false; continue; }
-      const hunterDistance = hunter ? Math.hypot(bot.pos.x - hunter.pos.x, bot.pos.z - hunter.pos.z) : Infinity;
-      const hunterCanSee = hunter && hunterDistance < 10 && !isOccluded(hunter.pos, bot.pos, boxes);
-      if (!bot._target || (hunterCanSee && bot._aiState !== 'fleeing') ||
-          (bot._aiState === 'hidden' && now >= bot._hideUntil)) {
-        this._chooseBotTarget(bot, hunter, now);
-      }
-      const dx = bot._target.x - bot.pos.x;
-      const dz = bot._target.z - bot.pos.z;
-      const distance = Math.hypot(dx, dz);
-      if (distance <= 0.18) {
-        bot.pos = { ...bot._target };
-        bot.moving = false;
-        bot.prone = true;
-        bot.statue = true;
-        bot._aiState = 'hidden';
-        const color = colors[Math.floor(_nextBotRandom(bot) * colors.length)];
-        bot.color = [color, color];
-        continue;
-      }
-      const dt = Math.min(0.1, Math.max(0, (now - (bot._lastAiAt || now)) / 1000));
-      const speed = hunterCanSee ? 3.2 : 2.1;
-      const step = Math.min(distance, speed * dt);
-      const next = { x: bot.pos.x + dx / distance * step, y: GROUND_Y, z: bot.pos.z + dz / distance * step };
-      // O segmento foi validado ao escolher o alvo; esta segunda checagem protege
-      // contra tabelas de obstáculos alteradas durante desenvolvimento.
-      if (isOccluded(bot.pos, next, boxes) || _pointBlocked(next, boxes)) {
-        bot._target = null;
-        bot.moving = false;
-      } else {
-        bot.yaw = Math.atan2(dx, dz);
-        bot.pos = next;
-        bot.moving = true;
-        bot.prone = false;
-        bot.statue = false;
-      }
-      bot._lastAiAt = now;
-    }
+    const nav = navFor(this._layout);
+    if (!nav) return; // layout sem dados de navegação: as IAs ficam onde nasceram
+    const world = {
+      nav,
+      hunter: [...this.clients.values()].find((c) => c.connected && c.role === ROLE.HUNTER) || null,
+      boxes: OCCLUDERS_BY_LAYOUT[this._layout] || OCCLUDERS_BY_LAYOUT[1],
+      reserved: this._botSpots,
+      botIds: new Set(this.bots.keys()),
+      budget: { floods: 1 }, // uma decisão cara por tick (botAI.js:chooseSpot)
+    };
+    for (const bot of this.bots.values()) updateBotAI(bot, world, now);
   }
 
   // NÃO remove o cliente nem avisa o outro lado ainda — só marca a queda. A
@@ -531,6 +470,7 @@ export class Room {
       }
       if (this.clients.size === 0) {
         this.bots.clear();
+        this._botSpots.clear();
         this._over = false;
         this._matchStartAt = 0;
         this._matchmakingDeadline = 0;
@@ -611,6 +551,7 @@ export class Room {
       this._broadcast({ type: S2C.PLAYER_LEAVE, id: bot.id });
     }
     this.bots.clear();
+    this._botSpots.clear();
     this._over = false;
     this._phase = 'matchmaking';
     this._roundId++;

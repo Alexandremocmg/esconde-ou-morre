@@ -186,6 +186,15 @@ declarar um mapa pronto:
   nunca roda `Level.js`, então esse array estático é a única fonte de verdade
   dele pra oclusão de tiro. Regenere sempre que a geometria de PAREDE do mapa
   mudar (não decoração — só o que bloqueia tiro/visão de verdade).
+- `server/navdata.js` (**gerado**, não edite à mão): grade de navegação e esconderijos
+  da IA do servidor, do térreo do mapa. Rode a extração no jogo real
+  (`?stage=N`) e `node scripts/navdata/build.mjs` — passo a passo em
+  `scripts/navdata/README.md`. **Regenere sempre que mexer em parede, móvel, escada,
+  buraco de laje ou cor de superfície colorável do térreo**: o arquivo não sabe que o
+  mapa mudou. Sintoma de dado velho: IA andando por dentro de um móvel novo, parada
+  num lugar que virou parede, ou "camuflada" numa cor que a parede já não tem.
+  `server/test/botai.test.mjs` roda nos layouts 1, 4 e 5 e cobre a coerência do que foi
+  gerado, mas NÃO enxerga o `Level.js` — não detecta mapa que mudou sem regerar.
 - Teste headless com `ws` cru contra o `Room` real: spawn correto por layout,
   oclusão bloqueando/liberando tiro com o snapshot certo, `welcome.layout`
   batendo com o mapa que o servidor realmente escolheu.
