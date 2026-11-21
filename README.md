@@ -98,6 +98,11 @@ apenas, sem servidor adicional; detalhes em `docs/PLANO_CONTAS.md`.
 Fora do modo Online, qualquer host de arquivos estáticos serve a pasta como está
 (GitHub Pages, Netlify, Vercel, S3, etc.) — publique a raiz do repositório.
 
+**Também na VPS própria:** https://esconde.kabemmanager.online, com cliente e servidor do
+modo Online (o cliente usa `wss://<host>/ws` nesse domínio). A atualização é manual: um
+`git push` não muda a VPS, e o servidor precisa de reinício quando `server/` ou `src/net/`
+mudam. Veja [docs/HOSPEDAGEM_VPS.md](docs/HOSPEDAGEM_VPS.md).
+
 ## Recursos Principais e Mecânicas
 
 - **Personagem 3D Rigged + 9 Animações num GLB único:** Modelo 3D com skinning Toon carregado de `public/models/character_animated.glb` (uma malha, um esqueleto, 9 clipes embutidos: `idle`, `run`, `crouch`, `hide`, `prone`, `climb`, `jump`, `rifleRun`, `shoot`). Os FBX originais do Mixamo continuam versionados em `public/animation/` como fonte, mas o jogo não os baixa mais — ver `docs/PIPELINE_PERSONAGEM.md`.
