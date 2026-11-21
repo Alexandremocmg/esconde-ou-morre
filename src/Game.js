@@ -9,7 +9,7 @@ import { Joystick } from './Joystick.js?v=3';
 import { Effects } from './Effects.js?v=3';
 import { Audio } from './Audio.js?v=3';
 import { animationManager } from './AnimationManager.js?v=4';
-import { Net, resolveWsUrl } from './Net.js?v=8';
+import { Net, resolveWsUrl } from './Net.js?v=9';
 import { RemotePlayer } from './RemotePlayer.js?v=6';
 // Fase E do Plano 2 (docs/PLANO_CONTAS.md): primeiro (e único) ponto onde
 // Game.js sabe algo sobre conta de jogador — só pra reportar resultado de

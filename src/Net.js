@@ -3,14 +3,23 @@ import { C2S, S2C, TICK_MS, RECONNECT_GRACE_MS, PROD_WS_URL, HOST_LOCAL_OU_LAN }
 // Mesma lógica de escolha de servidor que só existia dentro de Game.js
 // (_wsUrl) — movida pra cá (Fase B, Plano 2) porque "Continuar Partida" no
 // menu principal precisa dela ANTES de um Game existir, só pra checar se dá
-// pra reconectar. Continua com a mesma prioridade: `?ws=` explícito > mesmo
-// host/LAN (dev) > PROD_WS_URL.
+// pra reconectar. Prioridade: `?ws=` explícito > mesmo host/LAN (dev) > domínio
+// próprio (VPS) > PROD_WS_URL.
+//
+// Domínio próprio: nas páginas servidas por *.kabemmanager.online o cliente e o
+// servidor moram no MESMO host e o proxy (Traefik) encaminha `/ws` para o servidor
+// autoritativo (porta 8787 não fica pública). Qualquer outro domínio (a Vercel, por
+// exemplo) continua usando PROD_WS_URL (Render).
+const DOMINIO_PROPRIO = /\.kabemmanager\.online$/;
+
 export function resolveWsUrl() {
   const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
   const override = new URLSearchParams(location.search).get('ws');
   const base = override
     ? (/^wss?:\/\//.test(override) ? override : `${scheme}://${override}`)
-    : (HOST_LOCAL_OU_LAN.test(location.hostname) ? `${scheme}://${location.hostname}:8787` : PROD_WS_URL);
+    : (HOST_LOCAL_OU_LAN.test(location.hostname) ? `${scheme}://${location.hostname}:8787`
+      : DOMINIO_PROPRIO.test(location.hostname) ? `${scheme}://${location.host}/ws`
+      : PROD_WS_URL);
   const room = sessionStorage.getItem('eom-room-code');
   if (!room || !/^[A-Z0-9]{4,8}$/.test(room)) return base;
   return `${base}${base.includes('?') ? '&' : '?'}room=${encodeURIComponent(room)}`;
