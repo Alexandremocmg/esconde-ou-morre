@@ -249,6 +249,11 @@ cita (GitHub Pages/Netlify/Vercel/S3) não seguram isso.
   `PROD_WS_URL` (`net/protocol.js`) — a URL fixa do serviço no Render. Precisa
   ficar em sincronia manual com a URL real que o Render atribuir ao criar o
   serviço (só muda se o serviço for recriado com outro nome).
+- **Hospedagem própria (VPS, 2026-11-21):** nas páginas servidas por
+  `*.kabemmanager.online`, `resolveWsUrl()` (`Net.js`) usa o WebSocket do **mesmo
+  host**, em `/ws` (`wss://<host>/ws`). O proxy encaminha esse caminho para o
+  servidor autoritativo, cuja porta 8787 não fica pública. Os outros domínios
+  (Vercel) seguem usando `PROD_WS_URL`.
 
 **Status: em produção e verificado (2026-08-18).** Cliente ao vivo em
 `https://esconde-ou-morre.vercel.app` (deploy `8c28758` promovido automaticamente pelo
